@@ -1,0 +1,8 @@
+streamlit
+pandas
+numpy
+plotly
+yfinance
+fredapi
+selenium
+webdriver-manager
