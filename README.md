@@ -39,26 +39,58 @@ Built with **Streamlit** and **Plotly**.
 *   **Global Stress Monitor**: Multi-line comparison of the Pressure Index across all assets.
 *   **Correlation Matrix**: Pearson correlation of margin changes to identify systemic lockstep moves.
 
-## 🚀 Usage
+### 4. Resilience & Data Quality
+*   **UTC Standardization**: All timestamps are normalized to UTC for global consistency.
+*   **Weekend Guard**: Automatic skipping of weekend/holiday extraction to prevent "zero data" pollution.
+*   **Per-Instrument Tracking**: Independent sync tracking for each instrument (GOLD, SILVER, etc.) ensures that a failure in one feed doesn't block others.
+*   **Zero-Value Scrubbing**: Guards against invalid 0.0 margin/price insertions from external feeds.
 
-### Initialize System
+## 🛠 Scripts Reference
+
+The system includes a suite of helper scripts in the `scripts/` directory for lifecycle management.
+
+### Local Development
+*   **`./scripts/sync_data_local.sh`**: The daily workhorse. Runs all agents (Flow -> Margin -> Historical) sequentially.
+    ```bash
+    ./scripts/sync_data_local.sh
+    ```
+*   **`./scripts/clean_restart_local.sh`**: **DESTRUCTIVE**. Wipes the local database (`liquidity_monitor.db`) and re-initializes it from scratch. Use this if your local data is corrupted.
+    ```bash
+    ./scripts/clean_restart_local.sh
+    ```
+
+### Production Publishing
+*   **`./scripts/publish_lfm.sh`**: Pushes your clean local data to the remote Production API.
+    *   **Normal Push** (New data only):
+        ```bash
+        ./scripts/publish_lfm.sh YOUR_PASSWORD
+        ```
+    *   **Full Backfill** (Overwrite remote DB with local history):
+        ```bash
+        ./scripts/publish_lfm.sh YOUR_PASSWORD --backfill
+        ```
+
+### Docker Management (AWS/Prod)
+*   **`./scripts/build_lfm.sh`**: Builds the Docker image locally and pushes it to Docker Hub (`vjdev/lfm-app`).
+    ```bash
+    ./scripts/build_lfm.sh
+    ```
+*   **`./scripts/deploy_lfm.sh`**: Pulls the latest image and starts the stack using `docker-compose`.
+    ```bash
+    ./scripts/deploy_lfm.sh
+    ```
+*   **`./scripts/stop_lfm.sh`**: Gracefully stops and removes the running containers.
+    ```bash
+    ./scripts/stop_lfm.sh
+    ```
+
+## 🚀 Quick Start
+### Initialize System (Local)
 ```bash
 ./run.sh
 ```
-*Note: This script will verify dependencies, sync the database, run backfills, and launch the dashboard.*
-
-### Manual Data Sync
-```bash
-# Fetch Latest CME Margins
-python src/agents/global_margin_agent.py
-
-# Fetch Macro Yields
-python src/agents/flow_agent.py
-
-# Backfill Historical Data (2025-Jan to present)
-python src/agents/cme_historical_agent.py
-```
+*Note: This wrapper script effectively calls `sync_data_local.sh` and then launches the Dashboard.*
 
 ### API Requirements
-Ensure your environment variables are set:
+Ensure your environment variables are set in `.env` or exported:
 *   `FRED_API_KEY`: Required for macro flow data.
