@@ -13,6 +13,18 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../'
 
 from src.analytics import calculate_squeeze_score, check_systemic_alert, get_db_connection, get_carry_trade_data
 
+def get_dashboard_holidays():
+    """Fetch list of holiday dates to exclude from charts"""
+    conn = get_db_connection()
+    try:
+        # Get purely the dates
+        holidays = pd.read_sql("SELECT holiday_date FROM trading_holidays", conn)
+        return holidays['holiday_date'].tolist() if not holidays.empty else []
+    except:
+        return []
+    finally:
+        conn.close()
+
 st.set_page_config(page_title="Global Liquidity Flow Monitor", layout="wide")
 
 st.title("🌊 Global Liquidity Flow Monitor")
@@ -172,9 +184,19 @@ if not scores_df.empty:
             yaxis='y2'
         ))
         
+
+        # Get holidays once
+        holidays = get_dashboard_holidays()
+
         fig1.update_layout(
             title=f"{selected_instrument} Price vs Leverage Requirements ({selected_exchange})",
-            xaxis=dict(title="Time"),
+            xaxis=dict(
+                title="Time",
+                rangebreaks=[
+                    dict(bounds=["sat", "mon"]), # hide weekends
+                    dict(values=holidays) # hide holidays
+                ]
+            ),
             yaxis=dict(title="Price", title_font=dict(color='#636EFA'), tickfont=dict(color='#636EFA')),
             yaxis2=dict(
                 title="Margin %",
@@ -211,8 +233,18 @@ if not scores_df.empty:
         fig2.add_hline(y=1.0, line_dash="dash", line_color="gray", annotation_text="Baseline (1.0x)")
         fig2.add_hline(y=1.5, line_dash="dash", line_color="orange", annotation_text="Stress Threshold (1.5x)")
         
+        # Get holidays if not already fetched
+        if 'holidays' not in locals():
+            holidays = get_dashboard_holidays()
+
         fig2.update_layout(
             yaxis=dict(ticksuffix="x"),
+            xaxis=dict(
+                rangebreaks=[
+                    dict(bounds=["sat", "mon"]), 
+                    dict(values=holidays)
+                ]
+            ),
             hovermode="x unified",
             legend=dict(orientation="h", y=1.02, yanchor="bottom", x=0.5, xanchor="center")
         )
