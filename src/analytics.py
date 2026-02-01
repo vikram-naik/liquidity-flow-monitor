@@ -116,6 +116,31 @@ def get_carry_trade_data():
         
     return pivot_df.reset_index()
 
+
+def calculate_fair_value(df):
+    """
+    Calculate USD/JPY Fair Value based on yield spread.
+    
+    Heuristic Model: Fair Value = 80 + (20 * Yield_Spread)
+    This creates a "rubber band" effect showing divergence from fundamentals.
+    
+    Returns: DataFrame with fair_value and deviation columns added
+    """
+    if df.empty:
+        return df
+    
+    if 'yield_spread' not in df.columns:
+        return df
+        
+    df = df.copy()
+    df['fair_value'] = 80 + (20 * df['yield_spread'])
+    
+    if 'usdjpy' in df.columns:
+        df['deviation'] = df['usdjpy'] - df['fair_value']
+    
+    return df
+
+
 def check_systemic_alert():
     """
     Cross-Asset Alert System
@@ -261,6 +286,155 @@ def check_carry_trade(conn=None):
         return "GLOBAL DELEVERAGING SIGNAL (JPY Strong + Metal Margins Up)"
         
     return None
+
+def get_credit_stress_data(days: int = 90):
+    """
+    Fetches DXY, HY_SPREAD, and RRP data from yield_logs for macro plumbing analysis.
+    
+    Returns: DataFrame with timestamp, dxy, hy_spread, rrp, and trend indicators
+    """
+    conn = get_db_connection()
+    
+    df = pd.read_sql("""
+        SELECT timestamp, tenor, rate 
+        FROM yield_logs 
+        WHERE tenor IN ('DXY', 'HY_SPREAD', 'RRP', 'VIX')
+        ORDER BY timestamp ASC
+    """, conn)
+    conn.close()
+    
+    if df.empty:
+        return pd.DataFrame()
+        
+    df['timestamp'] = pd.to_datetime(df['timestamp'])
+    
+    # Pivot to get DXY, HY_SPREAD, and RRP as columns
+    pivot_df = df.pivot_table(index='timestamp', columns='tenor', values='rate')
+    
+    # Rename columns to lowercase for consistency
+    col_map = {'DXY': 'dxy', 'HY_SPREAD': 'hy_spread', 'RRP': 'rrp', 'VIX': 'vix'}
+    available_cols = [c for c in pivot_df.columns if c in col_map]
+    pivot_df = pivot_df[available_cols].rename(columns=col_map)
+    
+    # Forward fill and resample to daily
+    pivot_df = pivot_df.resample('D').last().ffill()
+    
+    # Calculate trend indicators
+    if 'dxy' in pivot_df.columns:
+        pivot_df['dxy_pct_5d'] = pivot_df['dxy'].pct_change(periods=5)
+    if 'hy_spread' in pivot_df.columns:
+        pivot_df['hy_spread_pct_5d'] = pivot_df['hy_spread'].pct_change(periods=5)
+    if 'rrp' in pivot_df.columns:
+        # RRP change in absolute billions over 7 days
+        pivot_df['rrp_delta_7d'] = pivot_df['rrp'].diff(periods=7)
+    
+    # Filter to requested days
+    if days > 0:
+        cutoff = pivot_df.index.max() - timedelta(days=days)
+        pivot_df = pivot_df[pivot_df.index >= cutoff]
+        
+    return pivot_df.reset_index()
+
+
+def check_credit_stress():
+    """
+    Interprets Macro Plumbing signals: Credit Stress, Dollar Strength, and Liquidity (RRP).
+    
+    Rules:
+    - HY_SPREAD > 4.0%: CRITICAL - CREDIT FREEZE (Systemic banking risk)
+    - HY_SPREAD rising > 5% in 5 days: WARNING - RISK OFF
+    - DXY > 115: DOLLAR WRECKING BALL (Broad Index - Metals headwind)
+    - RRP < 50B: CRITICAL - BUFFER DEPLETED (QE imminent - BUY signal for metals)
+    - RRP increases > $50B in 1 week: LIQUIDITY HOARDING (Banks pulling cash)
+    - RRP drops: LIQUIDITY INJECTION (Cash entering system)
+    
+    Returns: Dict with flags and messages
+    """
+    df = get_credit_stress_data(days=30)
+    
+    if df.empty:
+        return {
+            'credit_freeze': False,
+            'risk_off': False,
+            'dollar_squeeze': False,
+            'liquidity_hoarding': False,
+            'liquidity_injection': False,
+            'hy_spread_current': None,
+            'dxy_current': None,
+            'rrp_current': None,
+            'rrp_delta_7d': None,
+            'vix_current': None,
+            'message': 'No macro data available'
+        }
+    
+    latest = df.iloc[-1]
+    
+    # Extract current values
+    hy_spread = latest.get('hy_spread', None)
+    dxy = latest.get('dxy', None)
+    rrp = latest.get('rrp', None)
+    vix = latest.get('vix', None)
+    hy_spread_pct_5d = latest.get('hy_spread_pct_5d', 0) or 0
+    dxy_pct_5d = latest.get('dxy_pct_5d', 0) or 0
+    rrp_delta_7d = latest.get('rrp_delta_7d', 0) or 0
+    
+    # Rule 1: Credit Freeze
+    credit_freeze = hy_spread is not None and hy_spread > 4.0
+    
+    # Rule 2: Risk Off (Credit rising >5% in 5 days)
+    risk_off = hy_spread_pct_5d > 0.05
+    
+    # Rule 3: Dollar Wrecking Ball (Broad DXY > 115)
+    dollar_squeeze = dxy is not None and dxy > 115
+    
+    # Rule 4: RRP Buffer Depleted (< $50B = QE imminent)
+    buffer_depleted = rrp is not None and rrp < 50
+    
+    # Rule 5: Liquidity Hoarding (RRP up > $50B in 7 days)
+    liquidity_hoarding = rrp_delta_7d > 50
+    
+    # Rule 6: Liquidity Injection (RRP dropping)
+    liquidity_injection = rrp_delta_7d < -10  # significant drop
+    
+    # Build message
+    messages = []
+    if credit_freeze:
+        messages.append("🚨 CRITICAL: BANKING FREEZE (HY Spread > 4%)")
+    if buffer_depleted:
+        messages.append("🚨 CRITICAL: BUFFER DEPLETED (QE IMMINENT - BUY METALS)")
+    if risk_off:
+        messages.append("⚠️ WARNING: RISK OFF (Credit Stress Rising)")
+    if dollar_squeeze:
+        messages.append("💵 DOLLAR WRECKING BALL (DXY > 115)")
+    if liquidity_hoarding:
+        messages.append("🏦 LIQUIDITY HOARDING (Banks pulling cash)")
+    if liquidity_injection:
+        messages.append("💧 LIQUIDITY INJECTION (Cash entering system)")
+    
+    if not messages:
+        # Determine healthy status
+        if hy_spread is not None and hy_spread < 3.5:
+            messages.append("✅ Macro Plumbing Healthy")
+        else:
+            messages.append("➡️ Macro Plumbing Stable")
+            
+    return {
+        'credit_freeze': credit_freeze,
+        'risk_off': risk_off,
+        'dollar_squeeze': dollar_squeeze,
+        'buffer_depleted': buffer_depleted,
+        'liquidity_hoarding': liquidity_hoarding,
+        'liquidity_injection': liquidity_injection,
+        'hy_spread_current': hy_spread,
+        'dxy_current': dxy,
+        'rrp_current': rrp,
+        'rrp_delta_7d': rrp_delta_7d,
+        'hy_spread_trend': 'Rising' if hy_spread_pct_5d > 0.02 else ('Falling' if hy_spread_pct_5d < -0.02 else 'Stable'),
+        'dxy_trend': 'Rising' if dxy_pct_5d > 0 else 'Falling',
+        'rrp_trend': 'Rising' if rrp_delta_7d > 10 else ('Falling' if rrp_delta_7d < -10 else 'Stable'),
+        'vix_current': vix,
+        'message': ' | '.join(messages)
+    }
 
 if __name__ == "__main__":
     print("Calculating Squeeze Scores...")

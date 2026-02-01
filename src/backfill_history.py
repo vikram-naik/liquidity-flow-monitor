@@ -18,8 +18,13 @@ def backfill_fred_data(start_date="2025-11-01"):
     cursor = conn.cursor()
     
     series = {
-        'DGS10': ('USD', '10Y'),
-        'DEXJPUS': ('JPY', 'Spot')
+        'DGS10': ('USD', '10Y'),           # 10-Year Treasury Yield
+        'DEXJPUS': ('JPY', 'Spot'),        # USD/JPY Exchange Rate
+        'IRLTLT01JPM156N': ('JPY', '10Y'), # Japan 10-Year Bond Yield
+        'DTWEXBGS': ('USD', 'DXY'),        # Nominal Broad US Dollar Index
+        'BAMLH0A0HYM2': ('USD', 'HY_SPREAD'), # ICE BofA US High Yield Spread
+        'RRPONTSYD': ('USD', 'RRP'),       # Overnight Reverse Repo (Billions)
+        'VIXCLS': ('USD', 'VIX')           # CBOE Volatility Index
     }
     
     print(f"Fetching FRED data from {start_date}...")

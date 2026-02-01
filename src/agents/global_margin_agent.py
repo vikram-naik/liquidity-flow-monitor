@@ -19,6 +19,7 @@ MULTIPLIERS = {
     'GOLD': 100,
     'SILVER': 5000,
     'COPPER': 25000,
+    'CRUDE_OIL': 1000,
     'ES': 50,
     'NQ': 20
 }
@@ -27,6 +28,7 @@ YAHOO_SYMBOLS = {
     'GOLD': 'GC=F',
     'SILVER': 'SI=F',
     'COPPER': 'HG=F',
+    'CRUDE_OIL': 'CL=F',
     'ES': 'ES=F',
     'NQ': 'NQ=F'
 }
@@ -48,6 +50,7 @@ def get_cme_margins():
         {'symbol': 'SILVER', 'code': 'SI', 'exchange': 'CMX', 'sector': 'METALS'},
         {'symbol': 'GOLD', 'code': 'GC', 'exchange': 'CMX', 'sector': 'METALS'},
         {'symbol': 'COPPER', 'code': 'HG', 'exchange': 'CMX', 'sector': 'METALS'},
+        {'symbol': 'CRUDE_OIL', 'code': 'CL', 'exchange': 'NYM', 'sector': 'ENERGY'},
         {'symbol': 'ES', 'code': 'ES', 'exchange': 'CME', 'sector': 'EQUITY INDEX'},
         {'symbol': 'NQ', 'code': 'NQ', 'exchange': 'CME', 'sector': 'EQUITY INDEX'}
     ]

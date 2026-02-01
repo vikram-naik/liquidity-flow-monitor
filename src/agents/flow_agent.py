@@ -18,9 +18,13 @@ FRED_API_KEY = os.getenv("FRED_API_KEY", "5bbee1aad376b64693645ea3a2c8becd")
 
 # Series to fetch
 FRED_SERIES = {
-    'DGS10': ('USD', '10Y'),      # 10-Year Treasury Yield
-    'DEXJPUS': ('JPY', 'Spot'),   # USD/JPY Exchange Rate
-    'IRLTLT01JPM156N': ('JPY', '10Y') # Japan 10-Year Bond Yield
+    'DGS10': ('USD', '10Y'),           # 10-Year Treasury Yield
+    'DEXJPUS': ('JPY', 'Spot'),        # USD/JPY Exchange Rate
+    'IRLTLT01JPM156N': ('JPY', '10Y'), # Japan 10-Year Bond Yield
+    'DTWEXBGS': ('USD', 'DXY'),        # Nominal Broad US Dollar Index
+    'BAMLH0A0HYM2': ('USD', 'HY_SPREAD'), # ICE BofA US High Yield Spread
+    'RRPONTSYD': ('USD', 'RRP'),       # Overnight Reverse Repo (Billions)
+    'VIXCLS': ('USD', 'VIX')           # CBOE Volatility Index (Fear Gauge)
 }
 
 def fetch_fred_data(start_date: date = None):
