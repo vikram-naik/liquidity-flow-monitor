@@ -40,6 +40,28 @@ def get_last_download_date(exchange: str) -> date:
     
     return BASE_DATE
 
+def get_last_instrument_date(symbol: str) -> date:
+    """
+    Get the last date data was downloaded for a specific instrument.
+    """
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    cursor.execute("""
+        SELECT MAX(DATE(l.timestamp)) 
+        FROM margin_logs l
+        JOIN instruments i ON l.instrument_id = i.id
+        WHERE i.symbol = ?
+    """, (symbol,))
+    
+    result = cursor.fetchone()
+    conn.close()
+    
+    if result and result[0]:
+        return datetime.strptime(result[0], '%Y-%m-%d').date()
+    
+    return BASE_DATE
+
 def get_last_yield_date() -> date:
     """
     Get the last date yield data was downloaded.

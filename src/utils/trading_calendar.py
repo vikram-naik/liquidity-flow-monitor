@@ -1,5 +1,5 @@
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # Path to DB for holiday checks
 DB_PATH = "liquidity_monitor.db"
@@ -38,6 +38,21 @@ def is_cme_trading_day(target_date):
     except:
         # Fallback if DB not ready
         return target_date.weekday() < 5
+
+def get_latest_cme_trading_day(ref_date=None):
+    """
+    Get the most recent valid CME trading day.
+    """
+    if ref_date is None:
+        ref_date = datetime.now().date()
+        
+    current = ref_date
+    # Limit search to avoid infinite loops
+    for _ in range(10):
+        if is_cme_trading_day(current):
+            return current
+        current -= timedelta(days=1)
+    return ref_date
 
 def is_nse_trading_day(target_date):
     """Legacy wrapper for NSE (always False now since we removed NSE)"""

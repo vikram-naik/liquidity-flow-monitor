@@ -14,7 +14,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../'
 from src.utils.data_sync import get_last_yield_date, BASE_DATE
 
 DB_PATH = "liquidity_monitor.db"
-FRED_API_KEY = "5bbee1aad376b64693645ea3a2c8becd"
+FRED_API_KEY = os.getenv("FRED_API_KEY", "5bbee1aad376b64693645ea3a2c8becd")
 
 # Series to fetch
 FRED_SERIES = {
@@ -63,10 +63,16 @@ def fetch_fred_data(start_date: date = None):
                 
             count = 0
             for dt, value in data.items():
+                rate_val = float(value)
+                if rate_val <= 0 and currency != 'JPY': # JPY rates can be 0 or negative sometimes, but USD yields shouldn't be 0
+                    print(f"    ⚠️ Skipping {dt.date()}: Rate is {rate_val}")
+                    continue
+
+                # FRED data is daily, we align to UTC EOD
                 cursor.execute("""
                     INSERT OR REPLACE INTO yield_logs (timestamp, currency, tenor, rate)
                     VALUES (?, ?, ?, ?)
-                """, (dt.strftime("%Y-%m-%d %H:%M:%S"), currency, tenor, float(value)))
+                """, (dt.strftime("%Y-%m-%d 23:59:59"), currency, tenor, rate_val))
                 count += 1
                 
             print(f"  ✓ {count} observations ({data.index[0].date()} to {data.index[-1].date()})")

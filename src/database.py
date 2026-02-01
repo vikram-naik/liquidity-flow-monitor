@@ -2,7 +2,7 @@
 import sqlite3
 import os
 
-DB_PATH = "liquidity_monitor.db"
+DB_PATH = os.getenv("DB_PATH", "liquidity_monitor.db")
 
 def init_db():
     conn = sqlite3.connect(DB_PATH)
@@ -94,7 +94,7 @@ def init_db():
     print("Seeding holidays...")
     cme_hols = [
         ('2025-01-01', 'New Year Day', 0), ('2025-01-20', 'MLK Day', 0), ('2025-02-17', 'Presidents Day', 0),
-        ('2025-04-18', 'Good Friday', 0), ('2025-05-26', 'Memorial Day', 2025), ('2025-06-19', 'Juneteenth', 0),
+        ('2025-04-18', 'Good Friday', 0), ('2025-05-26', 'Memorial Day', 0), ('2025-06-19', 'Juneteenth', 0),
         ('2025-07-04', 'Independence Day', 0), ('2025-09-01', 'Labor Day', 0), ('2025-11-27', 'Thanksgiving', 0),
         ('2025-12-25', 'Christmas', 0), ('2026-01-01', 'New Year Day', 0), ('2026-01-19', 'MLK Day', 0),
         ('2026-02-16', 'Presidents Day', 0), ('2026-04-03', 'Good Friday', 0), ('2026-05-25', 'Memorial Day', 0),
@@ -106,7 +106,7 @@ def init_db():
     for d, n, p in cme_hols: hol_data.append((cme_id, d, n, p))
 
     cursor.executemany("""
-        INSERT OR IGNORE INTO trading_holidays (exchange_id, holiday_date, holiday_name, is_partial)
+        INSERT OR REPLACE INTO trading_holidays (exchange_id, holiday_date, holiday_name, is_partial)
         VALUES (?, ?, ?, ?)
     """, hol_data)
 

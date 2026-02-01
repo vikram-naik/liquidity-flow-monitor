@@ -6,3 +6,6 @@ yfinance
 fredapi
 selenium
 webdriver-manager
+fastapi
+uvicorn
+pydantic

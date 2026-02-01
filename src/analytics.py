@@ -3,8 +3,9 @@ import sqlite3
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
+import os
 
-DB_PATH = "liquidity_monitor.db"
+DB_PATH = os.getenv("DB_PATH", "liquidity_monitor.db")
 
 def get_db_connection():
     return sqlite3.connect(DB_PATH)

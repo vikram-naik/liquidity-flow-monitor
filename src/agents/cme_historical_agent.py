@@ -8,8 +8,10 @@ from datetime import datetime, date, timedelta
 # Add project root to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
 
+from src.utils.data_sync import get_last_instrument_date, BASE_DATE
+from src.utils.trading_calendar import is_cme_trading_day
+
 DB_PATH = "liquidity_monitor.db"
-BASE_DATE = "2025-01-01"
 
 # Multipliers
 MULTIPLIERS = {
@@ -27,7 +29,7 @@ MARGIN_HISTORY = {
         ('2025-10-01', 9500),   # Q4 Volatility hike
         ('2025-12-29', 24000),  # Major surge hike
         ('2026-01-13', "5.5%"), # Switch to % based
-        ('2026-01-31', "8.0%")  # Latest hike
+        ('2026-01-30', "8.0%")  # Latest hike
     ],
     'SILVER': [
         ('2025-01-01', 9500),   # Baseline Jan 2025
@@ -35,7 +37,7 @@ MARGIN_HISTORY = {
         ('2025-12-12', 22000),  # Surge hike
         ('2025-12-31', 32500),  # Year-end peak
         ('2026-01-13', "9.0%"), # Switch to % based
-        ('2026-01-31', "15.0%") # Latest hike
+        ('2026-01-30', "15.0%") # Latest hike
     ],
     'COPPER': [
         ('2025-01-01', 5000),   # Baseline Jan 2025
@@ -84,7 +86,7 @@ def get_margin_for_date(symbol, target_date, current_price):
 
 def backfill_cme_historical():
     """Fetch prices from YF and apply margin history to seed DB"""
-    print(f"=== CME Historical Backfill (Starting {BASE_DATE}) ===")
+    print(f"=== CME Resilient Backfill ===")
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     
@@ -92,19 +94,32 @@ def backfill_cme_historical():
     cursor.execute("SELECT id, symbol FROM instruments")
     instr_map = {symbol: idx for idx, symbol in cursor.fetchall()}
     
+    today_str = datetime.now().strftime("%Y-%m-%d")
+
     for symbol, ticker in YF_TICKERS.items():
         if symbol not in instr_map:
             print(f"  ⚠️ Skipping {symbol} (not in DB)")
             continue
             
-        print(f"  Fetching {symbol} ({ticker})...")
+        last_date = get_last_instrument_date(symbol)
+        start_date = last_date + timedelta(days=1)
+        
+        if start_date >= date.today():
+             print(f"  ✓ {symbol} is already up to date ({last_date})")
+             continue
+
+        print(f"  Catching up {symbol} ({ticker}) from {start_date}...")
         instr_id = instr_map[symbol]
         
         # Download data
-        df = yf.download(ticker, start=BASE_DATE, end=datetime.now().strftime("%Y-%m-%d"))
-        
+        try:
+            df = yf.download(ticker, start=start_date.strftime("%Y-%m-%d"), end=today_str, progress=False)
+        except Exception as e:
+            print(f"  ❌ Error fetching YF data for {symbol}: {e}")
+            continue
+
         if df.empty:
-            print(f"  ❌ No data for {symbol}")
+            print(f"  ⚠️ No price history found for {symbol} in requested range.")
             continue
             
         count = 0
@@ -112,20 +127,33 @@ def backfill_cme_historical():
         
         for index, row in df.iterrows():
             current_date = index.date()
+            
+            # Weekend/Holiday double-check (YF sometimes returns weekend data with last Friday's price)
+            if not is_cme_trading_day(current_date):
+                 continue
+
             price = float(row['Close'])
+            if price <= 0:
+                 print(f"    ⚠️ Skipping {current_date}: Price is 0")
+                 continue
             
             # Use get_margin_for_date for correct historical margin value
             margin = get_margin_for_date(symbol, current_date, price)
             
-            if margin == 0: continue
+            if margin <= 0:
+                 print(f"    ⚠️ Skipping {current_date}: Margin resolved to 0")
+                 continue
             
-            # Timestamp (EOD)
+            # Timestamp (EOD UTC aligned)
             ts = f"{current_date} 16:00:00"
             
             # Margin Percent = (Margin / Notional) * 100
             notional = price * mult
             margin_pct = (margin / notional) * 100 if notional > 0 else 0
             
+            if margin_pct <= 0:
+                 continue
+
             cursor.execute("""
                 INSERT OR REPLACE INTO margin_logs (timestamp, instrument_id, margin_percent, contract_price, open_interest)
                 VALUES (?, ?, ?, ?, ?)
@@ -136,7 +164,7 @@ def backfill_cme_historical():
         conn.commit()
         
     conn.close()
-    print("=== CME Backfill Complete ===")
+    print("=== CME Resilient Backfill Complete ===")
 
 if __name__ == "__main__":
     backfill_cme_historical()

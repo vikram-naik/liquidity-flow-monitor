@@ -38,11 +38,10 @@ def get_cme_margins():
     """Fetch CME margins - NO MOCKING"""
     
     # Check if today is a trading day
-    # today = date.today()
-    # if not is_cme_trading_day(today):
-    #     print(f"⚠️ WARNING: {today} is not a CME trading day. Skipping.")
-    #     return
-    pass
+    today = date.today()
+    if not is_cme_trading_day(today):
+        print(f"🍹 SUCCESS: Skipping extraction. {today} is not a CME trading day (Weekend/Holiday).")
+        return
 
     # Targets
     targets = [
@@ -89,6 +88,10 @@ def get_cme_margins():
                         else:
                            margin_val = float(margin_raw)
 
+                        if margin_val <= 0:
+                            print(f"  ⚠️ SKIP: {t['symbol']} Margin is 0. Data extraction issue or stale record.")
+                            continue
+
                         print(f"  > Found {t['symbol']} Margin: ${margin_val}")
                         
                         # Fetch Price and Calculate %
@@ -107,13 +110,17 @@ def get_cme_margins():
                                     if contract_val > 0:
                                         margin_pct = (margin_val / contract_val) * 100
                                         print(f"  > Price: {price}, Value: ${contract_val:,.2f} -> Margin: {margin_pct:.2f}%")
+                                    else:
+                                        print(f"  ⚠️ SKIP: {t['symbol']} Contract Value is 0. Likely non-trading day for price feed.")
+                                        continue
+                                else:
+                                    print(f"  ⚠️ SKIP: No price history found for {t['symbol']}. Potential feed delay.")
+                                    continue
                             
                             store_margin('CME', t['symbol'], margin_pct, t['sector'], price=price)
                             found_any = True
                         except Exception as e:
                             print(f"  ⚠️ Error calculating % for {t['symbol']}: {e}")
-                            # Fallback: Store 0% but keep margin info? 
-                            # Or strict fail? Let's strict fail printing but maybe store 0?
                             pass
 
                     else:
@@ -164,8 +171,9 @@ def store_margin(exch_name, symbol, margin_pct, sector, price=0.0):
         else:
             instr_id = res[0]
         
-        # Store with today's date (CME API only provides latest)
-        ts = date.today().strftime("%Y-%m-%d 16:00:00")
+        # Store with UTC date (CME API only provides latest)
+        target_date = get_latest_cme_trading_day()
+        ts = target_date.strftime("%Y-%m-%d 16:00:00")
         cursor.execute("""
             INSERT OR REPLACE INTO margin_logs (timestamp, instrument_id, margin_percent, contract_price, open_interest)
             VALUES (?, ?, ?, ?, ?)
