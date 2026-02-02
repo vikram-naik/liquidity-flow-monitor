@@ -4,3 +4,4 @@ __pycache__
 data
 .lfm_api_pass
 .creds.txt
+.last_sync.txt

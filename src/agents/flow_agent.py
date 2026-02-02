@@ -6,6 +6,7 @@ Fetches incrementally from last download date (base: 1-Nov-2025)
 import sqlite3
 from datetime import datetime, date, timedelta
 from fredapi import Fred
+import yfinance as yf
 import sys
 import os
 
@@ -89,10 +90,378 @@ def fetch_fred_data(start_date: date = None):
     conn.close()
     
     print(f"\n✓ Synced {total_records} total records")
+    
+    # Fallback: Fetch USD/JPY from Yahoo Finance if FRED has gaps
+    fetch_usdjpy_yfinance_fallback(start_date)
+
+
+def fetch_usdjpy_yfinance_fallback(start_date: date):
+    """
+    Fallback to fetch USD/JPY from Yahoo Finance when FRED has data lag.
+    Only fills in dates that are missing in the database.
+    """
+    print("\n--- USD/JPY YFinance Fallback ---")
+    
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    # Get existing USD/JPY dates
+    existing = cursor.execute("""
+        SELECT DATE(timestamp) FROM yield_logs 
+        WHERE currency='JPY' AND tenor='Spot' AND timestamp >= ?
+    """, (start_date.strftime('%Y-%m-%d'),)).fetchall()
+    existing_dates = set(row[0] for row in existing)
+    
+    today = date.today()
+    
+    try:
+        # Fetch from Yahoo Finance (JPY=X is USD/JPY)
+        df = yf.download('JPY=X', start=start_date.strftime('%Y-%m-%d'), 
+                         end=(today + timedelta(days=1)).strftime('%Y-%m-%d'), 
+                         progress=False)
+        
+        if df.empty:
+            print("  ⚠️ No data from YFinance")
+            conn.close()
+            return
+            
+        count = 0
+        for idx, row in df.iterrows():
+            dt = idx.date()
+            dt_str = dt.strftime('%Y-%m-%d')
+            
+            # Skip if already have data for this date
+            if dt_str in existing_dates:
+                continue
+                
+            rate_val = float(row['Close'].iloc[0]) if hasattr(row['Close'], 'iloc') else float(row['Close'])
+            if rate_val <= 0:
+                continue
+                
+            cursor.execute("""
+                INSERT OR REPLACE INTO yield_logs (timestamp, currency, tenor, rate)
+                VALUES (?, ?, ?, ?)
+            """, (f"{dt_str} 23:59:59", 'JPY', 'Spot', rate_val))
+            count += 1
+            
+        conn.commit()
+        
+        if count > 0:
+            print(f"  ✓ Filled {count} missing USD/JPY dates from YFinance")
+        else:
+            print("  ✓ No missing dates to fill")
+            
+    except Exception as e:
+        print(f"  ⚠️ YFinance error: {e}")
+    finally:
+        conn.close()
+
+
+def fetch_vix_yfinance_fallback(start_date: date):
+    """
+    Fallback to fetch VIX from Yahoo Finance when FRED has data lag.
+    Only fills in dates that are missing in the database.
+    """
+    print("\n--- VIX YFinance Fallback ---")
+    
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    # Get existing VIX dates
+    existing = cursor.execute("""
+        SELECT DATE(timestamp) FROM yield_logs 
+        WHERE tenor='VIX' AND timestamp >= ?
+    """, (start_date.strftime('%Y-%m-%d'),)).fetchall()
+    existing_dates = set(row[0] for row in existing)
+    
+    today = date.today()
+    
+    try:
+        df = yf.download('^VIX', start=start_date.strftime('%Y-%m-%d'), 
+                         end=(today + timedelta(days=1)).strftime('%Y-%m-%d'), 
+                         progress=False)
+        
+        if df.empty:
+            print("  ⚠️ No data from YFinance")
+            conn.close()
+            return
+            
+        count = 0
+        for idx, row in df.iterrows():
+            dt = idx.date()
+            dt_str = dt.strftime('%Y-%m-%d')
+            
+            if dt_str in existing_dates:
+                continue
+                
+            rate_val = float(row['Close'].iloc[0]) if hasattr(row['Close'], 'iloc') else float(row['Close'])
+            if rate_val <= 0:
+                continue
+                
+            cursor.execute("""
+                INSERT OR REPLACE INTO yield_logs (timestamp, currency, tenor, rate)
+                VALUES (?, ?, ?, ?)
+            """, (f"{dt_str} 23:59:59", 'USD', 'VIX', rate_val))
+            count += 1
+            
+        conn.commit()
+        
+        if count > 0:
+            print(f"  ✓ Filled {count} missing VIX dates from YFinance")
+        else:
+            print("  ✓ No missing dates to fill")
+            
+    except Exception as e:
+        print(f"  ⚠️ YFinance error: {e}")
+    finally:
+        conn.close()
+
+
+def fetch_us10y_yfinance_fallback(start_date: date):
+    """
+    Fallback to fetch US 10Y yield from Yahoo Finance when FRED has data lag.
+    ^TNX returns direct percentage value.
+    """
+    print("\n--- US 10Y YFinance Fallback ---")
+    
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    # Get existing US 10Y dates
+    existing = cursor.execute("""
+        SELECT DATE(timestamp) FROM yield_logs 
+        WHERE currency='USD' AND tenor='10Y' AND timestamp >= ?
+    """, (start_date.strftime('%Y-%m-%d'),)).fetchall()
+    existing_dates = set(row[0] for row in existing)
+    
+    today = date.today()
+    
+    try:
+        df = yf.download('^TNX', start=start_date.strftime('%Y-%m-%d'), 
+                         end=(today + timedelta(days=1)).strftime('%Y-%m-%d'), 
+                         progress=False)
+        
+        if df.empty:
+            print("  ⚠️ No data from YFinance")
+            conn.close()
+            return
+            
+        count = 0
+        for idx, row in df.iterrows():
+            dt = idx.date()
+            dt_str = dt.strftime('%Y-%m-%d')
+            
+            if dt_str in existing_dates:
+                continue
+                
+            rate_val = float(row['Close'].iloc[0]) if hasattr(row['Close'], 'iloc') else float(row['Close'])
+            if rate_val <= 0:
+                continue
+                
+            cursor.execute("""
+                INSERT OR REPLACE INTO yield_logs (timestamp, currency, tenor, rate)
+                VALUES (?, ?, ?, ?)
+            """, (f"{dt_str} 23:59:59", 'USD', '10Y', rate_val))
+            count += 1
+            
+        conn.commit()
+        
+        if count > 0:
+            print(f"  ✓ Filled {count} missing US 10Y dates from YFinance")
+        else:
+            print("  ✓ No missing dates to fill")
+            
+    except Exception as e:
+        print(f"  ⚠️ YFinance error: {e}")
+    finally:
+        conn.close()
+
+
+def fetch_rrp_nyfed_fallback(start_date: date):
+    """
+    Fallback to fetch RRP (Reverse Repo) from NY Fed Markets API.
+    API: https://markets.newyorkfed.org/api/rp/reverserepo/propositions/search.json
+    """
+    import urllib.request
+    import json
+    
+    print("\n--- RRP NY Fed API Fallback ---")
+    
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    # Get existing RRP dates
+    existing = cursor.execute("""
+        SELECT DATE(timestamp) FROM yield_logs 
+        WHERE tenor='RRP' AND timestamp >= ?
+    """, (start_date.strftime('%Y-%m-%d'),)).fetchall()
+    existing_dates = set(row[0] for row in existing)
+    
+    today = date.today()
+    
+    try:
+        url = f"https://markets.newyorkfed.org/api/rp/reverserepo/propositions/search.json?startDate={start_date.strftime('%Y-%m-%d')}&endDate={today.strftime('%Y-%m-%d')}"
+        
+        with urllib.request.urlopen(url, timeout=30) as response:
+            data = json.loads(response.read().decode())
+        
+        if 'repo' not in data or 'operations' not in data['repo']:
+            print("  ⚠️ No data from NY Fed API")
+            conn.close()
+            return
+            
+        count = 0
+        for op in data['repo']['operations']:
+            dt_str = op['operationDate']
+            
+            if dt_str in existing_dates:
+                continue
+                
+            # totalAmtAccepted is in dollars, convert to billions
+            rate_val = float(op['totalAmtAccepted']) / 1e9
+            
+            cursor.execute("""
+                INSERT OR REPLACE INTO yield_logs (timestamp, currency, tenor, rate)
+                VALUES (?, ?, ?, ?)
+            """, (f"{dt_str} 00:00:00", 'USD', 'RRP', rate_val))
+            count += 1
+            
+        conn.commit()
+        
+        if count > 0:
+            print(f"  ✓ Filled {count} missing RRP dates from NY Fed API")
+        else:
+            print("  ✓ No missing dates to fill")
+            
+    except Exception as e:
+        print(f"  ⚠️ NY Fed API error: {e}")
+    finally:
+        conn.close()
+
+
+def fetch_jpy10y_mof_fallback():
+    """
+    Fetch Japan 10Y yield from Ministry of Finance Japan CSV.
+    This provides DAILY data vs FRED's monthly data.
+    URL: https://www.mof.go.jp/english/policy/jgbs/reference/interest_rate/jgbcme.csv
+    """
+    import urllib.request
+    import csv
+    import io
+    
+    print("\n--- JPY 10Y MOF Japan Fallback ---")
+    
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    # Get existing JPY 10Y dates
+    existing = cursor.execute("""
+        SELECT DATE(timestamp) FROM yield_logs 
+        WHERE currency='JPY' AND tenor='10Y'
+    """).fetchall()
+    existing_dates = set(row[0] for row in existing)
+    
+    try:
+        url = "https://www.mof.go.jp/english/policy/jgbs/reference/interest_rate/jgbcme.csv"
+        
+        with urllib.request.urlopen(url, timeout=30) as response:
+            raw_content = response.read()
+        
+        # Try UTF-8 first, then shift_jis (common for Japanese sites)
+        content = None
+        for encoding in ['utf-8', 'shift_jis', 'cp932', 'latin-1']:
+            try:
+                content = raw_content.decode(encoding)
+                break
+            except:
+                continue
+        
+        if content is None:
+            print("  ⚠️ Could not decode CSV content")
+            conn.close()
+            return
+        
+        lines = content.strip().split('\n')
+        
+        # Find header row (contains "10Y")
+        header_idx = None
+        for i, line in enumerate(lines):
+            if '10Y' in line:
+                header_idx = i
+                break
+        
+        if header_idx is None:
+            print("  ⚠️ Could not find header row")
+            conn.close()
+            return
+            
+        headers = [h.strip() for h in lines[header_idx].split(',')]
+        col_10y = headers.index('10Y') if '10Y' in headers else None
+        
+        if col_10y is None:
+            print("  ⚠️ Could not find 10Y column")
+            conn.close()
+            return
+            
+        count = 0
+        for line in lines[header_idx + 1:]:
+            if not line.strip():
+                continue
+                
+            parts = line.split(',')
+            if len(parts) <= col_10y:
+                continue
+                
+            # Date format: YYYY/M/D
+            dt_raw = parts[0].strip()
+            try:
+                dt = datetime.strptime(dt_raw, '%Y/%m/%d').date()
+            except:
+                continue
+                
+            dt_str = dt.strftime('%Y-%m-%d')
+            
+            if dt_str in existing_dates:
+                continue
+                
+            try:
+                rate_val = float(parts[col_10y].strip())
+            except:
+                continue
+                
+            cursor.execute("""
+                INSERT OR REPLACE INTO yield_logs (timestamp, currency, tenor, rate)
+                VALUES (?, ?, ?, ?)
+            """, (f"{dt_str} 23:59:59", 'JPY', '10Y', rate_val))
+            count += 1
+            
+        conn.commit()
+        
+        if count > 0:
+            print(f"  ✓ Filled {count} JPY 10Y dates from MOF Japan")
+        else:
+            print("  ✓ No new dates to fill")
+            
+    except Exception as e:
+        print(f"  ⚠️ MOF Japan error: {e}")
+    finally:
+        conn.close()
+
 
 def run_flow_sync():
-    """Main sync function"""
+    """Main sync function - fetches from FRED then fills gaps from fallbacks"""
     fetch_fred_data()
+    
+    # Get start date for fallbacks
+    last_date = get_last_yield_date()
+    start_date = last_date - timedelta(days=7)  # Look back 7 days to fill gaps
+    
+    # Run all fallbacks
+    fetch_vix_yfinance_fallback(start_date)
+    fetch_us10y_yfinance_fallback(start_date)
+    fetch_rrp_nyfed_fallback(start_date)
+    fetch_jpy10y_mof_fallback()
 
 if __name__ == "__main__":
     run_flow_sync()
+

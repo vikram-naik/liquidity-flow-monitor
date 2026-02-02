@@ -336,9 +336,120 @@ def get_credit_stress_data(days: int = 90):
     return pivot_df.reset_index()
 
 
+def get_liquidity_valve_data():
+    """
+    Fetches USD/JPY and Silver price data for the Liquidity Valve visualization.
+    Calculates 30-day rolling correlation to quantify the currency-commodity link.
+    
+    Returns: DataFrame with timestamp, usdjpy, silver_price, and correlation
+    """
+    conn = get_db_connection()
+
+    # Fetch USD/JPY (stored as JPY Spot)
+    jpy_df = pd.read_sql("""
+        SELECT timestamp, rate as usdjpy 
+        FROM yield_logs 
+        WHERE currency='JPY' AND tenor='Spot'
+    """, conn)
+    
+    if jpy_df.empty:
+        conn.close()
+        return pd.DataFrame()
+        
+    jpy_df['timestamp'] = pd.to_datetime(jpy_df['timestamp']).dt.date
+    # Deduplicate: take last value per date
+    jpy_df = jpy_df.groupby('timestamp', as_index=False).last()
+
+    # Fetch Silver Price
+    silver_df = pd.read_sql("""
+        SELECT l.timestamp, l.contract_price as silver_price 
+        FROM margin_logs l 
+        JOIN instruments i ON l.instrument_id = i.id 
+        WHERE i.symbol='SILVER'
+    """, conn)
+    conn.close()
+    
+    if silver_df.empty:
+        return pd.DataFrame()
+        
+    silver_df['timestamp'] = pd.to_datetime(silver_df['timestamp']).dt.date
+    # Deduplicate: take last value per date
+    silver_df = silver_df.groupby('timestamp', as_index=False).last()
+
+    # Merge using outer join and forward-fill to handle date mismatches
+    df = pd.merge(jpy_df, silver_df, on='timestamp', how='outer').sort_values('timestamp')
+    df = df.ffill()  # Forward-fill missing values
+    df = df.dropna()  # Drop any remaining NaN at the start
+    
+    if len(df) < 2:
+        return pd.DataFrame()
+
+    # Calculate Rolling Correlation (30D) to quantify the "Liquidity Link"
+    df['correlation'] = df['usdjpy'].rolling(30, min_periods=5).corr(df['silver_price'])
+
+    return df
+
+
+def get_usdjpy_vs_asset_data(asset_symbol: str = 'SILVER'):
+    """
+    Fetches USD/JPY and Asset price data for the Liquidity Valve visualization.
+    Calculates 30-day rolling correlation.
+    
+    Returns: DataFrame with timestamp, usdjpy, price, correlation
+    """
+    conn = get_db_connection()
+
+    # Fetch USD/JPY (stored as JPY Spot)
+    jpy_df = pd.read_sql("""
+        SELECT timestamp, rate as usdjpy 
+        FROM yield_logs 
+        WHERE currency='JPY' AND tenor='Spot'
+    """, conn)
+    
+    if jpy_df.empty:
+        conn.close()
+        return pd.DataFrame()
+        
+    jpy_df['timestamp'] = pd.to_datetime(jpy_df['timestamp']).dt.date
+    # Deduplicate: take last value per date
+    jpy_df = jpy_df.groupby('timestamp', as_index=False).last()
+
+    # Fetch Asset Price
+    asset_df = pd.read_sql(f"""
+        SELECT l.timestamp, l.contract_price as price 
+        FROM margin_logs l 
+        JOIN instruments i ON l.instrument_id = i.id 
+        WHERE i.symbol='{asset_symbol}'
+    """, conn)
+    conn.close()
+    
+    if asset_df.empty:
+        return pd.DataFrame()
+        
+    asset_df['timestamp'] = pd.to_datetime(asset_df['timestamp']).dt.date
+    # Deduplicate: take last value per date
+    asset_df = asset_df.groupby('timestamp', as_index=False).last()
+
+    # Merge using outer join and forward-fill to handle date mismatches
+    df = pd.merge(jpy_df, asset_df, on='timestamp', how='outer').sort_values('timestamp')
+    df = df.ffill()  # Forward-fill missing values
+    df = df.dropna()  # Drop any remaining NaN at the start
+    
+    if len(df) < 2:
+        return pd.DataFrame()
+
+    # Calculate Rolling Correlation (30D) to quantify the "Liquidity Link"
+    df['correlation'] = df['usdjpy'].rolling(30, min_periods=5).corr(df['price'])
+
+    return df
+
+
+
+
 def check_credit_stress():
     """
     Interprets Macro Plumbing signals: Credit Stress, Dollar Strength, and Liquidity (RRP).
+
     
     Rules:
     - HY_SPREAD > 4.0%: CRITICAL - CREDIT FREEZE (Systemic banking risk)

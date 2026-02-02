@@ -91,5 +91,21 @@ def main():
         inserted = push_to_api(f"{base_url}/lfm/api/upload/holidays", holidays, args.user, args.password, args.chunk)
         print(f"Success: {inserted} holiday records synced.")
 
+    # 4. Update sync timestamp on remote
+    print(f"Updating sync timestamp on {base_url}/lfm/api/sync-timestamp ...")
+    try:
+        sync_time = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')
+        response = requests.post(
+            f"{base_url}/lfm/api/sync-timestamp",
+            json={"timestamp": sync_time},
+            auth=(args.user, args.password)
+        )
+        response.raise_for_status()
+        print(f"Success: Sync timestamp updated to {sync_time}")
+    except Exception as e:
+        print(f"Warning: Could not update sync timestamp: {e}")
+        # Non-fatal, continue
+
 if __name__ == "__main__":
     main()
+

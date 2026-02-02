@@ -154,3 +154,42 @@ def upload_holidays(data: List[HolidayUpload], conn: sqlite3.Connection = Depend
         raise HTTPException(status_code=500, detail=str(e))
     
     return {"status": "success", "inserted": count}
+
+
+class SyncTimestamp(BaseModel):
+    timestamp: str
+
+
+def get_sync_file_path():
+    """Get path to sync timestamp file, respecting data mount"""
+    data_dir = os.path.dirname(os.getenv("DB_PATH", "liquidity_monitor.db"))
+    if data_dir:
+        return os.path.join(data_dir, ".last_sync.txt")
+    return ".last_sync.txt"
+
+
+@app.post("/lfm/api/sync-timestamp")
+def update_sync_timestamp(data: SyncTimestamp):
+    """Update the last sync timestamp for the dashboard"""
+    try:
+        sync_file = get_sync_file_path()
+        with open(sync_file, 'w') as f:
+            f.write(data.timestamp)
+        return {"status": "success", "timestamp": data.timestamp, "path": sync_file}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/lfm/api/sync-timestamp")
+def get_sync_timestamp():
+    """Get the last sync timestamp"""
+    try:
+        sync_file = get_sync_file_path()
+        if os.path.exists(sync_file):
+            with open(sync_file, 'r') as f:
+                return {"timestamp": f.read().strip()}
+        return {"timestamp": "Never"}
+    except:
+        return {"timestamp": "Never"}
+
+

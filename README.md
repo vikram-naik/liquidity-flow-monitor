@@ -84,6 +84,29 @@ The system includes a suite of helper scripts in the `scripts/` directory for li
     ./scripts/stop_lfm.sh
     ```
 
+### Yield Data Backfill
+The `backfill_yields.py` script provides on-demand backfill from multiple sources:
+
+*   **FRED (Primary Source)**: Backfill all yield series from FRED API.
+    ```bash
+    python3 scripts/backfill_yields.py --source=fred --days=30
+    ```
+
+*   **YFinance (Fallback)**: Backfill VIX and US 10Y when FRED lags.
+    ```bash
+    python3 scripts/backfill_yields.py --source=yfinance --series=VIX,US10Y --days=7
+    ```
+
+*   **NY Fed API (RRP)**: Backfill Reverse Repo data from NY Fed.
+    ```bash
+    python3 scripts/backfill_yields.py --source=nyfed --days=30
+    ```
+
+*   **MOF Japan (JPY 10Y)**: Backfill Japan 10Y yield with daily data (vs FRED monthly).
+    ```bash
+    python3 scripts/backfill_yields.py --source=mof
+    ```
+
 ## 🚀 Quick Start
 ### Initialize System (Local)
 ```bash
@@ -94,3 +117,4 @@ The system includes a suite of helper scripts in the `scripts/` directory for li
 ### API Requirements
 Ensure your environment variables are set in `.env` or exported:
 *   `FRED_API_KEY`: Required for macro flow data.
+

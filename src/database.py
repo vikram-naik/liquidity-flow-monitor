@@ -85,6 +85,7 @@ def init_db():
         (cme_id, 'SILVER', 'Precious'),
         (cme_id, 'GOLD', 'Precious'),
         (cme_id, 'COPPER', 'Industrial'),
+        (cme_id, 'CRUDE_OIL', 'Energy'),
         (cme_id, 'ES', 'Equity Index'),
         (cme_id, 'NQ', 'Equity Index')
     ]

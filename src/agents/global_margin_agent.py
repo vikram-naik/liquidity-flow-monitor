@@ -13,7 +13,7 @@ from datetime import datetime, date
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
 
 import yfinance as yf
-from src.utils.trading_calendar import is_cme_trading_day
+from src.utils.trading_calendar import is_cme_trading_day, get_latest_cme_trading_day
 
 MULTIPLIERS = {
     'GOLD': 100,
@@ -45,15 +45,20 @@ def get_cme_margins():
         print(f"🍹 SUCCESS: Skipping extraction. {today} is not a CME trading day (Weekend/Holiday).")
         return
 
-    # Targets
+    # Targets - Two API endpoints:
+    # - Metals (SI, GC, HG): Use /CmeWS/mvc/Margins/OUTRIGHT with sector=METALS, exchange=CMX
+    # - Energy/Equity (CL, ES, NQ): Use /services/margins/OUTRIGHT with clearingCode only
     targets = [
-        {'symbol': 'SILVER', 'code': 'SI', 'exchange': 'CMX', 'sector': 'METALS'},
-        {'symbol': 'GOLD', 'code': 'GC', 'exchange': 'CMX', 'sector': 'METALS'},
-        {'symbol': 'COPPER', 'code': 'HG', 'exchange': 'CMX', 'sector': 'METALS'},
-        {'symbol': 'CRUDE_OIL', 'code': 'CL', 'exchange': 'NYM', 'sector': 'ENERGY'},
-        {'symbol': 'ES', 'code': 'ES', 'exchange': 'CME', 'sector': 'EQUITY INDEX'},
-        {'symbol': 'NQ', 'code': 'NQ', 'exchange': 'CME', 'sector': 'EQUITY INDEX'}
+        # Metals - CmeWS API
+        {'symbol': 'SILVER', 'code': 'SI', 'exchange': 'CMX', 'sector': 'METALS', 'api': 'cmews', 'margin_field': 'maintenanceRate'},
+        {'symbol': 'GOLD', 'code': 'GC', 'exchange': 'CMX', 'sector': 'METALS', 'api': 'cmews', 'margin_field': 'maintenanceRate'},
+        {'symbol': 'COPPER', 'code': 'HG', 'exchange': 'CMX', 'sector': 'METALS', 'api': 'cmews', 'margin_field': 'maintenanceRate'},
+        # Energy/Equity - Services API
+        {'symbol': 'CRUDE_OIL', 'code': 'CL', 'exchange': 'NYM', 'sector': 'CRUDE OIL', 'api': 'services', 'margin_field': 'maintenanceMarginLong'},
+        {'symbol': 'ES', 'code': 'ES', 'exchange': 'CME', 'sector': 'EQUITY INDEX', 'api': 'services', 'margin_field': 'maintenanceMarginLong'},
+        {'symbol': 'NQ', 'code': 'NQ', 'exchange': 'CME', 'sector': 'EQUITY INDEX', 'api': 'services', 'margin_field': 'maintenanceMarginLong'}
     ]
+
 
     options = Options()
     options.add_argument("--headless")
@@ -70,8 +75,15 @@ def get_cme_margins():
     try:
         found_any = False
         for t in targets:
-            url = f"https://www.cmegroup.com/CmeWS/mvc/Margins/OUTRIGHT?1=1&sortField=exchange&sortAsc=true&clearingCode={t['code']}&sector={t['sector']}&exchange={t['exchange']}&pageSize=12&pageNumber=1&isProtected"
-            print(f"Fetching {t['symbol']} from CME API via Selenium...")
+            # Choose API endpoint based on instrument type
+            if t['api'] == 'cmews':
+                # Metals use CmeWS API
+                url = f"https://www.cmegroup.com/CmeWS/mvc/Margins/OUTRIGHT?1=1&sortField=exchange&sortAsc=true&clearingCode={t['code']}&sector={t['sector']}&exchange={t['exchange']}&pageSize=12&pageNumber=1&isProtected"
+            else:
+                # Energy/Equity use services API
+                url = f"https://www.cmegroup.com/services/margins/OUTRIGHT?clearingCode={t['code']}&pageSize=10&isProtected"
+            print(f"Fetching {t['symbol']} from CME API (Code: {t['code']}, API: {t['api']})...")
+
             
             try:
                 driver.get(url)
@@ -82,8 +94,9 @@ def get_cme_margins():
                 
                 if 'marginRates' in data and data['marginRates']:
                     rate_obj = data['marginRates'][0]
-                    # Equities often use 'maintenanceLong', Futures 'maintenanceRate'
-                    margin_raw = rate_obj.get('maintenanceRate') or rate_obj.get('maintenanceLong')
+                    # Use target-specific margin field (maintenanceRate for metals, maintenanceMarginLong for energy/equity)
+                    margin_raw = rate_obj.get(t['margin_field']) or rate_obj.get('maintenanceMarginShort')
+
                     
                     if margin_raw:
                         if isinstance(margin_raw, str):
@@ -158,11 +171,19 @@ def store_margin(exch_name, symbol, margin_pct, sector, price=0.0):
         
         # Determine asset class
         m_map = {
-            'METALS': 'Commodity',
-            'ENERGY': 'Commodity',
+            'ENERGY': 'Energy',
             'EQUITY INDEX': 'Equity Index'
         }
-        asset_class = m_map.get(sector, 'Commodity')
+        
+        if sector == 'METALS':
+            if symbol in ['GOLD', 'SILVER']:
+                asset_class = 'Precious'
+            elif symbol == 'COPPER':
+                asset_class = 'Industrial'
+            else:
+                asset_class = 'Commodity'
+        else:
+            asset_class = m_map.get(sector, 'Commodity')
         
         # Get/Find Instrument ID
         cursor.execute("SELECT id FROM instruments WHERE exchange_id = ? AND symbol = ?", (exch_id, symbol))
