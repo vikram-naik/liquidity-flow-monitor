@@ -295,6 +295,17 @@ if not scores_df.empty:
         
         mc1, mc2, mc3, mc4 = st.columns(4)
         
+        # Query actual last data dates from DB (not forward-filled)
+        conn = get_db_connection()
+        macro_dates = pd.read_sql("""
+            SELECT tenor, MAX(DATE(timestamp)) as last_date 
+            FROM yield_logs 
+            WHERE tenor IN ('DXY', 'HY_SPREAD', 'RRP', 'VIX')
+            GROUP BY tenor
+        """, conn)
+        conn.close()
+        macro_dates_dict = dict(zip(macro_dates['tenor'], macro_dates['last_date']))
+        
         # Credit Canary
         with mc1:
             st.markdown("### 🐤 Credit Canary")
@@ -306,10 +317,11 @@ if not scores_df.empty:
             else: st.info("--")
             
             if 'hy_spread' in credit_df.columns:
-                fig_c = go.Figure(go.Scatter(x=credit_df['timestamp'], y=credit_df['hy_spread'], fill='tozeroy', line=dict(color='#AB63FA')))
-                fig_c.add_hline(y=4.0, line_dash="dash", line_color="red")
-                fig_c.update_layout(height=150, margin=dict(l=0,r=0,t=0,b=0), xaxis=dict(showticklabels=False), yaxis=dict(showticklabels=False), showlegend=False)
+                fig_c = go.Figure(go.Scatter(x=credit_df['timestamp'], y=credit_df['hy_spread'], fill='tozeroy', line=dict(color='#AB63FA'), connectgaps=True))
+                fig_c.add_hline(y=4.0, line_dash="dash", line_color="red", annotation_text="4%")
+                fig_c.update_layout(height=150, margin=dict(l=0,r=0,t=0,b=0), xaxis=dict(showticklabels=False), yaxis=dict(showticklabels=True, tickfont=dict(size=10)), showlegend=False)
                 st.plotly_chart(fig_c, use_container_width=True)
+                st.caption(f"📅 {macro_dates_dict.get('HY_SPREAD', 'N/A')}")
 
         # Liquidity Reservoir
         with mc2:
@@ -322,9 +334,11 @@ if not scores_df.empty:
             else: st.info("--")
             
             if 'rrp' in credit_df.columns:
-                fig_r = go.Figure(go.Scatter(x=credit_df['timestamp'], y=credit_df['rrp'], line=dict(color='#00CC96')))
-                fig_r.update_layout(height=150, margin=dict(l=0,r=0,t=0,b=0), xaxis=dict(showticklabels=False), yaxis=dict(showticklabels=False), showlegend=False)
+                fig_r = go.Figure(go.Scatter(x=credit_df['timestamp'], y=credit_df['rrp'], line=dict(color='#00CC96'), connectgaps=True))
+                fig_r.add_hline(y=50, line_dash="dash", line_color="red", annotation_text="$50B")
+                fig_r.update_layout(height=150, margin=dict(l=0,r=0,t=0,b=0), xaxis=dict(showticklabels=False), yaxis=dict(showticklabels=True, tickfont=dict(size=10)), showlegend=False)
                 st.plotly_chart(fig_r, use_container_width=True)
+                st.caption(f"📅 {macro_dates_dict.get('RRP', 'N/A')}")
 
         # Steamroller
         with mc3:
@@ -336,10 +350,11 @@ if not scores_df.empty:
             else: st.info("--")
             
             if 'dxy' in credit_df.columns:
-                fig_d = go.Figure(go.Scatter(x=credit_df['timestamp'], y=credit_df['dxy'], line=dict(color='#EF553B')))
-                fig_d.add_hline(y=115, line_dash="dash", line_color="red")
-                fig_d.update_layout(height=150, margin=dict(l=0,r=0,t=0,b=0), xaxis=dict(showticklabels=False), yaxis=dict(showticklabels=False), showlegend=False)
+                fig_d = go.Figure(go.Scatter(x=credit_df['timestamp'], y=credit_df['dxy'], line=dict(color='#EF553B'), connectgaps=True))
+                fig_d.add_hline(y=115, line_dash="dash", line_color="red", annotation_text="115")
+                fig_d.update_layout(height=150, margin=dict(l=0,r=0,t=0,b=0), xaxis=dict(showticklabels=False), yaxis=dict(showticklabels=True, tickfont=dict(size=10)), showlegend=False)
                 st.plotly_chart(fig_d, use_container_width=True)
+                st.caption(f"📅 {macro_dates_dict.get('DXY', 'N/A')}")
                 
         # Fear Gauge
         with mc4:
@@ -352,10 +367,11 @@ if not scores_df.empty:
             else: st.info("--")
             
             if 'vix' in credit_df.columns:
-                fig_v = go.Figure(go.Scatter(x=credit_df['timestamp'], y=credit_df['vix'], fill='tozeroy', line=dict(color='#FFA15A')))
-                fig_v.add_hline(y=30, line_dash="dash", line_color="red")
-                fig_v.update_layout(height=150, margin=dict(l=0,r=0,t=0,b=0), xaxis=dict(showticklabels=False), yaxis=dict(showticklabels=False), showlegend=False)
+                fig_v = go.Figure(go.Scatter(x=credit_df['timestamp'], y=credit_df['vix'], fill='tozeroy', line=dict(color='#FFA15A'), connectgaps=True))
+                fig_v.add_hline(y=30, line_dash="dash", line_color="red", annotation_text="30")
+                fig_v.update_layout(height=150, margin=dict(l=0,r=0,t=0,b=0), xaxis=dict(showticklabels=False), yaxis=dict(showticklabels=True, tickfont=dict(size=10)), showlegend=False)
                 st.plotly_chart(fig_v, use_container_width=True)
+                st.caption(f"📅 {macro_dates_dict.get('VIX', 'N/A')}")
 
     # --- Visual 5: Carry Trade ---
     st.divider()
@@ -667,8 +683,8 @@ This chart reveals **WHERE** the money is coming from.
 
             # Chart 8A (Price)
             fig8 = go.Figure()
-            fig8.add_trace(go.Scatter(x=v8_df['timestamp'], y=v8_df['usdjpy'], name='USD/JPY', line=dict(color='orange', width=2), yaxis='y'))
-            fig8.add_trace(go.Scatter(x=v8_df['timestamp'], y=v8_df['price'], name=f'{v8_asset}', line=dict(color='#00CC96', width=2), yaxis='y2'))
+            fig8.add_trace(go.Scatter(x=v8_df['timestamp'], y=v8_df['usdjpy'], name='USD/JPY', line=dict(color='orange', width=2), yaxis='y', connectgaps=True))
+            fig8.add_trace(go.Scatter(x=v8_df['timestamp'], y=v8_df['price'], name=f'{v8_asset}', line=dict(color='#00CC96', width=2), yaxis='y2', connectgaps=True))
             fig8.update_layout(
                 title=f"USD/JPY vs {v8_asset} Price",
                 yaxis=dict(title="USD/JPY", title_font=dict(color='orange')),
@@ -692,7 +708,7 @@ This chart reveals **WHERE** the money is coming from.
 
             # Chart 8B (Correlation Area)
             fig8b = go.Figure()
-            fig8b.add_trace(go.Scatter(x=v8_df['timestamp'], y=v8_df['correlation'], name='30D Correlation', line=dict(color='#636EFA', width=2), fill='tozeroy', fillcolor='rgba(99, 110, 250, 0.2)'))
+            fig8b.add_trace(go.Scatter(x=v8_df['timestamp'], y=v8_df['correlation'], name='30D Correlation', line=dict(color='#636EFA', width=2), fill='tozeroy', fillcolor='rgba(99, 110, 250, 0.2)', connectgaps=True))
             fig8b.add_hline(y=0.5, line_dash="dash", line_color="green", annotation_text="Positive Lockstep")
             fig8b.add_hline(y=-0.5, line_dash="dash", line_color="red", annotation_text="Negative Inverse")
             fig8b.update_layout(
@@ -718,44 +734,87 @@ This chart reveals **WHERE** the money is coming from.
     
     if os.path.exists(sync_file):
         with open(sync_file, 'r') as f:
-            last_sync = f.read().strip()
+            utc_sync = f.read().strip()
+            # Convert UTC to IST (UTC+5:30) for Indian users
+            try:
+                from datetime import datetime, timedelta
+                if 'UTC' in utc_sync:
+                    utc_dt = datetime.strptime(utc_sync.replace(' UTC', ''), '%Y-%m-%d %H:%M:%S')
+                    ist_dt = utc_dt + timedelta(hours=5, minutes=30)
+                    last_sync = ist_dt.strftime('%Y-%m-%d %H:%M:%S IST')
+                else:
+                    last_sync = utc_sync
+            except:
+                last_sync = utc_sync
     
     # Get latest data dates per instrument/series
     conn = get_db_connection()
     margin_dates = pd.read_sql("""
-        SELECT i.symbol, MAX(DATE(l.timestamp)) as latest_date 
+        SELECT i.symbol as instrument, MAX(DATE(l.timestamp)) as latest_date, 'Margin' as type
         FROM margin_logs l 
         JOIN instruments i ON l.instrument_id = i.id 
         GROUP BY i.symbol
     """, conn)
     
     yield_dates = pd.read_sql("""
-        SELECT currency || ' ' || tenor as series, MAX(DATE(timestamp)) as latest_date 
+        SELECT currency || ' ' || tenor as instrument, MAX(DATE(timestamp)) as latest_date, 'Yield' as type
         FROM yield_logs 
         GROUP BY currency, tenor
     """, conn)
     conn.close()
     
-    # Display in columns
-    st.caption(f"**Last Local Sync:** {last_sync}")
+    # Combine all data
+    all_data = pd.concat([margin_dates, yield_dates], ignore_index=True)
     
-    col_m, col_y = st.columns(2)
-    
-    with col_m:
-        st.markdown("**Margin Data (CME)**")
-        if not margin_dates.empty:
-            for _, row in margin_dates.iterrows():
-                st.text(f"  {row['symbol']}: {row['latest_date']}")
-        else:
-            st.text("  No data")
-    
-    with col_y:
-        st.markdown("**Yield/FX Data**")
-        if not yield_dates.empty:
-            for _, row in yield_dates.iterrows():
-                st.text(f"  {row['series']}: {row['latest_date']}")
-        else:
-            st.text("  No data")
+    if not all_data.empty:
+        # Get unique dates and sort (most recent first)
+        all_data['latest_date'] = pd.to_datetime(all_data['latest_date']).dt.date
+        unique_dates = sorted(all_data['latest_date'].unique(), reverse=True)
+        
+        # Calculate staleness (days from today)
+        from datetime import date
+        today = date.today()
+        
+        # Build simple HTML table with emojis for accessibility
+        html = f'<div style="margin-bottom: 8px; font-size: 13px;"><strong>Last Sync:</strong> {last_sync}</div>'
+        html += '<table style="width: 100%; border-collapse: collapse; font-size: 13px;">'
+        html += '<tr>'
+        
+        # Header row with dates and emoji indicators
+        for d in unique_dates[:7]:
+            days_old = (today - d).days
+            if days_old == 0:
+                emoji = '🟢'
+                status_text = 'Today'
+            elif days_old == 1:
+                emoji = '🟢'
+                status_text = '1 day'
+            elif days_old <= 3:
+                emoji = '🟡'
+                status_text = f'{days_old} days'
+            elif days_old <= 7:
+                emoji = '🟠'
+                status_text = f'{days_old} days'
+            else:
+                emoji = '🔴'
+                status_text = f'{days_old} days'
+            
+            html += f'<th style="padding: 8px; text-align: center; border-bottom: 1px solid #555;">{d}<br>{emoji} {status_text}</th>'
+        
+        html += '</tr><tr>'
+        
+        # Data row with instruments
+        for d in unique_dates[:7]:
+            instruments = all_data[all_data['latest_date'] == d]['instrument'].tolist()
+            instruments_html = '<br>'.join(instruments) if instruments else '-'
+            html += f'<td style="padding: 8px; text-align: center; vertical-align: top;">{instruments_html}</td>'
+        
+        html += '</tr></table>'
+        
+        st.markdown(html, unsafe_allow_html=True)
+    else:
+        st.caption(f"**Last Sync:** {last_sync}")
+        st.text("No data available")
 
 else:
     st.warning("Please run data backfill.")
