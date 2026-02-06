@@ -1,4 +1,5 @@
 streamlit
+streamlit-autorefresh
 pandas
 numpy
 plotly
@@ -9,3 +10,5 @@ webdriver-manager
 fastapi
 uvicorn
 pydantic
+requests
+pytz

@@ -447,6 +447,66 @@ def fetch_jpy10y_mof_fallback():
     finally:
         conn.close()
 
+def fetch_ice_dxy_yfinance_fallback(start_date: date):
+    """
+    Fetch ICE DXY (DX-Y.NYB) from Yahoo Finance.
+    This provides a 'Live' view compared to FRED's lagging Broad Dollar Index.
+    """
+    print("\n--- ICE DXY (Live) YFinance Fallback ---")
+    
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    # Get existing DXY_ICE dates
+    existing = cursor.execute("""
+        SELECT DATE(timestamp) FROM yield_logs 
+        WHERE tenor='DXY_ICE' AND timestamp >= ?
+    """, (start_date.strftime('%Y-%m-%d'),)).fetchall()
+    existing_dates = set(row[0] for row in existing)
+    
+    today = date.today()
+    
+    try:
+        # DX-Y.NYB is the ticker for ICE US Dollar Index
+        df = yf.download('DX-Y.NYB', start=start_date.strftime('%Y-%m-%d'), 
+                         end=(today + timedelta(days=1)).strftime('%Y-%m-%d'), 
+                         progress=False)
+        
+        if df.empty:
+            print("  ⚠️ No data from YFinance for DX-Y.NYB")
+            conn.close()
+            return
+            
+        count = 0
+        for idx, row in df.iterrows():
+            dt = idx.date()
+            dt_str = dt.strftime('%Y-%m-%d')
+            
+            if dt_str in existing_dates:
+                continue
+                
+            rate_val = float(row['Close'].iloc[0]) if hasattr(row['Close'], 'iloc') else float(row['Close'])
+            if rate_val <= 0:
+                continue
+                
+            cursor.execute("""
+                INSERT OR REPLACE INTO yield_logs (timestamp, currency, tenor, rate)
+                VALUES (?, ?, ?, ?)
+            """, (f"{dt_str} 23:59:59", 'USD', 'DXY_ICE', rate_val))
+            count += 1
+            
+        conn.commit()
+        
+        if count > 0:
+            print(f"  ✓ Filled {count} missing ICE DXY dates from YFinance")
+        else:
+            print("  ✓ No missing dates to fill")
+            
+    except Exception as e:
+        print(f"  ⚠️ YFinance error: {e}")
+    finally:
+        conn.close()
+
 
 def run_flow_sync():
     """Main sync function - fetches from FRED then fills gaps from fallbacks"""
@@ -461,6 +521,7 @@ def run_flow_sync():
     fetch_us10y_yfinance_fallback(start_date)
     fetch_rrp_nyfed_fallback(start_date)
     fetch_jpy10y_mof_fallback()
+    fetch_ice_dxy_yfinance_fallback(start_date)
 
 if __name__ == "__main__":
     run_flow_sync()

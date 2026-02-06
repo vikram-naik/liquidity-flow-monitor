@@ -92,9 +92,9 @@ The `backfill_yields.py` script provides on-demand backfill from multiple source
     python3 scripts/backfill_yields.py --source=fred --days=30
     ```
 
-*   **YFinance (Fallback)**: Backfill VIX and US 10Y when FRED lags.
+*   **YFinance (Fallback)**: Backfill VIX, US 10Y, and ICE DXY when FRED lags.
     ```bash
-    python3 scripts/backfill_yields.py --source=yfinance --series=VIX,US10Y --days=7
+    python3 scripts/backfill_yields.py --source=yfinance --series=VIX,US10Y,DXY --days=7
     ```
 
 *   **NY Fed API (RRP)**: Backfill Reverse Repo data from NY Fed.

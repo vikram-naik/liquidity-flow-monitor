@@ -11,14 +11,21 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../'
 
 # Import DB path from analytics or database if possible
 from src.database import DB_PATH, init_db
+import threading
+from src.scripts.intraday_worker import run_worker
 
 app = FastAPI(title="LFM Data Ingestion API", docs_url="/lfm/api/docs", openapi_url="/lfm/api/openapi.json")
 
 @app.on_event("startup")
 def startup_event():
-    # Ensure database is initialized
+    # 1. Ensure database is initialized
     print("🚀 Initializing database...")
     init_db()
+    
+    # 2. Start Background Intraday Worker
+    print("🚀 Starting Intraday Data Worker thread (via API)...")
+    worker_thread = threading.Thread(target=run_worker, daemon=True)
+    worker_thread.start()
 
 # --- Models ---
 

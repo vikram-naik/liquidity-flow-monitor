@@ -87,6 +87,7 @@ def backfill_yfinance(series: list, days: int):
     YFINANCE_MAP = {
         'VIX': ('^VIX', 'USD', 'VIX'),
         'US10Y': ('^TNX', 'USD', '10Y'),
+        'DXY': ('DX-Y.NYB', 'USD', 'DXY_ICE'),
     }
     
     conn = sqlite3.connect(DB_PATH)

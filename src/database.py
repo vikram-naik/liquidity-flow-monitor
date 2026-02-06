@@ -4,6 +4,10 @@ import os
 
 DB_PATH = os.getenv("DB_PATH", "liquidity_monitor.db")
 
+def get_db_connection():
+    return sqlite3.connect(DB_PATH)
+
+
 def init_db():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
@@ -63,6 +67,28 @@ def init_db():
         is_partial BOOLEAN DEFAULT 0,
         notes TEXT,
         PRIMARY KEY (exchange_id, holiday_date)
+    );
+    """)
+    
+    # Table: silver_intraday_log (for SilverBees Live Monitor)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS silver_intraday_log (
+        timestamp DATETIME PRIMARY KEY,
+        price_nse REAL,
+        inav_nippon REAL,
+        spot_usd REAL,
+        usdinr REAL
+    );
+    """)
+
+    # Table: gold_intraday_log (for GoldBees Live Monitor)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS gold_intraday_log (
+        timestamp DATETIME PRIMARY KEY,
+        price_nse REAL,
+        inav_nippon REAL,
+        spot_usd REAL,
+        usdinr REAL
     );
     """)
     

@@ -7,8 +7,7 @@ import os
 
 DB_PATH = os.getenv("DB_PATH", "liquidity_monitor.db")
 
-def get_db_connection():
-    return sqlite3.connect(DB_PATH)
+from src.database import get_db_connection
 
 def calculate_squeeze_score():
     """
@@ -298,7 +297,7 @@ def get_credit_stress_data(days: int = 90):
     df = pd.read_sql("""
         SELECT timestamp, tenor, rate 
         FROM yield_logs 
-        WHERE tenor IN ('DXY', 'HY_SPREAD', 'RRP', 'VIX')
+        WHERE tenor IN ('DXY', 'HY_SPREAD', 'RRP', 'VIX', 'DXY_ICE')
         ORDER BY timestamp ASC
     """, conn)
     conn.close()
@@ -312,7 +311,7 @@ def get_credit_stress_data(days: int = 90):
     pivot_df = df.pivot_table(index='timestamp', columns='tenor', values='rate')
     
     # Rename columns to lowercase for consistency
-    col_map = {'DXY': 'dxy', 'HY_SPREAD': 'hy_spread', 'RRP': 'rrp', 'VIX': 'vix'}
+    col_map = {'DXY': 'dxy', 'HY_SPREAD': 'hy_spread', 'RRP': 'rrp', 'VIX': 'vix', 'DXY_ICE': 'dxy_ice'}
     available_cols = [c for c in pivot_df.columns if c in col_map]
     pivot_df = pivot_df[available_cols].rename(columns=col_map)
     
@@ -322,6 +321,8 @@ def get_credit_stress_data(days: int = 90):
     # Calculate trend indicators
     if 'dxy' in pivot_df.columns:
         pivot_df['dxy_pct_5d'] = pivot_df['dxy'].pct_change(periods=5)
+    if 'dxy_ice' in pivot_df.columns:
+        pivot_df['dxy_ice_pct_5d'] = pivot_df['dxy_ice'].pct_change(periods=5)
     if 'hy_spread' in pivot_df.columns:
         pivot_df['hy_spread_pct_5d'] = pivot_df['hy_spread'].pct_change(periods=5)
     if 'rrp' in pivot_df.columns:

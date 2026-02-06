@@ -5,3 +5,4 @@ data
 .lfm_api_pass
 .creds.txt
 .last_sync.txt
+cron_debug.log
