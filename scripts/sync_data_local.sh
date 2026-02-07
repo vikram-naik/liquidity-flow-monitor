@@ -21,6 +21,9 @@ python3 src/agents/flow_agent.py
 echo "Step 2: Running CME Margin Agent..."
 python3 src/agents/global_margin_agent.py
 
+echo "Step 3: Running US Treasury Agent..."
+python3 src/agents/treasury_agent.py
+
 # Record sync timestamp
 echo "$(date -u '+%Y-%m-%d %H:%M:%S UTC')" > "$SYNC_LOG_FILE"
 

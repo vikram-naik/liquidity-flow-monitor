@@ -20,6 +20,7 @@ MULTIPLIERS = {
     'SILVER': 5000,
     'COPPER': 25000,
     'CRUDE_OIL': 1000,
+    'NATURAL_GAS': 10000,
     'ES': 50,
     'NQ': 20
 }
@@ -29,6 +30,7 @@ YAHOO_SYMBOLS = {
     'SILVER': 'SI=F',
     'COPPER': 'HG=F',
     'CRUDE_OIL': 'CL=F',
+    'NATURAL_GAS': 'NG=F',
     'ES': 'ES=F',
     'NQ': 'NQ=F'
 }
@@ -47,7 +49,7 @@ def get_cme_margins():
 
     # Targets - Two API endpoints:
     # - Metals (SI, GC, HG): Use /CmeWS/mvc/Margins/OUTRIGHT with sector=METALS, exchange=CMX
-    # - Energy/Equity (CL, ES, NQ): Use /services/margins/OUTRIGHT with clearingCode only
+    # - Energy/Equity (CL, NG, ES, NQ): Use /services/margins/OUTRIGHT with clearingCode only
     targets = [
         # Metals - CmeWS API
         {'symbol': 'SILVER', 'code': 'SI', 'exchange': 'CMX', 'sector': 'METALS', 'api': 'cmews', 'margin_field': 'maintenanceRate'},
@@ -55,6 +57,7 @@ def get_cme_margins():
         {'symbol': 'COPPER', 'code': 'HG', 'exchange': 'CMX', 'sector': 'METALS', 'api': 'cmews', 'margin_field': 'maintenanceRate'},
         # Energy/Equity - Services API
         {'symbol': 'CRUDE_OIL', 'code': 'CL', 'exchange': 'NYM', 'sector': 'CRUDE OIL', 'api': 'services', 'margin_field': 'maintenanceMarginLong'},
+        {'symbol': 'NATURAL_GAS', 'code': 'NG', 'exchange': 'CME', 'sector': 'ENERGY', 'api': 'services', 'margin_field': 'maintenanceMarginLong'},
         {'symbol': 'ES', 'code': 'ES', 'exchange': 'CME', 'sector': 'EQUITY INDEX', 'api': 'services', 'margin_field': 'maintenanceMarginLong'},
         {'symbol': 'NQ', 'code': 'NQ', 'exchange': 'CME', 'sector': 'EQUITY INDEX', 'api': 'services', 'margin_field': 'maintenanceMarginLong'}
     ]

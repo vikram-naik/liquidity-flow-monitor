@@ -91,6 +91,118 @@ def init_db():
         usdinr REAL
     );
     """)
+
+    # --- NEW: Treasury Monitor Tables ---
+    
+    # Table: treasury_auctions
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS treasury_auctions (
+        record_date DATE,
+        auction_date DATE,
+        security_type TEXT,
+        maturity TEXT,
+        bid_to_cover REAL,
+        tail_bps REAL,
+        high_yield REAL,
+        offering_amount REAL,
+        total_accepted REAL,
+        primary_dealer_accepted REAL,
+        direct_bidder_accepted REAL,
+        indirect_bidder_accepted REAL,
+        soma_accepted REAL,
+        noncomp_accepted REAL,
+        is_new_issuance BOOLEAN,
+        PRIMARY KEY (record_date, security_type, maturity)
+    );
+    """)
+
+    # Table: treasury_liquidity
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS treasury_liquidity (
+        record_date DATE PRIMARY KEY,
+        tga_balance REAL,
+        rrp_balance REAL,
+        cds_spread REAL
+    );
+    """)
+
+    # Table: treasury_debt_profile
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS treasury_debt_profile (
+        record_date DATE PRIMARY KEY,
+        maturing_1yr REAL,
+        maturing_5yr REAL,
+        total_debt REAL
+    );
+    """)
+
+    # Table: treasury_buybacks
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS treasury_buybacks (
+        record_date DATE,
+        total_offered REAL,
+        total_accepted REAL,
+        security_type TEXT,
+        maturity_bucket TEXT,
+        PRIMARY KEY (record_date, security_type, maturity_bucket)
+    );
+    """)
+
+    # Table: treasury_daily_debt_flows
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS treasury_daily_debt_flows (
+        record_date DATE,
+        security_type TEXT,
+        transaction_type TEXT,
+        amount_mil REAL,
+        PRIMARY KEY (record_date, security_type, transaction_type)
+    );
+    """)
+
+    # Table: treasury_maturity_schedule
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS treasury_maturity_schedule (
+        record_date DATE,
+        maturity_date DATE,
+        security_class TEXT,
+        amount_mil REAL,
+        issue_date DATE,
+        PRIMARY KEY (record_date, maturity_date, security_class)
+    );
+    """)
+
+    # Table: treasury_avg_interest_rates
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS treasury_avg_interest_rates (
+        record_date DATE,
+        security_desc TEXT,
+        avg_interest_rate_amt REAL,
+        PRIMARY KEY (record_date, security_desc)
+    );
+    """)
+
+    # Table: treasury_interest_delta
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS treasury_interest_delta (
+        record_date DATE,
+        security_class TEXT,
+        historical_rate REAL,
+        new_rate REAL,
+        delta_bps REAL,
+        PRIMARY KEY (record_date, security_class)
+    );
+    """)
+
+    # Table: treasury_issuance_plan
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS treasury_issuance_plan (
+        auction_date DATE,
+        security_term TEXT,
+        offering_amount REAL,
+        is_new_issuance BOOLEAN,
+        PRIMARY KEY (auction_date, security_term)
+    );
+    """)
     
     # Pre-populate exchanges and instruments
     print("Seeding/Updating essential data...")
@@ -112,6 +224,7 @@ def init_db():
         (cme_id, 'GOLD', 'Precious'),
         (cme_id, 'COPPER', 'Industrial'),
         (cme_id, 'CRUDE_OIL', 'Energy'),
+        (cme_id, 'NATURAL_GAS', 'Energy'),
         (cme_id, 'ES', 'Equity Index'),
         (cme_id, 'NQ', 'Equity Index')
     ]

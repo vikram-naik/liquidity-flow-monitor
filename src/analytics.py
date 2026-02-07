@@ -544,8 +544,480 @@ def check_credit_stress():
         'hy_spread_trend': 'Rising' if hy_spread_pct_5d > 0.02 else ('Falling' if hy_spread_pct_5d < -0.02 else 'Stable'),
         'dxy_trend': 'Rising' if dxy_pct_5d > 0 else 'Falling',
         'rrp_trend': 'Rising' if rrp_delta_7d > 10 else ('Falling' if rrp_delta_7d < -10 else 'Stable'),
-        'vix_current': vix,
+    'vix_current': vix,
         'message': ' | '.join(messages)
+    }
+
+
+def calculate_refinancing_shift(schedule_df, issuance_plan_df, avg_rates_df, latest_yields):
+    """
+    Calculates the 'Shift' in debt profile for specific event dates.
+    Matches Maturing Debt (Out) vs. New Issuance (In).
+    Aggregates by WEEK to avoid double-counting maturities against multiple auctions in the same week.
+    """
+    shift_data = []
+
+    # 1. Prepare Dataframes with Week Number
+    issuance_plan_df['date'] = pd.to_datetime(issuance_plan_df['auction_date'])
+    issuance_plan_df['year_week'] = issuance_plan_df['date'].dt.strftime('%Y-W%U')
+    
+    schedule_df['date'] = pd.to_datetime(schedule_df['maturity_date'])
+    schedule_df['year_week'] = schedule_df['date'].dt.strftime('%Y-W%U')
+
+    # 2. Iterate by Unique Week in UNION of Issuance and Schedule (The Master Driver)
+    issuance_weeks = set(issuance_plan_df['year_week'].unique())
+    maturity_weeks = set(schedule_df['year_week'].unique())
+    all_weeks = sorted(list(issuance_weeks.union(maturity_weeks)))
+    
+    today_date = pd.Timestamp.now().normalize()
+    
+    for week in all_weeks:
+        # A. Aggregate Issuance for this Week
+        week_issuance = issuance_plan_df[issuance_plan_df['year_week'] == week]
+        issuing_amt = 0
+        issuing_rate = 0
+        term_label = "TBD"
+        is_estimate = False
+        
+        if not week_issuance.empty:
+            issuing_amt = week_issuance['offering_amount'].sum()
+            # Determine dominant term for rate estimation
+            dominant_issue = week_issuance.loc[week_issuance['offering_amount'].idxmax()]
+            term = dominant_issue['security_term']
+            term_label = term
+            
+            # Rate determination:
+            # If auction date is in the past, we ideally want the ACTUAL high yield.
+            # But recent_yields might not have it if it's not in the 'latest_yields' snapshot 
+            # (which is just the LAST yield for each type).
+            # For simplicity/speed: Use latest_yields as proxy for recent past and near future.
+            # Mark as 'Est.' if date > today.
+            
+            if 'Bill' in term: term_key = 'Bill'
+            elif 'Note' in term: term_key = 'Note'
+            else: term_key = 'Bond'
+            issuing_rate = latest_yields.get(term_key, 4.0)
+            
+            # Check if this is a future estimate
+            week_date = week_issuance['date'].min()
+            if week_date > today_date:
+                is_estimate = True
+        else:
+            # No issuance planned yet for this maturity week
+            # We still need a date for the x-axis. 
+            # Find the Tuesday of this week based on the year_week string?
+            # Easier: take the date from the maturity record
+            week_maturities = schedule_df[schedule_df['year_week'] == week]
+            if not week_maturities.empty:
+                week_date = week_maturities['date'].min()
+            else:
+                continue # Should not happen given union
+                
+        # B. Aggregate Maturities for same Week
+        week_maturities = schedule_df[schedule_df['year_week'] == week]
+        maturing_amt = week_maturities['amount_mil'].sum() * 1_000_000
+        
+        if maturing_amt > 0 or issuing_amt > 0:
+            # Weighted Avg Rate for Maturities (only if amount > 0)
+            maturing_rate = 0
+            if maturing_amt > 0:
+                weighted_rate_sum = 0
+                for _, mat_row in week_maturities.iterrows():
+                    s_class = mat_row['security_class']
+                    i_date = mat_row['issue_date']
+                    
+                    # Default logic from before...
+                    hist_rate = 2.0 
+                    mapping = {
+                        'Treasury Bills': 'Treasury Bills',
+                        'Treasury Notes': 'Treasury Notes', 
+                        'Treasury Bonds': 'Treasury Bonds',
+                        'Treasury Inflation-Protected Securities (TIPS)': 'Treasury Inflation-Protected Securities (TIPS)',
+                        'Treasury Floating Rate Notes (FRN)': 'Treasury Floating Rate Notes (FRN)'
+                    }
+                    if s_class in mapping and i_date:
+                        target = mapping[s_class]
+                        prefix = str(i_date)[:7]
+                        rate_row = avg_rates_df[
+                            (avg_rates_df['security_desc'] == target) & 
+                            (avg_rates_df['record_date'].str.startswith(prefix))
+                        ]
+                        if not rate_row.empty:
+                            hist_rate = rate_row.iloc[0]['avg_interest_rate_amt']
+                    
+                    weighted_rate_sum += (mat_row['amount_mil'] * 1_000_000) * hist_rate
+                
+                maturing_rate = weighted_rate_sum / maturing_amt
+            
+            # Use the determined week_date
+            display_date = week_date
+
+            shift_data.append({
+                'date': display_date,
+                'maturing_amt': maturing_amt,
+                'maturing_rate': maturing_rate,
+                'issuing_amt': issuing_amt,
+                'issuing_rate': issuing_rate,
+                'net_principal': issuing_amt - maturing_amt,
+                'rate_delta': issuing_rate - maturing_rate if issuing_amt > 0 and maturing_amt > 0 else 0,
+                'term_label': term_label,
+                'is_estimate': is_estimate
+            })
+            
+    return pd.DataFrame(shift_data)
+
+def calculate_debt_spiral(initial_debt, initial_rate, shift_df):
+    """
+    Project the Cumulative Debt Spiral based on the daily shifts.
+    initial_debt: Total Marketable Debt in Trillions (e.g., 28.0)
+    initial_rate: Weighted Avg Rate (e.g., 3.35)
+    shift_df: DataFrame from calculate_refinancing_shift
+    """
+    if shift_df.empty:
+        return pd.DataFrame()
+    
+    spiral_data = []
+    
+    current_debt = initial_debt * 1e12 # Convert T to Actual
+    current_rate = initial_rate
+    
+    # Sort by date
+    shift_df = shift_df.sort_values('date')
+    
+    for _, row in shift_df.iterrows():
+        # 1. Calculate Interest Cost Component before shift
+        # Not needed for simple rate/principal projection, but good for context
+        
+        # 2. Apply The Shift
+        # Old Interest Burden = Current_Debt * Current_Rate
+        old_burden = current_debt * (current_rate / 100)
+        
+        # Removing Maturing Debt Burden
+        mat_burden = row['maturing_amt'] * (row['maturing_rate'] / 100)
+        
+        # Adding New Debt Burden
+        new_burden = row['issuing_amt'] * (row['issuing_rate'] / 100)
+        
+        # New Mechanics
+        next_debt = current_debt - row['maturing_amt'] + row['issuing_amt']
+        
+        # New Weighted Rate = Total New Burden / Total New Debt
+        next_burden = old_burden - mat_burden + new_burden
+        next_rate = (next_burden / next_debt) * 100 if next_debt > 0 else 0
+        
+        spiral_data.append({
+            'date': row['date'],
+            'total_debt_trillions': next_debt / 1e12,
+            'avg_interest_rate': next_rate,
+            'annual_interest_cost_B': next_burden / 1e9
+        })
+        
+        # Update state for next iteration
+        current_debt = next_debt
+        current_rate = next_rate
+        
+    return pd.DataFrame(spiral_data)
+
+def get_treasury_fiscal_stress_data():
+    """
+    Computes US Treasury Fiscal Stress metrics:
+    1. Auction Tail (Proxy): Calculated here as 0 for now until reliable WI data is sourced.
+    2. Fiscal Stress Indicator: 
+        - CRITICAL if bid_to_cover < 2.3 OR cds_spread > 40bps
+    """
+    conn = get_db_connection()
+    
+    # Fetch Auctions
+    auctions_df = pd.read_sql("""
+        SELECT record_date, auction_date, security_type, maturity, bid_to_cover, tail_bps, high_yield, offering_amount, total_accepted,
+               primary_dealer_accepted, direct_bidder_accepted, indirect_bidder_accepted, soma_accepted, noncomp_accepted, is_new_issuance
+        FROM treasury_auctions
+        ORDER BY record_date ASC
+    """, conn)
+    
+    # Fetch Liquidity/Stress data
+    liquidity_df = pd.read_sql("""
+        SELECT record_date, tga_balance, rrp_balance, cds_spread
+        FROM treasury_liquidity
+        ORDER BY record_date ASC
+    """, conn)
+    
+    # Fetch Maturity Wall (1yr)
+    maturity_df = pd.read_sql("""
+        SELECT record_date, maturing_1yr, total_debt
+        FROM treasury_debt_profile
+        ORDER BY record_date ASC
+    """, conn)
+
+    # Fetch Buyback data
+    buybacks_df = pd.read_sql("""
+        SELECT record_date, total_offered, total_accepted, security_type, maturity_bucket
+        FROM treasury_buybacks
+        ORDER BY record_date ASC
+    """, conn)
+    
+    # Fetch Daily Flows (DTS Table II) for synthetic wall extension
+    flows_df = pd.read_sql("""
+        SELECT record_date, transaction_type, SUM(amount_mil) as total_mil
+        FROM treasury_daily_debt_flows
+        WHERE security_type = 'Bills'
+        GROUP BY record_date, transaction_type
+    """, conn)
+    
+    # Fetch Average Interest Rates
+    avg_rates_df = pd.read_sql("""
+        SELECT record_date, security_desc, avg_interest_rate_amt
+        FROM treasury_avg_interest_rates
+        ORDER BY record_date ASC
+    """, conn)
+    
+    # Fetch Issuance Plan
+    issuance_plan_df = pd.read_sql("""
+        SELECT auction_date, security_term, offering_amount, is_new_issuance
+        FROM treasury_issuance_plan
+        ORDER BY auction_date ASC
+    """, conn)
+
+    # Fetch 10Y Yield & RRP for Quadrant 4 / Q1 Fallback
+    yield_df = pd.read_sql("""
+        SELECT timestamp, tenor, rate 
+        FROM yield_logs 
+        WHERE currency='USD' AND tenor IN ('10Y', 'RRP')
+    """, conn)
+    
+    # Fetch Future Maturity Schedule
+    schedule_df = pd.read_sql("""
+        SELECT maturity_date, issue_date, security_class, amount_mil
+        FROM treasury_maturity_schedule
+        ORDER BY maturity_date ASC
+    """, conn)
+    
+    # Fetch Debt Profile for Total Debt Baseline
+    debt_profile_df = pd.read_sql("""
+        SELECT record_date, total_debt
+        FROM treasury_debt_profile
+        ORDER BY record_date DESC
+        LIMIT 1
+    """, conn)
+    
+    conn.close()
+    
+    if auctions_df.empty or liquidity_df.empty:
+        return None
+        
+    # --- Pivot Logic: Refinancing Shift & Debt Spiral ---
+    
+    # 1. Calculate Refinancing Shift (Event-driven)
+    # We need efficient lookup for avg rates
+    # Convert avg_rates_df to a more usable lookup if needed, but the loop does it row-by-row for now
+    
+    latest_yields = auctions_df.sort_values('record_date').groupby('maturity')['high_yield'].last().to_dict()
+    # Fallback to key mapping if needed (Bill/Note/Bond)
+    # The new function expects 'Bill', 'Note', 'Bond' keys
+    # Let's standardize latest_yields keys
+    std_yields = {}
+    for k, v in latest_yields.items():
+        if 'Bill' in k: std_yields['Bill'] = v
+        elif 'Note' in k: std_yields['Note'] = v
+        elif 'Bond' in k: std_yields['Bond'] = v
+    
+    refi_shift_df = calculate_refinancing_shift(schedule_df, issuance_plan_df, avg_rates_df, std_yields)
+    
+    # 2. Calculate Debt Spiral (Cumulative)
+    # Get Baselines
+    baseline_debt = 36.0 # Fallback Trillions
+    if not debt_profile_df.empty:
+        baseline_debt = debt_profile_df.iloc[0]['total_debt'] / 1e6 # debt_profile is in Millions usually? 
+        # Check agent: total_mil -> yes, Millions.
+        # So Divide by 1e6 to get Trillions for the function input? 
+        # Function expects Trillions. 
+        # Let's check function: "initial_debt: Total Marketable Debt in Trillions (e.g., 28.0)"
+        # table value = 36,000,000 (Mil) = 36 Trillion. 
+        # So 36,000,000 / 1,000,000 = 36.
+    
+    # Get Net Weighted Average Rate Baseline
+    # We can approximate this from the latest avg_rates_df entry for "Total Marketable"
+    baseline_rate = 3.35 # Fallback
+    total_rate_row = avg_rates_df[avg_rates_df['security_desc'] == 'Total Marketable'].sort_values('record_date')
+    if not total_rate_row.empty:
+        baseline_rate = total_rate_row.iloc[-1]['avg_interest_rate_amt']
+        
+    debt_spiral_df = calculate_debt_spiral(baseline_debt, baseline_rate, refi_shift_df)
+    
+    if auctions_df.empty or liquidity_df.empty:
+        return None
+    
+    # Calculate Synthetic Maturity Wall (Daily Updates)
+    if not maturity_df.empty and not flows_df.empty:
+        # Get last official baseline
+        last_mspd = maturity_df.iloc[-1]
+        baseline_date = last_mspd['record_date']
+        baseline_val = last_mspd['maturing_1yr']
+        
+        # Filter flows for dates after baseline
+        recent_flows = flows_df[flows_df['record_date'] > baseline_date].copy()
+        
+        if not recent_flows.empty:
+            # Pivot to get Issues and Redemptions on one line
+            recent_flows = recent_flows.pivot(index='record_date', columns='transaction_type', values='total_mil').fillna(0)
+            if 'Issues' not in recent_flows: recent_flows['Issues'] = 0
+            if 'Redemptions' not in recent_flows: recent_flows['Redemptions'] = 0
+            
+            # Net Flow = Issues - Redemptions
+            recent_flows['net_flow'] = recent_flows['Issues'] - recent_flows['Redemptions']
+            recent_flows['cum_net_flow'] = recent_flows['net_flow'].cumsum()
+            
+            # Create synthetic rows
+            synthetic_rows = []
+            for date, row in recent_flows.iterrows():
+                synthetic_rows.append({
+                    'record_date': date,
+                    'maturing_1yr': baseline_val + row['cum_net_flow'],
+                    'total_debt': last_mspd['total_debt'] # Static proxy for total debt
+                })
+            
+            # Combine with official data
+            maturity_df = pd.concat([maturity_df, pd.DataFrame(synthetic_rows)], ignore_index=True)
+        
+    liquidity_df['record_date'] = pd.to_datetime(liquidity_df['record_date'])
+    yield_df['timestamp'] = pd.to_datetime(yield_df['timestamp'])
+    
+    # Split yields and RRP for cleaner merging
+    y10_df = yield_df[yield_df['tenor'] == '10Y'].rename(columns={'rate': 'yield_10y'})
+    rrp_fallback_df = yield_df[yield_df['tenor'] == 'RRP'].rename(columns={'rate': 'rrp_fred'})
+    
+    # Merge Liquidity with Yields
+    stress_df = pd.merge_asof(
+        liquidity_df.sort_values('record_date'), 
+        y10_df.sort_values('timestamp'), 
+        left_on='record_date', 
+        right_on='timestamp', 
+        direction='backward'
+    )
+
+    # Merge with RRP Fallback (if treasury_liquidity.rrp_balance is NULL)
+    stress_df = pd.merge_asof(
+        stress_df,
+        rrp_fallback_df.sort_values('timestamp'),
+        left_on='record_date',
+        right_on='timestamp',
+        direction='backward',
+        suffixes=('', '_fallback')
+    )
+    
+    # Fill RRP gaps: prioritize rrp_balance (table) then rrp_fred (yield_logs)
+    stress_df['rrp_balance'] = stress_df['rrp_balance'].fillna(stress_df['rrp_fred'])
+    
+    # Alert Trigger Logic
+    # Filter for completed auctions (BTC not null)
+    completed_auctions = auctions_df.dropna(subset=['bid_to_cover'])
+    latest_liquidity = liquidity_df.iloc[-1]
+    
+    if not completed_auctions.empty:
+        latest_auction = completed_auctions.iloc[-1]
+        # Get latest BTC for 10Y específicamente, fallback to latest overall
+        ten_year_auctions = completed_auctions[completed_auctions['security_type'].str.contains('10-Year', na=False)]
+        btc_10y = ten_year_auctions['bid_to_cover'].iloc[-1] if not ten_year_auctions.empty else latest_auction['bid_to_cover']
+    else:
+        btc_10y = None
+
+    cds_spread = latest_liquidity['cds_spread']
+    
+    # Buyback Acceptance Ratio Logic
+    latest_buyback_ratio = None
+    if not buybacks_df.empty:
+        # Group by date to get aggregate ratio if multiple operations on same day
+        daily_buybacks = buybacks_df.groupby('record_date').agg({'total_offered': 'sum', 'total_accepted': 'sum'}).reset_index()
+        latest_bb = daily_buybacks.iloc[-1]
+        if latest_bb['total_offered'] > 0:
+            latest_buyback_ratio = latest_bb['total_accepted'] / latest_bb['total_offered']
+
+    stress_level_num = 0
+    stress_msg = "Fiscal Conditions Stable"
+    
+    if (btc_10y is not None and btc_10y < 2.3) or (cds_spread is not None and cds_spread > 40) or (latest_buyback_ratio is not None and latest_buyback_ratio < 0.4):
+        stress_level_num = 2
+        stress_msg = "CRITICAL FISCAL STRESS DETECTED"
+    elif (btc_10y is not None and btc_10y < 2.4) or (cds_spread is not None and cds_spread > 35) or (latest_buyback_ratio is not None and latest_buyback_ratio < 0.5):
+        stress_level_num = 1
+        stress_msg = "Elevated Fiscal Risk"
+        
+    # --- Interest Rate Surcharge (Debt Recycling) ---
+    surcharge_df = pd.DataFrame()
+    if not schedule_df.empty and not avg_rates_df.empty and not auctions_df.empty:
+        mapping = {
+            'Bills Maturity Value': 'Treasury Bills',
+            'Notes': 'Treasury Notes',
+            'Bonds': 'Treasury Bonds',
+            'Floating Rate Notes': 'Treasury Floating Rate Notes (FRN)',
+            'Inflation-Protected Securities': 'Treasury Inflation-Protected Securities (TIPS)'
+        }
+        
+        # Get latest yields per broad class (Bill/Note/Bond)
+        # Note: mapping maturity types to auction types
+        latest_yields = auctions_df.sort_values('record_date').groupby('maturity')['high_yield'].last().to_dict()
+        
+        surcharge_rows = []
+        for idx, row in schedule_df.iterrows():
+            s_class = row['security_class']
+            i_date = row['issue_date']
+            
+            if s_class in mapping and i_date:
+                target_desc = mapping[s_class]
+                i_month_prefix = str(i_date)[:7] # YYYY-MM
+                
+                # Find historical average rate for that issue month
+                hist_rate_row = avg_rates_df[
+                    (avg_rates_df['security_desc'] == target_desc) & 
+                    (avg_rates_df['record_date'].str.startswith(i_month_prefix))
+                ]
+                
+                if not hist_rate_row.empty:
+                    hist_rate = hist_rate_row.iloc[0]['avg_interest_rate_amt']
+                    # Map to auction category
+                    auc_cat = 'Bill' if 'Bill' in s_class else ('Note' if 'Note' in s_class else 'Bond')
+                    new_rate = latest_yields.get(auc_cat)
+                    
+                    if hist_rate is not None and new_rate is not None:
+                        delta = (new_rate - hist_rate) * 100
+                        amount = row['amount_mil']
+                        annual_impact = amount * (delta / 10000)
+                        surcharge_rows.append({
+                            'maturity_date': row['maturity_date'],
+                            'security_class': s_class,
+                            'amount_mil': amount,
+                            'historical_rate': hist_rate,
+                            'new_rate': new_rate,
+                            'delta_bps': delta,
+                            'annual_impact_mil': annual_impact
+                        })
+        
+        surcharge_df = pd.DataFrame(surcharge_rows)
+        
+        # Trigger Refinancing Shock Alert
+        if not surcharge_df.empty and surcharge_df['delta_bps'].max() > 200:
+            stress_level_num = max(stress_level_num, 2)
+            stress_msg = "REFINANCING SHOCK: Interest rate delta exceeds 200bps on upcoming rolled debt."
+
+    stress_level_map = {0: "GREEN", 1: "YELLOW", 2: "RED"}
+    stress_level = stress_level_map.get(stress_level_num, "GREEN")
+
+    return {
+        'auctions': auctions_df,
+        'liquidity': stress_df,
+        'maturity': maturity_df,
+        'schedule': schedule_df,
+        'redemptions': flows_df,
+        'buybacks': buybacks_df,
+        'surcharge': surcharge_df,
+        'issuance_plan': issuance_plan_df,
+        'refi_shift': refi_shift_df,
+        'debt_spiral': debt_spiral_df,
+        'stress_level': stress_level,
+        'stress_message': stress_msg,
+        'latest_btc': btc_10y,
+        'latest_cds': cds_spread,
+        'buyback_ratio': latest_buyback_ratio
     }
 
 if __name__ == "__main__":

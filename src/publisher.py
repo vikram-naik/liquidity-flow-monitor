@@ -14,7 +14,7 @@ def get_data_from_db(db_path, table, limit=None):
     
     if table == "margin_logs":
         query = f"""
-            SELECT l.*, i.symbol, e.name as exchange 
+            SELECT l.*, i.symbol, i.asset_class, e.name as exchange 
             FROM margin_logs l
             JOIN instruments i ON l.instrument_id = i.id
             JOIN exchanges e ON i.exchange_id = e.id
@@ -28,7 +28,11 @@ def get_data_from_db(db_path, table, limit=None):
             {limit_str}
         """
     else:
-        query = f"SELECT * FROM {table} ORDER BY timestamp DESC {limit_str}"
+        if table == "treasury_issuance_plan":
+            sort_col = "auction_date"
+        else:
+            sort_col = "record_date" if "treasury" in table else "timestamp"
+        query = f"SELECT * FROM {table} ORDER BY {sort_col} DESC {limit_str}"
         
     cursor.execute(query)
     rows = [dict(row) for row in cursor.fetchall()]
@@ -91,7 +95,63 @@ def main():
         inserted = push_to_api(f"{base_url}/lfm/api/upload/holidays", holidays, args.user, args.password, args.chunk)
         print(f"Success: {inserted} holiday records synced.")
 
-    # 4. Update sync timestamp on remote
+    # 4. Sync Treasury Auctions
+    print(f"Syncing treasury auctions to {base_url}/lfm/api/upload/treasury-auctions ...")
+    auctions = get_data_from_db(args.db, "treasury_auctions", limit)
+    if auctions:
+        inserted = push_to_api(f"{base_url}/lfm/api/upload/treasury-auctions", auctions, args.user, args.password, args.chunk)
+        print(f"Success: {inserted} auction records synced.")
+
+    # 5. Sync Treasury Liquidity
+    print(f"Syncing treasury liquidity to {base_url}/lfm/api/upload/treasury-liquidity ...")
+    liquidity = get_data_from_db(args.db, "treasury_liquidity", limit)
+    if liquidity:
+        inserted = push_to_api(f"{base_url}/lfm/api/upload/treasury-liquidity", liquidity, args.user, args.password, args.chunk)
+        print(f"Success: {inserted} liquidity records synced.")
+
+    # 6. Sync Treasury Debt
+    print(f"Syncing treasury debt to {base_url}/lfm/api/upload/treasury-debt ...")
+    debt = get_data_from_db(args.db, "treasury_debt_profile", limit)
+    if debt:
+        inserted = push_to_api(f"{base_url}/lfm/api/upload/treasury-debt", debt, args.user, args.password, args.chunk)
+        print(f"Success: {inserted} debt records synced.")
+
+    # 7. Sync Treasury Buybacks
+    print(f"Syncing treasury buybacks to {base_url}/lfm/api/upload/treasury-buybacks ...")
+    buybacks = get_data_from_db(args.db, "treasury_buybacks", limit)
+    if buybacks:
+        inserted = push_to_api(f"{base_url}/lfm/api/upload/treasury-buybacks", buybacks, args.user, args.password, args.chunk)
+        print(f"Success: {inserted} buyback records synced.")
+
+    # 8. Sync Treasury Flows
+    print(f"Syncing treasury flows to {base_url}/lfm/api/upload/treasury-flows ...")
+    flows = get_data_from_db(args.db, "treasury_daily_debt_flows", limit)
+    if flows:
+        inserted = push_to_api(f"{base_url}/lfm/api/upload/treasury-flows", flows, args.user, args.password, args.chunk)
+        print(f"Success: {inserted} flow records synced.")
+
+    # 9. Sync Maturity Schedule
+    print(f"Syncing maturity schedule to {base_url}/lfm/api/upload/maturity-schedule ...")
+    schedule = get_data_from_db(args.db, "treasury_maturity_schedule", limit)
+    if schedule:
+        inserted = push_to_api(f"{base_url}/lfm/api/upload/maturity-schedule", schedule, args.user, args.password, args.chunk)
+        print(f"Success: {inserted} schedule records synced.")
+
+    # 10. Sync Avg Interest Rates
+    print(f"Syncing avg rates to {base_url}/lfm/api/upload/avg-rates ...")
+    avg_rates = get_data_from_db(args.db, "treasury_avg_interest_rates", limit)
+    if avg_rates:
+        inserted = push_to_api(f"{base_url}/lfm/api/upload/avg-rates", avg_rates, args.user, args.password, args.chunk)
+        print(f"Success: {inserted} avg rate records synced.")
+
+    # 11. Sync Issuance Plan
+    print(f"Syncing issuance plan to {base_url}/lfm/api/upload/issuance-plan ...")
+    issuance_plan = get_data_from_db(args.db, "treasury_issuance_plan", limit)
+    if issuance_plan:
+        inserted = push_to_api(f"{base_url}/lfm/api/upload/issuance-plan", issuance_plan, args.user, args.password, args.chunk)
+        print(f"Success: {inserted} issuance plan records synced.")
+
+    # 12. Update sync timestamp on remote
     print(f"Updating sync timestamp on {base_url}/lfm/api/sync-timestamp ...")
     try:
         sync_time = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')

@@ -19,6 +19,7 @@ MULTIPLIERS = {
     'SILVER': 5000,
     'COPPER': 25000,
     'CRUDE_OIL': 1000,
+    'NATURAL_GAS': 10000,
     'ES': 50,
     'NQ': 20
 }
@@ -55,9 +56,12 @@ MARGIN_HISTORY = {
         ('2026-01-13', "15.0%")  # Switch to % based
     ],
     'CRUDE_OIL': [
-        ('2025-01-01', 6000),    # Baseline Jan 2025 (NYMEX Light Sweet Crude)
-        ('2025-06-01', 7000),    # Mid-year volatility
         ('2025-12-01', 8000)     # Year-end level
+    ],
+    'NATURAL_GAS': [
+        ('2025-01-01', 5000),    # Baseline Jan 2025
+        ('2025-06-01', 5500),    # Mid-year
+        ('2025-11-20', 6600)     # Current observed requirement
     ]
 }
 
@@ -67,6 +71,7 @@ YF_TICKERS = {
     'SILVER': 'SI=F',
     'COPPER': 'HG=F',
     'CRUDE_OIL': 'CL=F',
+    'NATURAL_GAS': 'NG=F',
     'ES': 'ES=F',
     'NQ': 'NQ=F'
 }

@@ -9,35 +9,36 @@ The system focuses on core CME instruments and global macro benchmarks:
 *   **CME (US Commodities & Indices)**:
     *   **Metals**: SILVER (SI), GOLD (GC), COPPER (HG).
     *   **Equities**: S&P 500 E-mini (ES), Nasdaq 100 E-mini (NQ).
-    *   **Method**: `Selenium` for daily margin capture and `yfinance` for high-fidelity historical price/margin backfilling.
-*   **FRED (Macro Flow)**:
-    *   **Source**: Federal Reserve Economic Data (FRED).
-    *   **Benchmarks**: US 10Y Yield (DGS10), Japan 10Y Yield (IRLTLT01JPM156N), USD/JPY (DEXJPUS).
-    *   **Method**: API-based ingestion of benchmark rates to monitor the "Cost of Money".
+    *   **Method**: `Selenium` for daily margin capture.
+*   **US Treasury (Fiscal Flow)**:
+    *   **Source**: [Treasury Fiscal Data API](https://fiscaldata.treasury.gov/).
+    *   **Metrics**: Auctions (Offerings/Acceptance), TGA/RRP Balances, Buybacks, Maturity Schedules, and 30-year Avg Interest Rates.
+    *   **Method**: API-based polling via `TreasuryAgent`.
+*   **FRED & Macro**:
+    *   **Benchmarks**: US 10Y Yield (DGS10), Japan 10Y Yield (IRLTLT01JPM156N), USD/JPY (DEXJPUS), CDS Spreads.
+    *   **Method**: `yfinance` for prices/yields and FRED for long-term benchmarks.
 
 ### 2. Analytics Layer (`src/analytics.py`)
 Proprietary logic for monitoring both instant shocks and sustained pressure:
 
-*   **Pressure Index (Sustained Stress)**
-    *   **Goal**: Measure the cumulative load on a position relative to a 30-day baseline.
-    *   **Formula**: `Index = (Current Margin %) / (Rolling 30-Day Min Margin %)`
-    *   **Thresholds**:
-        *   **1.0x**: Baseline (Normal).
-        *   **1.5x**: Stress Threshold (Significant squeeze risk).
+*   **The Refinancing Shift**
+    *   **Goal**: Match upcoming Maturing Debt (Out) against New Issuance (In).
+    *   **Feature**: Superimposes weekly maturity walls against auction plans to identify supply/demand imbalances.
 
-*   **Shock Score (Instant Event)**
-    *   **Goal**: Detect sudden 24h margin hikes used to "shake out" over-leveraged players.
-    *   **Formula**: `Score = (Current Margin - Prev Margin) / Prev Margin`
+*   **The Debt Spiral (Surcharge Tracking)**
+    *   **Goal**: Measure the cumulative interest cost increase as low-rate historical debt is rolled into high-rate current yields.
+    *   **Logic**: Calculates $B/year surcharge based on 30-year historical rate comparisons.
 
-*   **Systemic Alert Engine**
-    *   Triggers when **3+ concurrent instruments** show margin spikes, signaling an exchange-level liquidity event.
+*   **Pressure Index & Shock Scores**
+    *   **Metric**: Real-time monitoring of CME margin hikes (Shock Score) and sustained margin pressure (Index).
 
 ### 3. Dashboard Layer (`src/dashboard/app.py`)
 Built with **Streamlit** and **Plotly**.
-*   **Macro Traffic Light**: Dynamic status banner interpreting Yen Carry Trade health and US Treasury pressure.
-*   **Yield Spread Monitor**: Real-time gauge of the US-JP Yield Spread (the primary carry trade incentive).
-*   **Global Stress Monitor**: Multi-line comparison of the Pressure Index across all assets.
-*   **Correlation Matrix**: Pearson correlation of margin changes to identify systemic lockstep moves.
+*   **Systemic Risk Monitor**: Traffic light status for Yen Carry Trade and Treasury Stress.
+*   **Liquidity Backbone**: Real-time tracking of TGA Balances and Reverse Repo (RRP) liquidity drains.
+*   **Rollover Wall**: Dual-axis bar/line chart visualizing the Refinancing Shift.
+*   **Auction Health**: Tracking Bid-to-Cover and Tail BPS across all Treasury auctions.
+*   **Correlation Matrix**: Pearson correlation of margin changes across assets.
 
 ### 4. Resilience & Data Quality
 *   **UTC Standardization**: All timestamps are normalized to UTC for global consistency.

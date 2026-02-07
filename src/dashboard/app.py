@@ -21,7 +21,8 @@ from src.analytics import (
     check_credit_stress as _check_credit_stress, 
     calculate_fair_value, 
     get_liquidity_valve_data as _get_liquidity_valve_data, 
-    get_usdjpy_vs_asset_data as _get_usdjpy_vs_asset_data
+    get_usdjpy_vs_asset_data as _get_usdjpy_vs_asset_data,
+    get_treasury_fiscal_stress_data as _get_treasury_fiscal_stress_data
 )
 
 # --- CACHED ANALYTICS WRAPPERS (15 min TTL) ---
@@ -45,6 +46,9 @@ def get_liquidity_valve_data(): return _get_liquidity_valve_data()
 
 @st.cache_data(ttl=900)
 def get_usdjpy_vs_asset_data(asset='SILVER'): return _get_usdjpy_vs_asset_data(asset)
+
+@st.cache_data(ttl=900)
+def get_treasury_fiscal_stress_data(): return _get_treasury_fiscal_stress_data()
 
 from src.agents.silver_agent import fetch_nse_price as _fetch_nse_price, fetch_nippon_inav as _fetch_nippon_inav
 from src.database import init_db
@@ -252,7 +256,7 @@ if st.runtime.exists():
     st.sidebar.header("🧭 Navigation")
     dashboard_mode = st.sidebar.radio(
         "Select View:",
-        ["Main Dashboard", "Precious Metal ETF Monitor"],
+        ["Main Dashboard", "US Treasury Monitor", "Precious Metal ETF Monitor"],
         index=0
     )
     
@@ -609,6 +613,729 @@ def render_gold_monitor():
     elif market_open:
         st.info("Collecting data... Chart will appear after 2+ data points.")
     # When market is closed and no chart data, just don't show anything extra
+def render_treasury_monitor():
+    """Renders the 4-Quadrant US Treasury Fiscal Stress Monitor."""
+    st.title("🏛️ US Treasury Fiscal Stress Monitor")
+    
+    data = get_treasury_fiscal_stress_data()
+    if not data:
+        st.warning("No Treasury data available. Please run the collector.")
+        return
+        
+    auctions_df = data['auctions']
+    stress_df = data['liquidity']
+    stress_level = data['stress_level']
+    stress_msg = data['stress_message']
+    latest_btc = data['latest_btc']
+    latest_cds = data['latest_cds']
+    buyback_ratio = data['buyback_ratio']
+    rrp_val = stress_df['rrp_balance'].iloc[-1] if not stress_df.empty else None
+    
+    # --- Consolidated Systemic Risk Header ---
+    st.subheader("⚠️ Systemic Risk Monitor")
+    
+    # Collect all alerts
+    alerts = []
+    if latest_btc is not None and latest_btc < 2.3:
+        alerts.append(f"📉 **Low Auction Demand:** Bid-to-Cover is {latest_btc:.2f} (Target > 2.3)")
+    if latest_cds is not None and latest_cds > 40:
+        alerts.append(f"🛡️ **Credit Stress:** US 5Y CDS is {latest_cds:.1f}bps (Threshold > 40)")
+    if rrp_val is not None and rrp_val < 50:
+        alerts.append(f"🪫 **Liquidity Drain:** Fed RRP is ${rrp_val:.0f}B (Critical < $50B)")
+    if buyback_ratio is not None and buyback_ratio < 0.5:
+        alerts.append(f"🔄 **Weak Buyback Support:** Acceptance Ratio is {buyback_ratio:.1%} (Target > 50%)")
+        
+    if alerts:
+        with st.container():
+            st.error("### 🚨 SYSTEMIC ALERTS DETECTED")
+            for alert in alerts:
+                st.write(alert)
+    else:
+        st.success("### ✅ Systemic Risk: Low")
+
+    st.divider()
+
+    # --- Pressure Gauge (Metrics Row) ---
+    st.subheader("🚥 Pressure Gauge")
+    g1, g2, g3, g4 = st.columns(4)
+    with g1:
+        st.metric("BTC (10Y/Proxy)", f"{latest_btc:.2f}" if latest_btc else "--", 
+                  delta="-0.1" if latest_btc and latest_btc < 2.3 else None, delta_color="inverse")
+    with g2:
+        st.metric("CDS (Risk Premium)", f"{latest_cds:.1f} bps" if latest_cds else "--",
+                  delta="+5" if latest_cds and latest_cds > 35 else None, delta_color="inverse")
+    with g3:
+        st.metric("RRP (Liquidity)", f"${rrp_val:.0f}B" if rrp_val else "--",
+                  delta="-20B" if rrp_val and rrp_val < 100 else None, delta_color="inverse")
+    with g4:
+        st.metric("Buyback Ratio", f"{buyback_ratio:.1%}" if buyback_ratio else "--",
+                  delta="-5%" if buyback_ratio and buyback_ratio < 0.5 else None, delta_color="inverse")
+
+    st.divider()
+    
+    # Quadrants - One per row as requested
+    
+    st.subheader("Quadrant 1: Liquidity Vacuum")
+    st.caption("TGA (Operating Cash) vs. Fed RRP Balances")
+    with st.expander("💡 How to read this?"):
+        st.markdown("""
+        **What it means:** This tracks the two main 'buckets' of cash at the Federal Reserve.
+        - **TGA (Blue) - The Treasury's Wallet:** This is the US Government's checking account. When the TGA rises, money is being pulled *out* of the economy (via taxes or debt sales). When it falls, the government is spending money *into* the economy.
+        - **RRP (Red) - The Liquidity Buffer:** This is where **Money Market Funds** park excess cash. Think of it as a 'spare tank' of liquidity.
+        
+        ---
+        ### 🧐 FAQ: Why is the RRP 'empty'? 
+        **Q: From where does the RRP money come?**
+        Mainly from **Money Market Funds (MMFs)**. When MMFs have too much cash and nowhere safe to put it, they lend it to the Fed (Reverse Repo) to earn interest.
+        
+        **Q: What happens when it drains?**
+        For the last year, the Treasury has issued trillions in 'Bills'. MMFs took their money out of the RRP to buy these Bills. This was great for the market because the government was funded by 'idle cash'. 
+        
+        **Q: The Stress Signal:**
+        Now that the RRP is nearly empty, the government can no longer rely on this 'spare tank'. New debt must now be bought using **Bank Reserves**. If both TGA is rising and RRP is empty, it's a 'Liquidity Vacuum'—the market's safety net is gone.
+        """)
+    fig1 = go.Figure()
+    fig1.add_trace(go.Scatter(x=stress_df['record_date'], y=stress_df['tga_balance'], name='TGA Balance ($B)', line=dict(color='#636EFA', width=3), connectgaps=True))
+    fig1.add_trace(go.Scatter(x=stress_df['record_date'], y=stress_df['rrp_balance'], name='RRP Balance ($B)', line=dict(color='#EF553B', width=2), yaxis='y2', connectgaps=True))
+    fig1.update_layout(
+        yaxis=dict(title="TGA ($B)"),
+        yaxis2=dict(title="RRP ($B)", overlaying='y', side='right'),
+        legend=dict(orientation="h", x=0.5, xanchor="center"),
+        hovermode="x unified", height=400
+    )
+    st.plotly_chart(fig1, use_container_width=True)
+    st.divider()
+        
+    st.subheader("Quadrant 2: Rollover Wall vs. Buyback Support")
+    st.caption("Debt Maturing within 12 Months vs. Recent Buyback Operations")
+    
+    schedule_df = data.get('schedule')
+    redemptions_df = data.get('redemptions')
+    buybacks_df = data.get('buybacks')
+    surcharge_df = data.get('surcharge')
+    issuance_plan_df = data.get('issuance_plan')
+    refi_shift_df = data.get('refi_shift')
+    debt_spiral_df = data.get('debt_spiral')
+    today = pd.Timestamp.now().normalize()
+    # Calculate Rolling Window (User requested: -1 month to +2 months)
+    start_viz = today - pd.Timedelta(days=30)
+    end_viz = today + pd.Timedelta(days=60)
+    
+    # --- New Chart: The Interest Rate Surcharge ---
+    # --- Chart 1: The Refinancing Shift (Daily Delta) ---
+    if refi_shift_df is not None and not refi_shift_df.empty:
+        st.subheader("Chart 1: The Refinancing Shift (Daily Event)")
+        st.caption("Visualizing the 'Trade-Up' Event: Old Cheap Debt vs. New Expensive Debt")
+        
+        # Filter for recent/upcoming events AND meaningful volume
+        shift_viz = refi_shift_df[
+            (pd.to_datetime(refi_shift_df['date']) >= start_viz) & 
+            (pd.to_datetime(refi_shift_df['date']) <= end_viz) &
+            ((refi_shift_df['maturing_amt'] > 1e6) | (refi_shift_df['issuing_amt'] > 1e6))
+        ].copy()
+        
+        if not shift_viz.empty:
+            fig_shift = go.Figure()
+            
+            # Maturing Debt (Red)
+            fig_shift.add_trace(go.Bar(
+                x=shift_viz['date'],
+                y=shift_viz['maturing_amt'] / 1e9,
+                name='Maturing Debt (Out)',
+                marker_color='#EF553B',
+                text=shift_viz['maturing_rate'].apply(lambda x: f"@{x:.2f}%"),
+                textposition='auto',
+                customdata=shift_viz[['maturing_rate', 'term_label']],
+                hovertemplate="<b>Maturing:</b> $%{y:.1f}B<br><b>Rate:</b> %{customdata[0]:.2f}%<br><b>Term:</b> %{customdata[1]}<extra></extra>"
+            ))
+            
+            # New Issuance (Green)
+            # Add logic for 'Est.' label
+            def format_issuance_label(row):
+                label = f"@{row['issuing_rate']:.2f}%"
+                if row.get('is_estimate', False):
+                    label = f"Est. {label}"
+                return label
+
+            fig_shift.add_trace(go.Bar(
+                x=shift_viz['date'],
+                y=shift_viz['issuing_amt'] / 1e9,
+                name='New Issuance (In)',
+                marker_color='#00CC96',
+                text=shift_viz.apply(format_issuance_label, axis=1),
+                textposition='auto',
+                customdata=shift_viz[['issuing_rate', 'term_label']],
+                hovertemplate="<b>Issuing:</b> $%{y:.1f}B<br><b>New Rate:</b> %{customdata[0]:.2f}%<br><b>Term:</b> %{customdata[1]}<extra></extra>"
+            ))
+            
+            fig_shift.update_layout(
+                title="The Shift: Maturing Volume vs. New Volume",
+                yaxis_title="Volume ($B)",
+                barmode='group',
+                hovermode="x unified",
+                height=400,
+                legend=dict(orientation="h", y=1.02, x=0.5, xanchor="center")
+            )
+            st.plotly_chart(fig_shift, use_container_width=True)
+            
+    # --- Chart 2: The Cumulative Debt Spiral ---
+    if debt_spiral_df is not None and not debt_spiral_df.empty:
+        st.subheader("Chart 2: The Debt Spiral (Cumulative Impact)")
+        st.caption("Tracking the Acceleration of Debt Burden. Note how the **Avg Interest Rate (Blue)** rises as cheap legacy debt is replaced by expensive new issuance.")
+        
+        # Filter
+        spiral_viz = debt_spiral_df[
+            (pd.to_datetime(debt_spiral_df['date']) >= start_viz) & 
+            (pd.to_datetime(debt_spiral_df['date']) <= end_viz)
+        ].copy()
+        
+        if not spiral_viz.empty:
+            fig_spiral = go.Figure()
+            
+            # Total Debt (Left Y - Red)
+            fig_spiral.add_trace(go.Scatter(
+                x=spiral_viz['date'],
+                y=spiral_viz['total_debt_trillions'],
+                name='Total Debt ($T)',
+                line=dict(color='#EF553B', width=3),
+                yaxis='y'
+            ))
+            
+            # Avg Interest Rate (Right Y - Blue)
+            fig_spiral.add_trace(go.Scatter(
+                x=spiral_viz['date'],
+                y=spiral_viz['avg_interest_rate'],
+                name='Weighted Avg Rate (%)',
+                line=dict(color='#636EFA', width=3, dash='dot'),
+                yaxis='y2'
+            ))
+            
+            fig_spiral.update_layout(
+                title="The Spiral: Mounting Debt & Rising Rates",
+                yaxis=dict(title="Total Debt ($T)", title_font=dict(color="#EF553B"), tickfont=dict(color="#EF553B")),
+                yaxis2=dict(title="Avg Interest Rate (%)", title_font=dict(color="#636EFA"), tickfont=dict(color="#636EFA"), 
+                            overlaying='y', side='right', showgrid=False),
+                hovermode="x unified",
+                height=400,
+                legend=dict(orientation="h", y=1.1, x=0.5, xanchor="center")
+            )
+            st.plotly_chart(fig_spiral, use_container_width=True)
+            st.divider()
+
+    fig2 = go.Figure()
+    
+    # Process Historical Redemptions (Past Wall)
+    if redemptions_df is not None and not redemptions_df.empty:
+        redemptions_df['record_date'] = pd.to_datetime(redemptions_df['record_date'])
+        # Filter for Redemptions only (to avoid double counting with Issues)
+        hist_mat = redemptions_df[
+            (redemptions_df['transaction_type'] == 'Redemptions') & 
+            (redemptions_df['record_date'] < today)
+        ].copy()
+        
+        if not hist_mat.empty:
+            hist_mat['week'] = hist_mat['record_date'].dt.to_period('W').apply(lambda r: r.start_time)
+            weekly_hist = hist_mat.groupby('week')['total_mil'].sum().reset_index()
+            
+            fig2.add_bar(
+                x=weekly_hist['week'],
+                y=weekly_hist['total_mil']/1e3,
+                name='Maturity (Settled) $B',
+                marker_color='#AB63FA', # Purple for settled
+                opacity=0.5,
+                hovertemplate="<b>Week Starting:</b> %{x|%b %d, %Y}<br><b>Redemptions:</b> $%{y:.1f}B<extra></extra>"
+            )
+
+    # Process Future Maturity Schedule & Planned Issuance
+    weekly_mat = pd.DataFrame()
+    if schedule_df is not None and not schedule_df.empty:
+        schedule_df['maturity_date'] = pd.to_datetime(schedule_df['maturity_date'])
+        future_mat = schedule_df[schedule_df['maturity_date'] >= today].copy()
+        if not future_mat.empty:
+            future_mat['week'] = future_mat['maturity_date'].dt.to_period('W').apply(lambda r: r.start_time)
+            weekly_mat = future_mat.groupby('week')['amount_mil'].sum().reset_index()
+
+    weekly_iss = pd.DataFrame()
+    if issuance_plan_df is not None and not issuance_plan_df.empty:
+        issuance_plan_df['auction_date'] = pd.to_datetime(issuance_plan_df['auction_date'])
+        upcoming_iss = issuance_plan_df[issuance_plan_df['auction_date'] >= today].copy()
+        if not upcoming_iss.empty:
+            upcoming_iss['week'] = upcoming_iss['auction_date'].dt.to_period('W').apply(lambda r: r.start_time)
+            weekly_iss = upcoming_iss.groupby('week')['offering_amount'].sum().reset_index()
+
+    # Merge for Tooltips
+    if not weekly_mat.empty:
+        merged_weekly = pd.merge(weekly_mat, weekly_iss, on='week', how='left').fillna(0)
+        # Add surcharge delta info back to the week
+        if surcharge_df is not None and not surcharge_df.empty:
+            s_copy = surcharge_df.copy()
+            s_copy['week'] = pd.to_datetime(s_copy['maturity_date']).dt.to_period('W').apply(lambda r: r.start_time)
+            weekly_surcharge = s_copy.groupby('week')['delta_bps'].mean().reset_index()
+            merged_weekly = pd.merge(merged_weekly, weekly_surcharge, on='week', how='left').fillna(0)
+        else:
+            merged_weekly['delta_bps'] = 0
+            
+        # Standardize customdata for tooltips (Issuance in $B, Delta in BPS)
+        merged_weekly['issuance_bn'] = merged_weekly['offering_amount'] / 1e9
+        stack_data = merged_weekly[['issuance_bn', 'delta_bps']].values
+
+        # Current Wall (Blue)
+        fig2.add_trace(go.Bar(
+            x=merged_weekly['week'],
+            y=merged_weekly['amount_mil']/1e3,
+            name='Upcoming Maturity $B',
+            marker_color='#636EFA',
+            opacity=0.8,
+            customdata=stack_data,
+            hovertemplate="""<b>Week Starting:</b> %{x|%b %d, %Y}<br>
+                             Maturing Amount: $%{y:.1f}B<br>
+                             Replacement Issuance: $%{customdata[0]:.1f}B<br>
+                             Cost Increase: +%{customdata[1]:.1f} bps<extra></extra>"""
+        ))
+
+        # Ghost Bars for Planned Issuance
+        fig2.add_trace(go.Bar(
+            x=merged_weekly['week'],
+            y=merged_weekly['offering_amount']/1e9,
+            name='Planned Issuance (Ghost Wall) $B',
+            marker_color='rgba(150, 150, 150, 0.4)',
+            offsetgroup=1, 
+            hovertemplate="<b>Week Starting:</b> %{x|%b %d, %Y}<br><b>Planned Issuance:</b> $%{y:.1f}B<extra></extra>"
+        ))
+
+    # Process Historical Buybacks for overlay
+    if buybacks_df is not None and not buybacks_df.empty:
+        buybacks_df['record_date'] = pd.to_datetime(buybacks_df['record_date'])
+        # Filter for recent (last 3 months) to show context
+        lookback = today - pd.Timedelta(days=90)
+        recent_bb = buybacks_df[buybacks_df['record_date'] >= lookback].copy()
+        
+        if not recent_bb.empty:
+            bb_daily = recent_bb.groupby('record_date')['total_accepted'].sum().reset_index()
+            fig2.add_trace(go.Scatter(
+                x=bb_daily['record_date'],
+                y=bb_daily['total_accepted']/1e9,
+                name='Buyback Support $B',
+                mode='markers+lines',
+                marker=dict(size=8, color='#00CC96', symbol='diamond'),
+                line=dict(width=2, color='#00CC96'),
+                yaxis='y2', # Move to secondary Y to ensure visibility
+                hovertemplate="<b>Date:</b> %{x}<br><b>Accepted:</b> $%{y:.1f}B<extra></extra>"
+            ))
+        
+
+    fig2.update_layout(
+        yaxis=dict(title="Maturity Wall ($B)", color='#636EFA'),
+        yaxis2=dict(title="Buyback Support ($B)", color='#00CC96', overlaying='y', side='right', showgrid=False),
+        xaxis=dict(range=[start_viz, end_viz]), # Force Rolling Window
+        barmode='overlay',
+        hovermode="x unified", height=450,
+        legend=dict(orientation="h", y=-0.3, x=0.5, xanchor="center"),
+        title="Rolling Refinancing Profile: The 'Maturity Wall' (9-Month Window)"
+    )
+    st.plotly_chart(fig2, use_container_width=True)
+    st.divider()
+
+    # --- Section: Liquidity Support (Buybacks) ---
+    st.subheader("Liquidity Support (Buybacks)")
+    st.caption("Treasury Buyback Operations: Strategic liquidity injections via debt retirement")
+    
+    with st.expander("💡 How to read this?"):
+        st.markdown("""
+        **What it means:** This tracks how much liquidity the Treasury is *actually* injecting into the market by buying back older debt.
+        - **Offered ($B):** The Treasury's maximum budget for that operation. It represents 'Intent'.
+        - **Accepted ($B):** The actual amount purchased. It represents 'Executed Support'.
+        - **Acceptance Ratio (%):** A key efficiency metric. High ratios (>70%) mean the Treasury is aggressively supporting liquidity. Low ratios (<40%) mean the bids were too expensive or the market didn't need as much support as expected.
+        
+        **The Stress Signal:** 
+        - **Price Mismatch:** If the Treasury is 'Offering' a lot but 'Accepting' very little, it means sellers (banks) are asking for a **higher price** than the Treasury is willing to pay. 
+        - **Liquidity Failure:** A consistently low ratio implies that the 'Liquidity Injection' is failing because the Treasury won't pay the market's price for its own debt.
+        """)
+    
+    if buybacks_df is not None and not buybacks_df.empty:
+        # Ensure record_date is string for categorical axis & sort
+        buybacks_df['record_date'] = pd.to_datetime(buybacks_df['record_date']).dt.strftime('%Y-%m-%d')
+        sorted_dates = sorted(buybacks_df['record_date'].unique())
+        
+        # Handle cases where maturity_bucket might be missing due to cache
+        current_cols = buybacks_df.columns
+        has_bucket = 'maturity_bucket' in current_cols
+        
+        # Group by date for the ratio line
+        bb_daily = buybacks_df.groupby('record_date').agg({
+            'total_offered': 'sum', 
+            'total_accepted': 'sum'
+        }).reset_index().sort_values('record_date')
+        bb_daily['ratio'] = (bb_daily['total_accepted'] / bb_daily['total_offered']) * 100
+        
+        fig_bb = go.Figure()
+        
+        # Binning Maturity Buckets for visual impact (reduces # of bars per date)
+        def bin_maturity(b):
+            b = str(b)
+            if '1Mo' in b or '2Y' in b and '3Y' not in b: return 'Short Term (<2Y)'
+            if '2Y to 3Y' in b or '3Y to 5Y' in b: return 'Short-Mid (2Y-5Y)'
+            if '5Y' in b or '7Y' in b or '1Y to 10Y' in b: return 'Intermediate (5Y-10Y)'
+            if '10Y to 20Y' in b: return 'Long Term (10Y-20Y)'
+            if '20Y to 30Y' in b or '10Y to 30Y' in b: return 'Ultra Long (20Y-30Y)'
+            return 'Other'
+
+        buybacks_df['binned_bucket'] = buybacks_df['maturity_bucket'].apply(bin_maturity)
+        
+        # Color Map for Binned Durations
+        bucket_colors = {
+            'Short Term (<2Y)': 'rgba(99, 110, 250, 1)',   # Blue 
+            'Short-Mid (2Y-5Y)': 'rgba(0, 204, 150, 1)',    # Green
+            'Intermediate (5Y-10Y)': 'rgba(255, 161, 90, 1)',# Orange
+            'Long Term (10Y-20Y)': 'rgba(171, 99, 250, 1)',  # Purple
+            'Ultra Long (20Y-30Y)': 'rgba(239, 85, 59, 1)', # Red
+        }
+        
+        # Group by Date and Binned Bucket (Ensuring chronological sort)
+        bb_binned = buybacks_df.groupby(['record_date', 'binned_bucket']).agg({
+            'total_offered': 'sum',
+            'total_accepted': 'sum'
+        }).reset_index().sort_values('record_date')
+
+        fig_bb = go.Figure()
+        
+        # Iterate through binned buckets
+        order = ['Short Term (<2Y)', 'Short-Mid (2Y-5Y)', 'Intermediate (5Y-10Y)', 'Long Term (10Y-20Y)', 'Ultra Long (20Y-30Y)', 'Other']
+        unique_buckets = sorted(bb_binned['binned_bucket'].unique(), key=lambda x: order.index(x) if x in order else 99)
+        
+        for bucket in unique_buckets:
+            bucket_df = bb_binned[bb_binned['binned_bucket'] == bucket]
+            base_rgb = bucket_colors.get(bucket, 'rgba(128, 128, 128, 1)')
+            
+            # 1. Intent Bars (Offered) - Full Width Ghost
+            ghost_color = base_rgb.replace(', 1)', ', 0.15)')
+            fig_bb.add_trace(go.Bar(
+                x=bucket_df['record_date'], 
+                y=bucket_df['total_offered']/1e9, 
+                name=f'{bucket} (Offered)', 
+                marker_color=ghost_color,
+                legendgroup=bucket,
+                showlegend=True,
+                hovertemplate="<b>%{x}</b><br>%{name}<br>Offered: $%{y:.1f}B<extra></extra>",
+                width=0.6 # Constant width on categorical axis
+            ))
+            
+            # 2. Execution Bars (Accepted) - Slightly narrower solid overlay
+            solid_color = base_rgb.replace(', 1)', ', 0.8)')
+            fig_bb.add_trace(go.Bar(
+                x=bucket_df['record_date'], 
+                y=bucket_df['total_accepted']/1e9, 
+                name=f'{bucket} (Accepted)', 
+                marker_color=solid_color,
+                legendgroup=bucket,
+                showlegend=False,
+                hovertemplate="<b>%{x}</b><br>%{name}<br>Accepted: $%{y:.1f}B<extra></extra>",
+                width=0.4 # Narrower to create 'nested' effect
+            ))
+
+        # 3. Efficiency Line (Acceptance Ratio) - Must be sorted for correct pathing
+        bb_daily = buybacks_df.groupby('record_date').agg({'total_offered':'sum', 'total_accepted':'sum'}).reset_index().sort_values('record_date')
+        bb_daily['ratio'] = (bb_daily['total_accepted'] / bb_daily['total_offered']) * 100
+        
+        fig_bb.add_trace(go.Scatter(
+            x=bb_daily['record_date'], 
+            y=bb_daily['ratio'], 
+            name='Avg Acceptance Ratio %',
+            line=dict(color='#FFA15A', width=3, dash='dot'),
+            yaxis='y2',
+            hovertemplate="Avg Acceptance: %{y:.1f}%<extra></extra>"
+        ))
+        
+        fig_bb.update_layout(
+            barmode='overlay', # Draw Reality over Intent
+            height=500,
+            xaxis=dict(
+                type='category', 
+                categoryorder='array',
+                categoryarray=sorted_dates,
+                tickangle=-45,
+                title="Operation Date"
+            ),
+            yaxis=dict(title="Liquidity Volume ($B)", gridcolor='rgba(128,128,128,0.1)'),
+            yaxis2=dict(
+                title="Acceptance Efficiency (%)",
+                overlaying='y',
+                side='right',
+                range=[0, 105],
+                showgrid=False
+            ),
+            legend=dict(
+                orientation="v", 
+                x=1.15, 
+                y=0.5, 
+                xanchor="left", 
+                yanchor="middle",
+                bgcolor='rgba(0,0,0,0)',
+                bordercolor='rgba(128,128,128,0.2)',
+                borderwidth=1
+            ),
+            hovermode="x unified",
+            margin=dict(t=30, b=80, r=180) # Increased right margin for legend
+        )
+        st.plotly_chart(fig_bb, use_container_width=True)
+    else:
+        st.info("No buyback data available.")
+        
+    st.divider()
+        
+    st.subheader("Quadrant 3: Auction Health")
+    st.caption("Auction Demand (BTC) & Pricing (Tail) - Last 6 Months")
+    with st.expander("💡 How to read this?"):
+        st.markdown("""
+        **What it means:** This measures how 'hungry' investors are for US debt.
+        - **Bid-to-Cover (BTC):** A ratio of demand. 2.5x means for every $1 offered, investors bid $2.5. A falling ratio indicates weak demand.
+        - **Allotment Breakdown:** Who is actually buying the debt?
+            - **Indirect (Green):** Primarily Foreign Central Banks and International Investors. A high share is a sign of global confidence.
+            - **Direct (Blue):** Domestic Institutional Investors (Hedge Funds, Pensions).
+            - **Primary Dealers (Red):** The 'Buyers of Last Resort'. A high share here means 'real' investors stayed away, forcing Market Makers to soak up the supply.
+            - **SOMA (Purple):** The Federal Reserve's purchases (Quantitative Easing).
+        """)
+    
+    # Categorize maturities for cleaner visualization
+    bills_list = ['4-Week', '8-Week', '13-Week', '17-Week', '26-Week', '52-Week', '6-Week']
+    coupons_list = ['2-Year', '3-Year', '5-Year', '7-Year', '10-Year', '20-Year', '30-Year']
+    
+    # --- New Aggregate Investor Profile Section ---
+    st.markdown("**Global Investor Profile: Liquidity vs. Duration**")
+    
+    # Prepare Aggregates with robust categorization
+    def categorize_auction(row):
+        stype = str(row['security_type']).lower()
+        if 'week' in stype or 'day' in stype or 'month' in stype and 'year' not in stype:
+            return "Liquidity (Bills)"
+        return "Duration (Notes/Bonds)"
+    
+    auc_summary = auctions_df.copy()
+    auc_summary['Category'] = auc_summary.apply(categorize_auction, axis=1)
+    
+    allot_cols = ['indirect_bidder_accepted', 'direct_bidder_accepted', 'primary_dealer_accepted', 'soma_accepted', 'noncomp_accepted']
+    col_labels = {
+        'indirect_bidder_accepted': 'Indirect (Foreign)',
+        'direct_bidder_accepted': 'Direct (Hedge Funds)',
+        'primary_dealer_accepted': 'Primary Dealers',
+        'soma_accepted': 'SOMA (Fed)',
+        'noncomp_accepted': 'Non-comp (Retail)'
+    }
+    
+    profile_data = []
+    for cat_name in auc_summary['Category'].unique():
+        df = auc_summary[auc_summary['Category'] == cat_name]
+        if not df.empty:
+            total = df['total_accepted'].sum()
+            if total > 0:
+                for col in allot_cols:
+                    share = (df[col].sum() / total) * 100
+                    profile_data.append({
+                        "Category": cat_name,
+                        "Investor Class": col_labels[col],
+                        "Share (%)": round(share, 1)
+                    })
+    
+    if profile_data:
+        profile_df = pd.DataFrame(profile_data)
+        fig_profile = px.bar(profile_df, x="Category", y="Share (%)", color="Investor Class",
+                             barmode="group", text="Share (%)",
+                             color_discrete_map={
+                                 'Indirect (Foreign)': '#00CC96',
+                                 'Direct (Hedge Funds)': '#636EFA',
+                                 'Primary Dealers': '#EF553B',
+                                 'SOMA (Fed)': '#AB63FA',
+                                 'Non-comp (Retail)': '#FFA15A'
+                             })
+        fig_profile.update_layout(height=400, yaxis_title="Market Share (%)", legend=dict(orientation="h", y=-0.2))
+        fig_profile.update_traces(textposition='outside')
+        st.plotly_chart(fig_profile, use_container_width=True)
+    
+    with st.expander("🏛️ Guide to Auction Participants & The Fed's Role"):
+        st.markdown("""
+        ### Who is buying US Debt?
+        | Investor Class | Typical Participants | Why it matters |
+        | :--- | :--- | :--- |
+        | **Indirect (Foreign)** | **Foreign Central Banks** (e.g. Bank of Japan, PBoC), IMF, International Authorities. | Measures global trust in the US Dollar and reliability as a reserve currency. |
+        | **Direct (Domestic)** | **Hedge Funds**, Pension Funds, Insurance Companies, Mutual Funds. | Represents 'real' domestic investment demand. |
+        | **Primary Dealers** | **Wall Street Banks** (e.g. JPMorgan, Goldman Sachs). | The **Buyers of Last Resort**. They are *obligated* to bid. High PD share signal weak 'real' demand. |
+        | **SOMA (Fed)** | **The Federal Reserve's** portfolio. | The Fed typically 'rolls over' maturing debt. High SOMA share usually implies QE (Money Printing). |
+        | **Non-comp (Retail)** | **Individual Investors**, small institutions. | Shows grass-roots retail demand. |
+
+        ---
+        ### 🧐 FAQ: Does the Fed 'Print Money' to buy debt?
+        **Q: Where does the Fed's money come from?**
+        Essentially, yes. When the Fed (SOMA) buys Treasuries, it does not use existing tax revenue. It creates **electronic reserves** (new money) out of thin air and credits it to the commercial banks' accounts. 
+        
+        **Q: Isn't the Fed the Buyer of Last Resort?**
+        Technically, **No**. In a Treasury Auction, the **Primary Dealers** are the regulatory buyers of last resort. They are *required* to bid for their pro-rata share to ensure no auction ever 'fails'. The Fed typically buys in the **Secondary Market** (after the auction) or rolls over maturing debt to avoid a sudden liquidity drain. If the Fed has to step in directly to fund the government (QE), it's a sign of significant market stress.
+        """)
+
+    st.write("---")
+    
+    tab1, tab2 = st.tabs(["Duration Risk (Notes/Bonds)", "Liquidity Backbone (Bills)"])
+    
+    with tab1:
+        # Notes and Bonds are more sensitive to duration risk
+        # Notes and Bonds are more sensitive to duration risk
+        coupon_auctions = auctions_df[auctions_df['security_type'].isin(coupons_list) | auctions_df['security_type'].str.contains('Year')].copy()
+        if not coupon_auctions.empty:
+            fig3a = go.Figure()
+            # BTC Line
+            for sec in coupon_auctions['security_type'].unique():
+                df_sec = coupon_auctions[coupon_auctions['security_type'] == sec]
+                fig3a.add_trace(go.Scatter(x=df_sec['record_date'], y=df_sec['bid_to_cover'], 
+                                         name=f"{sec} BTC", mode='lines+markers', connectgaps=True))
+            
+            fig3a.add_hline(y=2.3, line_dash="dash", line_color="red", annotation_text="Weak Demand")
+            fig3a.update_layout(title="Bid-to-Cover (BTC) - Notes & Bonds", height=400, 
+                              yaxis_title="BTC Ratio", hovermode="x unified")
+            st.plotly_chart(fig3a, use_container_width=True)
+            
+            st.write("---")
+            st.markdown("**Allotment Breakdown (Notes & Bonds)**")
+            # Allotment Stacked Bar
+            fig3a_allot = go.Figure()
+            # Wong color-blind friendly palette
+            cols = {
+                'indirect_bidder_accepted': ('Indirect (Foreign CBs)', '#009E73'), # Bluish Green
+                'direct_bidder_accepted': ('Direct (Hedge Funds/Dom)', '#0072B2'), # Blue
+                'primary_dealer_accepted': ('Primary Dealers', '#D55E00'),        # Vermillion
+                'soma_accepted': ('SOMA (Fed)', '#CC79A7'),                       # Reddish Purple
+                'noncomp_accepted': ('Non-comp (Retail)', '#E69F00')              # Orange
+            }
+            for col, (name, color) in cols.items():
+                fig3a_allot.add_trace(go.Bar(
+                    x=coupon_auctions['record_date'] + " " + coupon_auctions['security_type'],
+                    y=coupon_auctions[col] / 1e9,
+                    name=name, marker_color=color
+                ))
+            
+            # Add Total Volume Line on Secondary Axis
+            coupon_auctions['total_accepted'] = coupon_auctions[[c for c in cols.keys()]].sum(axis=1)
+            fig3a_allot.add_trace(go.Scatter(
+                x=coupon_auctions['record_date'] + " " + coupon_auctions['security_type'],
+                y=coupon_auctions['total_accepted'] / 1e9,
+                name='Total Volume ($B)',
+                line=dict(color='white', width=2, dash='dot'),
+                yaxis='y2',
+                hovertemplate="Total Volume: $%{y:.1f}B<extra></extra>"
+            ))
+            
+            fig3a_allot.update_layout(
+                barmode='stack', 
+                barnorm='percent', # 100% stacked
+                height=450, 
+                title="Allotment Share by Investor Class (%)",
+                yaxis=dict(title="Allotment Share (%)", ticksuffix="%"),
+                yaxis2=dict(
+                    title="Total Volume ($B)",
+                    overlaying='y',
+                    side='right',
+                    showgrid=False,
+                    rangemode='tozero'
+                ),
+                legend=dict(
+                    orientation="v", 
+                    x=1.1, 
+                    y=0.5, 
+                    xanchor="left", 
+                    yanchor="middle",
+                    bgcolor='rgba(0,0,0,0)'
+                ),
+                hovermode="x unified",
+                margin=dict(r=150)
+            )
+            st.plotly_chart(fig3a_allot, use_container_width=True)
+        else:
+            st.info("No Note/Bond auction data found for this period.")
+
+    with tab2:
+        # Bills are high frequency
+        # Bills are high frequency
+        bill_auctions = auctions_df[auctions_df['security_type'].isin(bills_list) | auctions_df['security_type'].str.contains('Week')].copy()
+        if not bill_auctions.empty:
+            fig3b = go.Figure()
+            for sec in bill_auctions['security_type'].unique():
+                df_sec = bill_auctions[bill_auctions['security_type'] == sec]
+                fig3b.add_trace(go.Scatter(x=df_sec['record_date'], y=df_sec['bid_to_cover'], 
+                                         name=f"{sec} BTC", mode='lines+markers', connectgaps=True))
+            
+            fig3b.update_layout(title="Bid-to-Cover (BTC) - Treasury Bills", height=400, 
+                              yaxis_title="BTC Ratio", hovermode="x unified")
+            st.plotly_chart(fig3b, use_container_width=True)
+
+            st.write("---")
+            st.markdown("**Allotment Breakdown (Recent Bills)**")
+            # For bills, let's just show top 15 most recent to avoid clutter
+            bill_recent = bill_auctions.head(20).copy()
+            fig3b_allot = go.Figure()
+            for col, (name, color) in cols.items():
+                fig3b_allot.add_trace(go.Bar(
+                    x=bill_recent['record_date'] + " " + bill_recent['security_type'],
+                    y=bill_recent[col] / 1e9,
+                    name=name, marker_color=color
+                ))
+            # Add Total Volume Line on Secondary Axis
+            bill_recent['total_accepted'] = bill_recent[[c for c in cols.keys()]].sum(axis=1)
+            fig3b_allot.add_trace(go.Scatter(
+                x=bill_recent['record_date'] + " " + bill_recent['security_type'],
+                y=bill_recent['total_accepted'] / 1e9,
+                name='Total Volume ($B)',
+                line=dict(color='white', width=2, dash='dot'),
+                yaxis='y2',
+                hovertemplate="Total Volume: $%{y:.1f}B<extra></extra>"
+            ))
+
+            fig3b_allot.update_layout(
+                barmode='stack', 
+                barnorm='percent', # 100% stacked
+                height=450, 
+                title="Allotment Share by Investor Class (%)",
+                yaxis=dict(title="Allotment Share (%)", ticksuffix="%"),
+                yaxis2=dict(
+                    title="Total Volume ($B)",
+                    overlaying='y',
+                    side='right',
+                    showgrid=False,
+                    rangemode='tozero'
+                ),
+                legend=dict(
+                    orientation="v", 
+                    x=1.1, 
+                    y=0.5, 
+                    xanchor="left", 
+                    yanchor="middle",
+                    bgcolor='rgba(0,0,0,0)'
+                ),
+                hovermode="x unified",
+                margin=dict(r=150)
+            )
+            st.plotly_chart(fig3b_allot, use_container_width=True)
+        else:
+            st.info("No Bill auction data found for this period.")
+
+    st.divider()
+        
+    st.subheader("Quadrant 4: Risk Premium")
+    st.caption("US 5Y CDS Spreads vs. 10Y Treasury Yield")
+    with st.expander("💡 How to read this?"):
+        st.markdown("""
+        **What it means:** This compares the cost of 'Insurance' against default vs general interest rates.
+        - **CDS Spread (Purple):** The cost to insure US debt. Higher = Higher perceived risk.
+        - **10Y Yield (Green):** The standard interest rate.
+        - **The Stress Signal:** If the Purple line spikes while the Green line stays flat, markets are worried specifically about **US Credit Quality**, not just inflation or growth.
+        """)
+    fig4 = go.Figure()
+    fig4.add_trace(go.Scatter(x=stress_df['record_date'], y=stress_df['cds_spread'], name='US 5Y CDS (bps)', line=dict(color='#AB63FA', width=3), mode='lines+markers', connectgaps=True))
+    fig4.add_trace(go.Scatter(x=stress_df['record_date'], y=stress_df['yield_10y'], name='10Y Yield (%)', line=dict(color='#00CC96', width=2), yaxis='y2', connectgaps=True))
+    fig4.update_layout(
+        yaxis=dict(title="CDS (bps)"),
+        yaxis2=dict(title="10Y Yield (%)", overlaying='y', side='right'),
+        legend=dict(orientation="h", x=0.5, xanchor="center"),
+        hovermode="x unified", height=400
+    )
+    st.plotly_chart(fig4, use_container_width=True)
 
 
 # --- MAIN DASHBOARD VIEW (Conditional) ---
@@ -701,8 +1428,8 @@ if dashboard_mode == "Main Dashboard":
 
     # Filter for CME instruments
     if not scores_df.empty:
-        # Desired order: SILVER, GOLD, CRUDE_OIL, COPPER, NQ, ES
-        cme_instruments = ['SILVER', 'GOLD', 'CRUDE_OIL', 'COPPER', 'NQ', 'ES']
+        # Desired order: SILVER, GOLD, CRUDE_OIL, NATURAL_GAS, COPPER, NQ, ES
+        cme_instruments = ['SILVER', 'GOLD', 'CRUDE_OIL', 'NATURAL_GAS', 'COPPER', 'NQ', 'ES']
         scores_df = scores_df[scores_df['instrument'].isin(cme_instruments)]
         scores_df = scores_df[scores_df['exchange'] == 'CME']
 
@@ -1173,7 +1900,7 @@ if dashboard_mode == "Main Dashboard":
         col_v8_1, col_v8_2 = st.columns([1, 3])
     
         with col_v8_1:
-            v8_asset = st.radio("Select Commodity Asset:", ('GOLD', 'COPPER', 'CRUDE_OIL'), index=0)
+            v8_asset = st.radio("Select Commodity Asset:", ('GOLD', 'COPPER', 'CRUDE_OIL', 'NATURAL_GAS'), index=0)
         
             # Domain Commentary Dictionary
             commentary = {
@@ -1194,6 +1921,12 @@ if dashboard_mode == "Main Dashboard":
                     'desc': "**The Inflation Engine:** Oil drives costs.",
                     'bull': "Oil rising with USD/JPY is the 'Pain Trade' (Imported Inflation for Japan).",
                     'bear': "Oil falling while USD/JPY rises is Deflationary/Recessionary signal."
+                },
+                'NATURAL_GAS': {
+                    'title': "Natural Gas (The Volatility Widow)",
+                    'desc': "**Industrial Energy:** Primary heating and industrial source. Highly distinct from Oil due to transport (LNG).",
+                    'bull': "NG Rising + USD/JPY Rising = **Industrial Reflation**. Japan (major LNG importer) pays more, weakening Yen further.",
+                    'bear': "NG Falling + USD/JPY Rising = **Deflationary Help**. Lower energy costs provide relief to Yen carry trade."
                 }
             }
         
@@ -1241,6 +1974,13 @@ if dashboard_mode == "Main Dashboard":
                         sig_color, sig_title, sig_msg = "green", "🛢️ IMPORTED INFLATION (HEDGE)", "Oil rising with Dollar. Nightmare for importers (Japan)."
                     elif cur_corr < -0.5:
                          sig_color, sig_title, sig_msg = "red", "📉 DEFLATION SIGNAL (SHORT OIL)", "Strong Dollar crushing Energy demand."
+            
+                # NATURAL GAS
+                elif v8_asset == 'NATURAL_GAS':
+                    if cur_corr > 0.5:
+                        sig_color, sig_title, sig_msg = "green", "🔥 INDUSTRIAL REFLATION (LONG NG)", "NG Rising with Dollar. High demand + strong currency = Overheating."
+                    elif cur_corr < -0.5:
+                        sig_color, sig_title, sig_msg = "red", "📉 ENERGY GLUT (SHORT NG)", "Strong Dollar crushing global NG demand."
             
                 # Display Signal
                 if sig_color == 'green': st.success(f"**{sig_title}**\n\n{sig_msg}")
@@ -1386,6 +2126,10 @@ if dashboard_mode == "Main Dashboard":
 
     else:
         st.warning("Please run data backfill.")
+
+elif dashboard_mode == "US Treasury Monitor":
+    render_treasury_monitor()
+
 elif dashboard_mode == "Precious Metal ETF Monitor":
     st.sidebar.markdown("---")
     st.sidebar.title("🛡️ PM ETF Monitor")
