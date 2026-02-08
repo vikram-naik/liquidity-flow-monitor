@@ -549,119 +549,216 @@ def check_credit_stress():
     }
 
 
+def calculate_projected_coupons(schedule_df, avg_rates_df, start_date, end_date):
+    """
+    Estimates future coupon payments based on the maturity schedule and historical rates.
+    Logic: Notes/Bonds/TIPS pay semi-annually. We project backwards from maturity.
+    """
+    if schedule_df.empty or avg_rates_df.empty:
+        return pd.DataFrame()
+
+    coupon_bearing = ['Notes', 'Bonds', 'Inflation-Protected Securities']
+    mapping = {
+        'Notes': 'Treasury Notes',
+        'Bonds': 'Treasury Bonds',
+        'Inflation-Protected Securities': 'Treasury Inflation-Protected Securities (TIPS)'
+    }
+
+    projections = []
+    
+    # Pre-fetch latest rates as fallback if vintage rate is missing
+    latest_avg_rates = avg_rates_df.sort_values('record_date').groupby('security_desc')['avg_interest_rate_amt'].last().to_dict()
+
+    # Filter for coupon-paying instruments
+    debt_df = schedule_df.copy()
+    if 'security_class' in debt_df.columns:
+        debt_df['security_class'] = debt_df['security_class'].astype(str).str.strip()
+    
+    debt_df = debt_df[debt_df['security_class'].isin(coupon_bearing)].copy()
+    debt_df['maturity_date'] = pd.to_datetime(debt_df['maturity_date'])
+    debt_df['issue_date'] = pd.to_datetime(debt_df['issue_date'])
+    
+    # Strip avg_rates_df too
+    avg_rates_df = avg_rates_df.copy()
+    if 'security_desc' in avg_rates_df.columns:
+        avg_rates_df['security_desc'] = avg_rates_df['security_desc'].astype(str).str.strip()
+
+    for _, row in debt_df.iterrows():
+        s_class = row['security_class']
+        target_desc = mapping[s_class]
+        i_month = row['issue_date'].strftime('%Y-%m')
+        
+        # Find historical rate
+        rate_row = avg_rates_df[
+            (avg_rates_df['security_desc'] == target_desc) & 
+            (avg_rates_df['record_date'].str.startswith(i_month))
+        ]
+        
+        rate = None
+        if not rate_row.empty:
+            rate = rate_row.iloc[0]['avg_interest_rate_amt']
+        else:
+            # Fallback to latest known average for that class
+            rate = latest_avg_rates.get(target_desc)
+            
+        if rate is not None:
+            # Calculate semi-annual payment dates backwards from maturity
+            # We only care about payments in the [start_date, end_date] window
+            curr_pay = row['maturity_date']
+            while curr_pay >= start_date:
+                if curr_pay <= end_date:
+                    # Half of annual rate
+                    coupon_amt = (row['amount_mil'] * 1e6) * (rate / 100) / 2
+                    projections.append({
+                        'date': curr_pay,
+                        'coupon_amt': coupon_amt
+                    })
+                # Go back 6 months
+                # Simple approximation: 182 days
+                curr_pay = curr_pay - pd.Timedelta(days=182)
+
+    if not projections:
+        return pd.DataFrame(columns=['date', 'coupon_amt'])
+        
+    proj_df = pd.DataFrame(projections)
+    # Aggregate by date
+    return proj_df.groupby('date')['coupon_amt'].sum().reset_index()
+
 def calculate_refinancing_shift(schedule_df, issuance_plan_df, avg_rates_df, latest_yields):
     """
     Calculates the 'Shift' in debt profile for specific event dates.
-    Matches Maturing Debt (Out) vs. New Issuance (In).
-    Aggregates by WEEK to avoid double-counting maturities against multiple auctions in the same week.
+    Matches Maturing Debt (Out) vs. New Issuance (In), now including Coupons.
+    Aggregates by ACTUAL DATE for precise daily view.
+    
+    Returns DataFrame with `issuance_breakdown` and `maturity_breakdown` columns 
+    containing lists of dicts for drill-down display.
     """
     shift_data = []
 
-    # 1. Prepare Dataframes with Week Number
-    issuance_plan_df['date'] = pd.to_datetime(issuance_plan_df['auction_date'])
-    issuance_plan_df['year_week'] = issuance_plan_df['date'].dt.strftime('%Y-W%U')
+    # 1. Prepare Dataframes - normalize dates only (no weekly bucketing)
+    issuance_plan_df = issuance_plan_df.copy()
+    issuance_plan_df['date'] = pd.to_datetime(issuance_plan_df['auction_date']).dt.normalize()
     
-    schedule_df['date'] = pd.to_datetime(schedule_df['maturity_date'])
-    schedule_df['year_week'] = schedule_df['date'].dt.strftime('%Y-W%U')
+    schedule_df = schedule_df.copy()
+    schedule_df['date'] = pd.to_datetime(schedule_df['maturity_date']).dt.normalize()
 
-    # 2. Iterate by Unique Week in UNION of Issuance and Schedule (The Master Driver)
-    issuance_weeks = set(issuance_plan_df['year_week'].unique())
-    maturity_weeks = set(schedule_df['year_week'].unique())
-    all_weeks = sorted(list(issuance_weeks.union(maturity_weeks)))
+    # 2. Project Coupons
+    today = pd.Timestamp.now().normalize()
+    start_viz = today - pd.Timedelta(days=60)
+    end_viz = today + pd.Timedelta(days=270) # 9 month window match
+    coupon_df = calculate_projected_coupons(schedule_df, avg_rates_df, start_viz, end_viz)
+    
+    if not coupon_df.empty:
+        coupon_df['date'] = pd.to_datetime(coupon_df['date']).dt.normalize()
+
+    # 3. Iterate by Unique DATE in UNION of Issuance, Schedule and Coupons
+    issuance_dates = set(issuance_plan_df['date'].unique())
+    maturity_dates = set(schedule_df['date'].unique())
+    coupon_dates = set(coupon_df['date'].unique()) if not coupon_df.empty else set()
+    all_dates = sorted(list(issuance_dates.union(maturity_dates).union(coupon_dates)))
     
     today_date = pd.Timestamp.now().normalize()
     
-    for week in all_weeks:
-        # A. Aggregate Issuance for this Week
-        week_issuance = issuance_plan_df[issuance_plan_df['year_week'] == week]
+    for event_date in all_dates:
+        # A. Aggregate Issuance for this Date + Build Breakdown
+        date_issuance = issuance_plan_df[issuance_plan_df['date'] == event_date]
         issuing_amt = 0
         issuing_rate = 0
         term_label = "TBD"
         is_estimate = False
+        issuance_breakdown = []
         
-        if not week_issuance.empty:
-            issuing_amt = week_issuance['offering_amount'].sum()
+        if not date_issuance.empty:
+            issuing_amt = date_issuance['offering_amount'].sum()
             # Determine dominant term for rate estimation
-            dominant_issue = week_issuance.loc[week_issuance['offering_amount'].idxmax()]
+            dominant_issue = date_issuance.loc[date_issuance['offering_amount'].idxmax()]
             term = dominant_issue['security_term']
             term_label = term
             
-            # Rate determination:
-            # If auction date is in the past, we ideally want the ACTUAL high yield.
-            # But recent_yields might not have it if it's not in the 'latest_yields' snapshot 
-            # (which is just the LAST yield for each type).
-            # For simplicity/speed: Use latest_yields as proxy for recent past and near future.
-            # Mark as 'Est.' if date > today.
-            
+            # Rate determination
             if 'Bill' in term: term_key = 'Bill'
             elif 'Note' in term: term_key = 'Note'
             else: term_key = 'Bond'
             issuing_rate = latest_yields.get(term_key, 4.0)
             
             # Check if this is a future estimate
-            week_date = week_issuance['date'].min()
-            if week_date > today_date:
+            if event_date > today_date:
                 is_estimate = True
-        else:
-            # No issuance planned yet for this maturity week
-            # We still need a date for the x-axis. 
-            # Find the Tuesday of this week based on the year_week string?
-            # Easier: take the date from the maturity record
-            week_maturities = schedule_df[schedule_df['year_week'] == week]
-            if not week_maturities.empty:
-                week_date = week_maturities['date'].min()
-            else:
-                continue # Should not happen given union
-                
-        # B. Aggregate Maturities for same Week
-        week_maturities = schedule_df[schedule_df['year_week'] == week]
-        maturing_amt = week_maturities['amount_mil'].sum() * 1_000_000
-        
-        if maturing_amt > 0 or issuing_amt > 0:
-            # Weighted Avg Rate for Maturities (only if amount > 0)
-            maturing_rate = 0
-            if maturing_amt > 0:
-                weighted_rate_sum = 0
-                for _, mat_row in week_maturities.iterrows():
-                    s_class = mat_row['security_class']
-                    i_date = mat_row['issue_date']
-                    
-                    # Default logic from before...
-                    hist_rate = 2.0 
-                    mapping = {
-                        'Treasury Bills': 'Treasury Bills',
-                        'Treasury Notes': 'Treasury Notes', 
-                        'Treasury Bonds': 'Treasury Bonds',
-                        'Treasury Inflation-Protected Securities (TIPS)': 'Treasury Inflation-Protected Securities (TIPS)',
-                        'Treasury Floating Rate Notes (FRN)': 'Treasury Floating Rate Notes (FRN)'
-                    }
-                    if s_class in mapping and i_date:
-                        target = mapping[s_class]
-                        prefix = str(i_date)[:7]
-                        rate_row = avg_rates_df[
-                            (avg_rates_df['security_desc'] == target) & 
-                            (avg_rates_df['record_date'].str.startswith(prefix))
-                        ]
-                        if not rate_row.empty:
-                            hist_rate = rate_row.iloc[0]['avg_interest_rate_amt']
-                    
-                    weighted_rate_sum += (mat_row['amount_mil'] * 1_000_000) * hist_rate
-                
-                maturing_rate = weighted_rate_sum / maturing_amt
             
-            # Use the determined week_date
-            display_date = week_date
+            # Build issuance breakdown for drill-down
+            for _, iss_row in date_issuance.iterrows():
+                iss_term = iss_row['security_term']
+                if 'Bill' in iss_term: iss_rate = latest_yields.get('Bill', 4.0)
+                elif 'Note' in iss_term: iss_rate = latest_yields.get('Note', 4.0)
+                else: iss_rate = latest_yields.get('Bond', 4.0)
+                issuance_breakdown.append({
+                    'term': iss_term,
+                    'amount': iss_row['offering_amount'],
+                    'rate': iss_rate
+                })
+                
+        # B. Aggregate Maturities for same Date + Build Breakdown
+        date_maturities = schedule_df[schedule_df['date'] == event_date]
+        maturing_amt = date_maturities['amount_mil'].sum() * 1_000_000
+        maturity_breakdown = []
+        
+        maturing_rate = 0
+        if maturing_amt > 0:
+            weighted_rate_sum = 0
+            for _, mat_row in date_maturities.iterrows():
+                s_class = mat_row['security_class']
+                i_date = mat_row['issue_date']
+                
+                hist_rate = 2.0 
+                mapping = {
+                    'Notes': 'Treasury Notes', 
+                    'Bonds': 'Treasury Bonds',
+                    'Inflation-Protected Securities': 'Treasury Inflation-Protected Securities (TIPS)',
+                    'Floating Rate Notes': 'Treasury Floating Rate Notes (FRN)',
+                    'Bills Maturity Value': 'Treasury Bills'
+                }
+                if s_class in mapping and i_date:
+                    target = mapping[s_class]
+                    prefix = str(i_date)[:7]
+                    rate_row = avg_rates_df[
+                        (avg_rates_df['security_desc'] == target) & 
+                        (avg_rates_df['record_date'].str.startswith(prefix))
+                    ]
+                    if not rate_row.empty:
+                        hist_rate = rate_row.iloc[0]['avg_interest_rate_amt']
+                
+                weighted_rate_sum += (mat_row['amount_mil'] * 1_000_000) * hist_rate
+                
+                # Build maturity breakdown for drill-down
+                maturity_breakdown.append({
+                    'type': s_class,
+                    'amount': mat_row['amount_mil'] * 1_000_000,
+                    'rate': hist_rate,
+                    'issue_date': str(i_date)[:10] if i_date else 'N/A'
+                })
+            
+            maturing_rate = weighted_rate_sum / maturing_amt
+            
+        # C. Aggregate Coupons for this date
+        coupon_amt = 0
+        if not coupon_df.empty:
+            date_coupons = coupon_df[coupon_df['date'] == event_date]
+            coupon_amt = date_coupons['coupon_amt'].sum()
 
+        if maturing_amt > 0 or issuing_amt > 0 or coupon_amt > 0:
             shift_data.append({
-                'date': display_date,
+                'date': event_date,
                 'maturing_amt': maturing_amt,
                 'maturing_rate': maturing_rate,
+                'coupon_amt': float(coupon_amt),
                 'issuing_amt': issuing_amt,
                 'issuing_rate': issuing_rate,
-                'net_principal': issuing_amt - maturing_amt,
+                'net_principal': float(issuing_amt - maturing_amt - coupon_amt),
                 'rate_delta': issuing_rate - maturing_rate if issuing_amt > 0 and maturing_amt > 0 else 0,
                 'term_label': term_label,
-                'is_estimate': is_estimate
+                'is_estimate': is_estimate,
+                'issuance_breakdown': issuance_breakdown,
+                'maturity_breakdown': maturity_breakdown
             })
             
     return pd.DataFrame(shift_data)

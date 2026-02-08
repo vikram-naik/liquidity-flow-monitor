@@ -6,3 +6,5 @@ data
 .creds.txt
 .last_sync.txt
 cron_debug.log
+debug_shift.py
+report_coupons_2026.py

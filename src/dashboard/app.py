@@ -47,7 +47,7 @@ def get_liquidity_valve_data(): return _get_liquidity_valve_data()
 @st.cache_data(ttl=900)
 def get_usdjpy_vs_asset_data(asset='SILVER'): return _get_usdjpy_vs_asset_data(asset)
 
-@st.cache_data(ttl=900)
+@st.cache_resource(ttl=900)
 def get_treasury_fiscal_stress_data(): return _get_treasury_fiscal_stress_data()
 
 from src.agents.silver_agent import fetch_nse_price as _fetch_nse_price, fetch_nippon_inav as _fetch_nippon_inav
@@ -724,44 +724,66 @@ def render_treasury_monitor():
     # --- New Chart: The Interest Rate Surcharge ---
     # --- Chart 1: The Refinancing Shift (Daily Delta) ---
     if refi_shift_df is not None and not refi_shift_df.empty:
-        st.subheader("Chart 1: The Refinancing Shift (Daily Event)")
-        st.caption("Visualizing the 'Trade-Up' Event: Old Cheap Debt vs. New Expensive Debt")
-        
+        if 'coupon_amt' not in refi_shift_df.columns:
+            refi_shift_df['coupon_amt'] = 0
+
         # Filter for recent/upcoming events AND meaningful volume
         shift_viz = refi_shift_df[
             (pd.to_datetime(refi_shift_df['date']) >= start_viz) & 
             (pd.to_datetime(refi_shift_df['date']) <= end_viz) &
-            ((refi_shift_df['maturing_amt'] > 1e6) | (refi_shift_df['issuing_amt'] > 1e6))
+            ((refi_shift_df['maturing_amt'] > 1e6) | (refi_shift_df['issuing_amt'] > 1e6) | (refi_shift_df['coupon_amt'] > 1e6))
         ].copy()
         
         if not shift_viz.empty:
-            fig_shift = go.Figure()
+            # Ensure date is properly normalized and deduplicate by date
+            shift_viz['date'] = pd.to_datetime(shift_viz['date']).dt.normalize()
+            shift_viz = shift_viz.drop_duplicates(subset=['date'], keep='first').sort_values('date').reset_index(drop=True)
             
-            # Maturing Debt (Red)
+            # Create formatted date labels for categorical x-axis (include year for uniqueness)
+            shift_viz['date_label'] = pd.to_datetime(shift_viz['date']).dt.strftime("%-d-%b'%y")
+            
+            fig_shift = go.Figure()
+
+            # 1. Coupon Payments (Purple) - Part of the Outflow stack
+            c_vals = shift_viz['coupon_amt'].values / 1e9
+            m_vals = shift_viz['maturing_amt'].fillna(0).values / 1e9
+            
             fig_shift.add_trace(go.Bar(
-                x=shift_viz['date'],
-                y=shift_viz['maturing_amt'] / 1e9,
-                name='Maturing Debt (Out)',
+                x=shift_viz['date_label'],
+                y=c_vals,
+                name='Coupon Payments (Out)',
+                marker_color='#AB63FA',
+                offsetgroup=0,
+                hovertemplate="<b>Coupon Interest:</b> $%{y:.2f}B<extra></extra>"
+            ))
+            
+            # 2. Maturing Debt (Red) - Stacked ON TOP of coupons (offsetgroup=0)
+            fig_shift.add_trace(go.Bar(
+                x=shift_viz['date_label'],
+                y=m_vals,
+                name='Maturing Principal (Out)',
                 marker_color='#EF553B',
-                text=shift_viz['maturing_rate'].apply(lambda x: f"@{x:.2f}%"),
+                offsetgroup=0,
+                base=c_vals,
+                text=shift_viz['maturing_rate'].apply(lambda x: f"@{x:.2f}%" if x > 0 else ""),
                 textposition='auto',
+                textfont=dict(color='white', size=11),
                 customdata=shift_viz[['maturing_rate', 'term_label']],
                 hovertemplate="<b>Maturing:</b> $%{y:.1f}B<br><b>Rate:</b> %{customdata[0]:.2f}%<br><b>Term:</b> %{customdata[1]}<extra></extra>"
             ))
             
-            # New Issuance (Green)
-            # Add logic for 'Est.' label
+            # 3. New Issuance (Green) - Comparative Inflow (offsetgroup=1)
             def format_issuance_label(row):
                 label = f"@{row['issuing_rate']:.2f}%"
-                if row.get('is_estimate', False):
-                    label = f"Est. {label}"
+                if row.get('is_estimate', False): label = f"Est. {label}"
                 return label
 
             fig_shift.add_trace(go.Bar(
-                x=shift_viz['date'],
+                x=shift_viz['date_label'],
                 y=shift_viz['issuing_amt'] / 1e9,
                 name='New Issuance (In)',
                 marker_color='#00CC96',
+                offsetgroup=1,
                 text=shift_viz.apply(format_issuance_label, axis=1),
                 textposition='auto',
                 customdata=shift_viz[['issuing_rate', 'term_label']],
@@ -769,15 +791,98 @@ def render_treasury_monitor():
             ))
             
             fig_shift.update_layout(
-                title="The Shift: Maturing Volume vs. New Volume",
+                title="The Shift: Maturing Volume vs. New Volume (Click a bar for details)",
                 yaxis_title="Volume ($B)",
                 barmode='group',
                 hovermode="x unified",
                 height=400,
-                legend=dict(orientation="h", y=1.02, x=0.5, xanchor="center")
+                legend=dict(orientation="h", y=1.02, x=0.5, xanchor="center"),
+                xaxis=dict(
+                    type='category',
+                    tickangle=-45
+                )
             )
-            st.plotly_chart(fig_shift, use_container_width=True)
             
+            # Enable selection mode - store shift_viz in session state for lookup
+            st.session_state.shift_viz_data = shift_viz.to_dict('records')
+            
+            # Render chart with selection enabled
+            selection = st.plotly_chart(
+                fig_shift, 
+                use_container_width=True, 
+                on_select="rerun",
+                selection_mode=['points', 'box'],
+                key="refi_shift_chart"
+            )
+            
+            # --- Drill-down Table ---
+            # Handle selection event from the chart
+            if selection and hasattr(selection, 'selection') and selection.selection and selection.selection.points:
+                point = selection.selection.points[0]
+                selected_x = point.get('x')  # This is the x-axis value (date label string)
+                
+                # Find the matching row in shift_viz by comparing date labels
+                matched_row = None
+                if selected_x:
+                    # Direct match on date_label (categorical x-axis)
+                    for row in st.session_state.shift_viz_data:
+                        if row.get('date_label') == selected_x:
+                            matched_row = row
+                            break
+                    
+                    # Fallback: try parsing and matching
+                    if not matched_row:
+                        try:
+                            for row in st.session_state.shift_viz_data:
+                                row_date = pd.to_datetime(row['date']).normalize()
+                                row_label = row_date.strftime("%-d-%b'%y")
+                                if row_label == selected_x:
+                                    matched_row = row
+                                    break
+                        except Exception:
+                            pass
+
+                
+                if matched_row:
+                    st.subheader(f"📊 Breakdown: {pd.to_datetime(matched_row['date']).strftime('%b %d, %Y')}")
+                    
+                    col_iss, col_mat = st.columns(2)
+                    
+                    with col_iss:
+                        st.markdown("**🟢 New Issuance (In)**")
+                        issuance_breakdown = matched_row.get('issuance_breakdown', [])
+                        if issuance_breakdown:
+                            iss_df = pd.DataFrame(issuance_breakdown)
+                            iss_df['amount'] = iss_df['amount'] / 1e9
+                            iss_df = iss_df.rename(columns={
+                                'term': 'Security Term',
+                                'amount': 'Amount ($B)',
+                                'rate': 'Est. Rate (%)'
+                            })
+                            st.dataframe(iss_df, use_container_width=True, hide_index=True)
+                            st.caption(f"**Total: ${matched_row['issuing_amt'] / 1e9:.1f}B**")
+                        else:
+                            st.info("No issuance on this date.")
+                    
+                    with col_mat:
+                        st.markdown("**🔴 Maturing Principal (Out)**")
+                        maturity_breakdown = matched_row.get('maturity_breakdown', [])
+                        if maturity_breakdown:
+                            mat_df = pd.DataFrame(maturity_breakdown)
+                            mat_df['amount'] = mat_df['amount'] / 1e9
+                            mat_df = mat_df.rename(columns={
+                                'type': 'Security Type',
+                                'amount': 'Amount ($B)',
+                                'rate': 'Original Rate (%)',
+                                'issue_date': 'Issue Date'
+                            })
+                            st.dataframe(mat_df, use_container_width=True, hide_index=True)
+                            st.caption(f"**Total: ${matched_row['maturing_amt'] / 1e9:.1f}B**")
+                        else:
+                            st.info("No maturities on this date.")
+            
+
+
     # --- Chart 2: The Cumulative Debt Spiral ---
     if debt_spiral_df is not None and not debt_spiral_df.empty:
         st.subheader("Chart 2: The Debt Spiral (Cumulative Impact)")
@@ -821,7 +926,6 @@ def render_treasury_monitor():
             )
             st.plotly_chart(fig_spiral, use_container_width=True)
             st.divider()
-
     fig2 = go.Figure()
     
     # Process Historical Redemptions (Past Wall)
@@ -900,6 +1004,8 @@ def render_treasury_monitor():
             name='Planned Issuance (Ghost Wall) $B',
             marker_color='rgba(150, 150, 150, 0.4)',
             offsetgroup=1, 
+            text=merged_weekly['delta_bps'].apply(lambda x: f"{'+' if x > 0 else ''}{x/100:.2f}%" if x != 0 else ""),
+            textposition='auto',
             hovertemplate="<b>Week Starting:</b> %{x|%b %d, %Y}<br><b>Planned Issuance:</b> $%{y:.1f}B<extra></extra>"
         ))
 
