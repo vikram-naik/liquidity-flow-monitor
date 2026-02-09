@@ -14,25 +14,33 @@ def fetch_nse_price(symbol="GOLDBEES"):
     Fetches the live price from NSE (via Yahoo Finance or fallback).
     Returns dict: {'price': float, 'timestamp': datetime}
     """
-    try:
-        ticker = yf.Ticker(f"{symbol}.NS")
-        price = ticker.fast_info.get('lastPrice')
-        
-        if not price:
-            # Fallback to history
-            hist = ticker.history(period="1d")
-            if not hist.empty:
-                price = hist['Close'].iloc[-1]
-        
-        if price:
-            return {
-                'price': round(float(price), 2),
-                'timestamp': datetime.now()
-            }
+    # Retry mechanism for robustness
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            ticker = yf.Ticker(f"{symbol}.NS")
+            price = ticker.fast_info.get('lastPrice')
             
-    except Exception as e:
-        print(f"[gold_agent] NSE Fetch Error: {e}")
-    
+            # 1. Validation: Ignore 0.0 or None
+            if price is None or price <= 0:
+                print(f"[gold_agent] Invalid price {price} on attempt {attempt+1}. Retrying...")
+                # Fallback to history only if fast_info fails
+                hist = ticker.history(period="1d")
+                if not hist.empty:
+                    last_close = hist['Close'].iloc[-1]
+                    if last_close > 0:
+                        price = last_close
+            
+            # 2. Final Check
+            if price and price > 0:
+                return {
+                    'price': round(float(price), 2),
+                    'timestamp': datetime.now()
+                }
+        except Exception as e:
+            print(f"[gold_agent] NSE Fetch Error (Attempt {attempt+1}): {e}")
+            
+    # If all retries fail
     return None
 
 def fetch_nippon_inav(scheme_name="Nippon India ETF Gold BeES"):

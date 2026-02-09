@@ -30,23 +30,31 @@ def fetch_nse_price(symbol: str = "SILVERBEES") -> dict | None:
     session = requests.Session()
     session.headers.update(get_browser_headers())
     
-    try:
-        # First request to get cookies
-        session.get(base_url, timeout=5)
-        
-        # Actual API call
-        r = session.get(api_url, timeout=10)
-        if r.status_code == 200:
-            data = r.json()
-            price_info = data.get('priceInfo', {})
-            return {
-                'price': float(price_info.get('lastPrice', 0)),
-                'change': float(price_info.get('change', 0)),
-                'pchange': float(price_info.get('pChange', 0)),
-                'timestamp': datetime.now().isoformat()
-            }
-    except Exception as e:
-        print(f"[silver_agent] NSE fetch error: {e}")
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            # First request to get cookies
+            session.get(base_url, timeout=5)
+            
+            # Actual API call
+            r = session.get(api_url, timeout=10)
+            if r.status_code == 200:
+                data = r.json()
+                price_info = data.get('priceInfo', {})
+                price = float(price_info.get('lastPrice', 0))
+                
+                # Validate: Ignore 0.0 price
+                if price > 0:
+                    return {
+                        'price': price,
+                        'change': float(price_info.get('change', 0)),
+                        'pchange': float(price_info.get('pChange', 0)),
+                        'timestamp': datetime.now().isoformat()
+                    }
+                else:
+                    print(f"[silver_agent] Invalid price {price} on attempt {attempt+1}. Retrying...")
+        except Exception as e:
+            print(f"[silver_agent] NSE fetch error (Attempt {attempt+1}): {e}")
     
     return None
 

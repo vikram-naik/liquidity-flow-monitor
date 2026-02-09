@@ -9,6 +9,8 @@ from fredapi import Fred
 import yfinance as yf
 import sys
 import os
+import requests
+from bs4 import BeautifulSoup
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
 
@@ -447,6 +449,143 @@ def fetch_jpy10y_mof_fallback():
     finally:
         conn.close()
 
+def fetch_jp10y_cnbc_realtime():
+    """
+    Fetch real-time JP10Y yield from CNBC.
+    This acts as an intraday update source before the official MOF close data is available.
+    """
+    print("\\n--- JP10Y Real-time (CNBC) ---")
+    
+    url = "https://www.cnbc.com/quotes/JP10Y"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+    }
+
+    try:
+        response = requests.get(url, headers=headers, timeout=10)
+        if response.status_code != 200:
+            print(f"  ⚠️ CNBC fetch failed: {response.status_code}")
+            return
+
+        soup = BeautifulSoup(response.content, 'html.parser')
+        
+        # CNBC class for last price
+        el = soup.select_one(".QuoteStrip-lastPrice")
+        if not el:
+            print("  ⚠️ Could not find price element on CNBC")
+            return
+
+        rate_str = el.text.strip().replace('%', '')
+        try:
+            rate_val = float(rate_str)
+        except ValueError:
+             print(f"  ⚠️ Could not parse rate: {rate_str}")
+             return
+        
+        if rate_val <= 0:
+            print(f"  ⚠️ Invalid rate: {rate_val}")
+            return
+
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        today = date.today()
+        today_str = today.strftime('%Y-%m-%d')
+        
+        # Check if we already have a value for today (from MOF)
+        # MOF data is usually stored with 23:59:59 timestamp
+        existing = cursor.execute("""
+            SELECT rate, timestamp FROM yield_logs 
+            WHERE currency='JPY' AND tenor='10Y' AND DATE(timestamp) = ?
+        """, (today_str,)).fetchone()
+        
+        if existing:
+             print(f"  ℹ️  Updating today's value with real-time: {rate_val}% (Old: {existing[0]}%)")
+        else:
+            print(f"  ✓ Fetched real-time JP10Y: {rate_val}%")
+            
+        # Insert/Update for today
+        # We use today's date with 23:59:59 to align with daily schema, 
+        # so that when MOF runs, it overwrites THIS record.
+        cursor.execute("""
+            INSERT OR REPLACE INTO yield_logs (timestamp, currency, tenor, rate)
+            VALUES (?, ?, ?, ?)
+        """, (f"{today_str} 23:59:59", 'JPY', '10Y', rate_val))
+        
+        conn.commit()
+        conn.close()
+
+    except Exception as e:
+        print(f"  ⚠️ CNBC Error: {e}")
+
+
+def fetch_us10y_cnbc_realtime():
+    """
+    Fetch real-time US10Y yield from CNBC.
+    This acts as an intraday update source before the official FRED close data is available.
+    """
+    print("\\n--- US10Y Real-time (CNBC) ---")
+    
+    url = "https://www.cnbc.com/quotes/US10Y"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+    }
+
+    try:
+        response = requests.get(url, headers=headers, timeout=10)
+        if response.status_code != 200:
+            print(f"  ⚠️ CNBC fetch failed: {response.status_code}")
+            return
+
+        soup = BeautifulSoup(response.content, 'html.parser')
+        
+        # CNBC class for last price
+        el = soup.select_one(".QuoteStrip-lastPrice")
+        if not el:
+            print("  ⚠️ Could not find price element on CNBC")
+            return
+
+        rate_str = el.text.strip().replace('%', '')
+        try:
+            rate_val = float(rate_str)
+        except ValueError:
+             print(f"  ⚠️ Could not parse rate: {rate_str}")
+             return
+        
+        if rate_val <= 0:
+            print(f"  ⚠️ Invalid rate: {rate_val}")
+            return
+
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        today = date.today()
+        today_str = today.strftime('%Y-%m-%d')
+        
+        # Check if we already have a value for today (from FRED)
+        # FRED data is usually stored with 23:59:59 timestamp
+        existing = cursor.execute("""
+            SELECT rate, timestamp FROM yield_logs 
+            WHERE currency='USD' AND tenor='10Y' AND DATE(timestamp) = ?
+        """, (today_str,)).fetchone()
+        
+        if existing:
+             print(f"  ℹ️  Updating today's value with real-time: {rate_val}% (Old: {existing[0]}%)")
+        else:
+            print(f"  ✓ Fetched real-time US10Y: {rate_val}%")
+            
+        # Insert/Update for today
+        cursor.execute("""
+            INSERT OR REPLACE INTO yield_logs (timestamp, currency, tenor, rate)
+            VALUES (?, ?, ?, ?)
+        """, (f"{today_str} 23:59:59", 'USD', '10Y', rate_val))
+        
+        conn.commit()
+        conn.close()
+
+    except Exception as e:
+        print(f"  ⚠️ CNBC Error: {e}")
+
 def fetch_ice_dxy_yfinance_fallback(start_date: date):
     """
     Fetch ICE DXY (DX-Y.NYB) from Yahoo Finance.
@@ -521,6 +660,13 @@ def run_flow_sync():
     fetch_us10y_yfinance_fallback(start_date)
     fetch_rrp_nyfed_fallback(start_date)
     fetch_jpy10y_mof_fallback()
+    
+    # Intraday update for JPY 10Y (CNBC)
+    fetch_jp10y_cnbc_realtime()
+
+    # Intraday update for US 10Y (CNBC)
+    fetch_us10y_cnbc_realtime()
+
     fetch_ice_dxy_yfinance_fallback(start_date)
 
 if __name__ == "__main__":

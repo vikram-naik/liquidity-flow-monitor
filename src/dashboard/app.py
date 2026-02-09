@@ -443,8 +443,44 @@ def render_silver_monitor():
             fig2.add_hline(y=0, line_dash="solid", line_color="gray")
             fig2.update_layout(yaxis=dict(title="Margin (₹)", zeroline=True), margin=dict(t=40, l=0, r=0, b=0), hovermode="x unified", height=350)
             st.plotly_chart(fig2, width="stretch", key="silver_spread_chart")
-    elif market_open:
-        st.info("Collecting data... Chart will appear after 2+ data points.")
+    
+    # --- 3-Month Historical Trend Chart ---
+    st.divider()
+    st.subheader("📅 3-Month Historical Trend (Daily)")
+    
+    three_months_ago = (datetime.now(ist) - timedelta(days=90)).strftime('%Y-%m-%d')
+    conn = get_db_connection()
+    hist_3m_df = pd.read_sql(f"""
+        SELECT * FROM silver_intraday_log 
+        WHERE DATE(timestamp) >= '{three_months_ago}'
+        ORDER BY timestamp ASC
+    """, conn)
+    conn.close()
+    
+    if not hist_3m_df.empty and len(hist_3m_df) > 1:
+        hist_3m_df['timestamp'] = pd.to_datetime(hist_3m_df['timestamp'])
+        hist_3m_df = hist_3m_df.set_index('timestamp')
+        
+        # Resample to daily (mean)
+        daily_df = hist_3m_df.resample('D').mean().dropna(how='all').reset_index()
+        daily_df['Parity_INR'] = (daily_df['spot_usd'] * daily_df['usdinr']) / 31.1035
+        
+        fig3m = go.Figure()
+        fig3m.add_trace(go.Scatter(x=daily_df['timestamp'], y=daily_df['price_nse'], name='LTP (NSE)', line=dict(color='#636EFA', width=2)))
+        fig3m.add_trace(go.Scatter(x=daily_df['timestamp'], y=daily_df['inav_nippon'], name='iNAV (Nippon)', line=dict(color='#00CC96', width=2, dash='dash')))
+        if daily_df['Parity_INR'].notna().any():
+            fig3m.add_trace(go.Scatter(x=daily_df['timestamp'], y=daily_df['Parity_INR'], name='Global Parity', line=dict(color='#FFA500', width=2, dash='dot')))
+        
+        fig3m.update_layout(
+            yaxis=dict(title="Price (₹)"),
+            legend=dict(orientation="h", y=1.1, x=0.5, xanchor="center"),
+            margin=dict(t=40, l=0, r=0, b=0),
+            hovermode="x unified",
+            height=400
+        )
+        st.plotly_chart(fig3m, use_container_width=True, key="silver_3m_chart")
+    else:
+        st.info("Not enough historical data for 3-month chart.")
 
 def render_gold_monitor():
     """Renders the GOLDBEES Tracking Error Monitor with auto-refresh and DB persistence."""
@@ -610,9 +646,45 @@ def render_gold_monitor():
             fig2.add_hline(y=0, line_dash="solid", line_color="gray")
             fig2.update_layout(yaxis=dict(title="Margin (₹)", zeroline=True), margin=dict(t=40, l=0, r=0, b=0), hovermode="x unified", height=350)
             st.plotly_chart(fig2, width="stretch", key="gold_spread_chart")
-    elif market_open:
-        st.info("Collecting data... Chart will appear after 2+ data points.")
-    # When market is closed and no chart data, just don't show anything extra
+    
+    # --- 3-Month Historical Trend Chart ---
+    st.divider()
+    st.subheader("📅 3-Month Historical Trend (Daily)")
+    
+    three_months_ago = (datetime.now(ist) - timedelta(days=90)).strftime('%Y-%m-%d')
+    conn = get_db_connection()
+    hist_3m_df = pd.read_sql(f"""
+        SELECT * FROM gold_intraday_log 
+        WHERE DATE(timestamp) >= '{three_months_ago}'
+        ORDER BY timestamp ASC
+    """, conn)
+    conn.close()
+    
+    if not hist_3m_df.empty and len(hist_3m_df) > 1:
+        hist_3m_df['timestamp'] = pd.to_datetime(hist_3m_df['timestamp'])
+        hist_3m_df = hist_3m_df.set_index('timestamp')
+        
+        # Resample to daily (mean)
+        daily_df = hist_3m_df.resample('D').mean().dropna(how='all').reset_index()
+        # Gold parity: (spot_usd * usdinr / 31.1035) * 0.01 for GoldBees unit
+        daily_df['Parity_INR'] = (daily_df['spot_usd'] * daily_df['usdinr'] / 31.1035) * 0.01
+        
+        fig3m = go.Figure()
+        fig3m.add_trace(go.Scatter(x=daily_df['timestamp'], y=daily_df['price_nse'], name='LTP (NSE)', line=dict(color='#FFD700', width=2)))
+        fig3m.add_trace(go.Scatter(x=daily_df['timestamp'], y=daily_df['inav_nippon'], name='iNAV (Nippon)', line=dict(color='#00CC96', width=2, dash='dash')))
+        if daily_df['Parity_INR'].notna().any():
+            fig3m.add_trace(go.Scatter(x=daily_df['timestamp'], y=daily_df['Parity_INR'], name='Global Parity', line=dict(color='#FFA500', width=2, dash='dot')))
+        
+        fig3m.update_layout(
+            yaxis=dict(title="Price (₹)"),
+            legend=dict(orientation="h", y=1.1, x=0.5, xanchor="center"),
+            margin=dict(t=40, l=0, r=0, b=0),
+            hovermode="x unified",
+            height=400
+        )
+        st.plotly_chart(fig3m, use_container_width=True, key="gold_3m_chart")
+    else:
+        st.info("Not enough historical data for 3-month chart.")
 def render_treasury_monitor():
     """Renders the 4-Quadrant US Treasury Fiscal Stress Monitor."""
     st.title("🏛️ US Treasury Fiscal Stress Monitor")

@@ -9,6 +9,12 @@ import sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
 from src.database import get_db_connection
 
+# Selenium Imports
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
+import time
+
 class TreasuryAgent:
     """
     Agent to poll US Treasury Fiscal Data API and fetch CDS spreads.
@@ -288,35 +294,65 @@ class TreasuryAgent:
 
     def scrape_cds_spread(self):
         """
-        Scrape US 5Y CDS Spread.
+        Scrape US 5Y CDS Spread using Selenium (Headless Chrome).
+        Required because WorldGovernmentBonds loads data dynamically.
         """
-        import requests
-        from bs4 import BeautifulSoup
-        import re
-        
         url = "https://www.worldgovernmentbonds.com/sovereign-cds/"
+        print(f"Scraping CDS from {url}...")
+        
+        options = Options()
+        options.add_argument("--headless")
+        options.add_argument("--no-sandbox")
+        options.add_argument("--disable-dev-shm-usage")
+        options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+        
+        driver = None
         try:
-            headers = {'User-Agent': 'Mozilla/5.0'}
-            res = requests.get(url, headers=headers, timeout=15)
-            if res.status_code == 200:
-                soup = BeautifulSoup(res.text, 'html.parser')
-                rows = soup.find_all('tr')
-                for row in rows:
-                    row_text = row.get_text()
-                    if 'United States' in row_text:
-                        links = row.find_all('a', href=re.compile(r'united-states'))
-                        for link in links:
-                            nums = re.findall(r"[-+]?\d*\.\d+|\d+", link.get_text())
-                            if nums: return float(nums[0])
+            driver = webdriver.Chrome(options=options)
+            driver.get(url)
+            time.sleep(5) # Wait for JS to render table
             
-            # Fallback to hardcoded current value (verified Feb 2026) 
-            # if scraping is blocked or fails. 
-            # In a production environment, this should be replaced by a paid API.
-            print("CDS Scraping failed or blocked. Using fallback value.")
-            return 30.12 
+            # Find row containing "United States"
+            # The table rows usually have <td class="cal-1">United States</td>
+            try:
+                # Proper XPath to find the row with United States and get the CDS value (column 2)
+                # Structure: <tr> <td>...United States...</td> <td ...> <b> VALUE </b> </td> ... </tr>
+                # Using a broad search for the text "United States" in a valid row
+                
+                # Option 1: Find link with text United States, then traverse
+                us_elem = driver.find_element(By.XPATH, "//a[contains(text(), 'United States')]")
+                
+                # The value is usually in the next few columns. 
+                # Let's grab the parent row text and parse it to be safe/robust against column shifts
+                row = us_elem.find_element(By.XPATH, "./ancestor::tr")
+                row_text = row.text
+                
+                # Row text example: "United States 30.12 +0.5% ..."
+                # Extract first float
+                import re
+                nums = re.findall(r"[-+]?\d*\.\d+|\d+", row_text)
+                
+                # Usually the first number in the row text *might* be something else if there's a rank?
+                # But typically it's Name -> CDS Value.
+                # Let's try to be more precise if possible, but regexing the row is decent fallback.
+                
+                if nums:
+                    val = float(nums[0])
+                    print(f"  ✅ Found CDS Spread: {val}")
+                    return val
+                
+            except Exception as e:
+                print(f"  ⚠️ Could not locate US row in Selenium: {e}")
+                
         except Exception as e:
-            print(f"CDS Scraping failed: {e}")
-            return 30.12
+             print(f"CDS Scraping failed: {e}")
+        finally:
+            if driver:
+                driver.quit()
+        
+        # Fallback
+        print("CDS Scraping failed or blocked. Using fallback value.")
+        return 30.12
 
     def save_auctions(self, auctions):
         conn = get_db_connection()
