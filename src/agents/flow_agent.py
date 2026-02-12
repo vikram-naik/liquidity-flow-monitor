@@ -38,20 +38,18 @@ def fetch_fred_data(start_date: date = None):
     fred = Fred(api_key=FRED_API_KEY)
     
     if start_date is None:
-        last_date = get_last_yield_date()
-        start_date = last_date + timedelta(days=1)
+        # Look back 7 days to cover weekends/holidays and ensure we catch missing series
+        # even if some daily data (like real-time updates) already exists for today.
+        start_date = date.today() - timedelta(days=7)
         
     today = date.today()
     
-    if start_date > today:
-        print("✓ Already up to date!")
-        return
-        
     print(f"=== FRED Flow Agent ===")
     print(f"Base date: {BASE_DATE}")
-    print(f"Last download: {get_last_yield_date()}")
     print(f"Fetching: {start_date} to {today}")
     print()
+        
+
     
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()

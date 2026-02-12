@@ -84,6 +84,7 @@ class TreasuryAgent:
                 'direct_bidder_accepted': self._to_float(item['direct_bidder_accepted']),
                 'indirect_bidder_accepted': self._to_float(item['indirect_bidder_accepted']),
                 'soma_accepted': self._to_float(item['soma_accepted']),
+                'soma_maturing': self._to_float(item.get('soma_holdings')),
                 'noncomp_accepted': self._to_float(item['noncomp_accepted']),
                 'is_new_issuance': is_new,
                 'tail_bps': (self._to_float(item['high_yield']) - self._to_float(item['median_yield'])) * 100 if item.get('high_yield') and item.get('median_yield') else 0.0
@@ -134,12 +135,23 @@ class TreasuryAgent:
         except:
             pass
 
+        today_str = datetime.now().strftime('%Y-%m-%d')
+        
         for d_str, tga_val in sorted(tga_dict.items()):
             liquidity_records.append({
                 'record_date': d_str,
                 'tga_balance': tga_val,
                 'rrp_balance': rrp_dict.get(d_str), # Get from yield_logs if exists
-                'cds_spread': cds_spread if d_str == max(tga_dict.keys()) else None
+                'cds_spread': cds_spread if d_str == today_str else None
+            })
+        
+        # If today has no TGA data yet, still save the CDS spread with today's date
+        if today_str not in tga_dict and cds_spread is not None:
+            liquidity_records.append({
+                'record_date': today_str,
+                'tga_balance': None,
+                'rrp_balance': rrp_dict.get(today_str),
+                'cds_spread': cds_spread
             })
         
         return liquidity_records
@@ -361,11 +373,11 @@ class TreasuryAgent:
             cursor.execute("""
                 INSERT OR REPLACE INTO treasury_auctions 
                 (record_date, auction_date, security_type, maturity, bid_to_cover, tail_bps, high_yield, offering_amount, total_accepted,
-                 primary_dealer_accepted, direct_bidder_accepted, indirect_bidder_accepted, soma_accepted, noncomp_accepted, is_new_issuance)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 primary_dealer_accepted, direct_bidder_accepted, indirect_bidder_accepted, soma_accepted, soma_maturing, noncomp_accepted, is_new_issuance)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (a['record_date'], a['auction_date'], a['security_type'], a['security_class'], a['bid_to_cover'], a['tail_bps'], a['high_yield'], 
                  a['offering_amount'], a['total_accepted'], a.get('primary_dealer_accepted'), a.get('direct_bidder_accepted'),
-                 a.get('indirect_bidder_accepted'), a.get('soma_accepted'), a.get('noncomp_accepted'), a.get('is_new_issuance')))
+                 a.get('indirect_bidder_accepted'), a.get('soma_accepted'), a.get('soma_maturing'), a.get('noncomp_accepted'), a.get('is_new_issuance')))
         conn.commit()
         conn.close()
 

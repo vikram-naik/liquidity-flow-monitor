@@ -22,7 +22,8 @@ from src.analytics import (
     calculate_fair_value, 
     get_liquidity_valve_data as _get_liquidity_valve_data, 
     get_usdjpy_vs_asset_data as _get_usdjpy_vs_asset_data,
-    get_treasury_fiscal_stress_data as _get_treasury_fiscal_stress_data
+    get_treasury_fiscal_stress_data as _get_treasury_fiscal_stress_data,
+    get_usdjpy_vs_dxy_data as _get_usdjpy_vs_dxy_data
 )
 
 # --- CACHED ANALYTICS WRAPPERS (15 min TTL) ---
@@ -47,8 +48,11 @@ def get_liquidity_valve_data(): return _get_liquidity_valve_data()
 @st.cache_data(ttl=900)
 def get_usdjpy_vs_asset_data(asset='SILVER'): return _get_usdjpy_vs_asset_data(asset)
 
-@st.cache_resource(ttl=900)
+@st.cache_data(ttl=900)
 def get_treasury_fiscal_stress_data(): return _get_treasury_fiscal_stress_data()
+
+@st.cache_data(ttl=900)
+def get_usdjpy_vs_dxy_data(): return _get_usdjpy_vs_dxy_data()
 
 from src.agents.silver_agent import fetch_nse_price as _fetch_nse_price, fetch_nippon_inav as _fetch_nippon_inav
 from src.database import init_db
@@ -264,8 +268,10 @@ if st.runtime.exists():
     # We use the countdown to decide when to 'heavy' reload data
     if dashboard_mode == "Main Dashboard":
         needs_refresh = get_refresh_countdown(900, "main") # 15 mins
+    elif dashboard_mode == "US Treasury Monitor":
+        needs_refresh = get_refresh_countdown(3600, "treasury") # 1 hour
     else:
-        needs_refresh = get_refresh_countdown(60, "monitor") # 1 min
+        needs_refresh = get_refresh_countdown(60, "monitor") # 1 min (Precious Metal ETF)
 else:
     # Not running with Streamlit (e.g., bootloader mode)
     dashboard_mode = None
@@ -1144,7 +1150,24 @@ def render_treasury_monitor():
             'total_offered': 'sum', 
             'total_accepted': 'sum'
         }).reset_index().sort_values('record_date')
-        bb_daily['ratio'] = (bb_daily['total_accepted'] / bb_daily['total_offered']) * 100
+        
+        # Filter for pending operations (latest date with null/0 values)
+        today_date = datetime.now().strftime('%Y-%m-%d')
+        pending_mask = (buybacks_df['record_date'] == today_date) & (buybacks_df['total_offered'].isna() | (buybacks_df['total_offered'] == 0))
+        if pending_mask.any():
+            st.info(f"⏳ **Pending Operation:** Buyback results for **{today_date}** are not yet published by the Treasury. Data will appear once results are released.")
+        
+        # Filter chart data to rows with actual volume
+        buybacks_chart_df = buybacks_df.dropna(subset=['total_offered']).copy()
+        
+        if not buybacks_chart_df.empty:
+            bb_daily = buybacks_chart_df.groupby('record_date').agg({
+                'total_offered': 'sum', 
+                'total_accepted': 'sum'
+            }).reset_index().sort_values('record_date')
+            bb_daily['ratio'] = (bb_daily['total_accepted'] / bb_daily['total_offered'].replace(0, float('nan'))).fillna(0) * 100
+        else:
+            bb_daily = pd.DataFrame(columns=['record_date', 'total_offered', 'total_accepted', 'ratio'])
         
         fig_bb = go.Figure()
         
@@ -1158,7 +1181,7 @@ def render_treasury_monitor():
             if '20Y to 30Y' in b or '10Y to 30Y' in b: return 'Ultra Long (20Y-30Y)'
             return 'Other'
 
-        buybacks_df['binned_bucket'] = buybacks_df['maturity_bucket'].apply(bin_maturity)
+        buybacks_chart_df['binned_bucket'] = buybacks_chart_df['maturity_bucket'].apply(bin_maturity)
         
         # Color Map for Binned Durations
         bucket_colors = {
@@ -1170,7 +1193,7 @@ def render_treasury_monitor():
         }
         
         # Group by Date and Binned Bucket (Ensuring chronological sort)
-        bb_binned = buybacks_df.groupby(['record_date', 'binned_bucket']).agg({
+        bb_binned = buybacks_chart_df.groupby(['record_date', 'binned_bucket']).agg({
             'total_offered': 'sum',
             'total_accepted': 'sum'
         }).reset_index().sort_values('record_date')
@@ -1211,9 +1234,7 @@ def render_treasury_monitor():
                 width=0.4 # Narrower to create 'nested' effect
             ))
 
-        # 3. Efficiency Line (Acceptance Ratio) - Must be sorted for correct pathing
-        bb_daily = buybacks_df.groupby('record_date').agg({'total_offered':'sum', 'total_accepted':'sum'}).reset_index().sort_values('record_date')
-        bb_daily['ratio'] = (bb_daily['total_accepted'] / bb_daily['total_offered']) * 100
+        # 3. Efficiency Line (Acceptance Ratio) - Handled above in bb_daily
         
         fig_bb.add_trace(go.Scatter(
             x=bb_daily['record_date'], 
@@ -1255,7 +1276,10 @@ def render_treasury_monitor():
             hovermode="x unified",
             margin=dict(t=30, b=80, r=180) # Increased right margin for legend
         )
-        st.plotly_chart(fig_bb, use_container_width=True)
+        if not buybacks_chart_df.empty:
+            st.plotly_chart(fig_bb, use_container_width=True)
+        else:
+            st.write("*(Historical results will be displayed above when available)*")
     else:
         st.info("No buyback data available.")
         
@@ -1351,7 +1375,7 @@ def render_treasury_monitor():
 
     st.write("---")
     
-    tab1, tab2 = st.tabs(["Duration Risk (Notes/Bonds)", "Liquidity Backbone (Bills)"])
+    tab1, tab2, tab3 = st.tabs(["Duration Risk (Notes/Bonds)", "Liquidity Backbone (Bills)", "Fed Intervention (SOMA Net Flow)"])
     
     with tab1:
         # Notes and Bonds are more sensitive to duration risk
@@ -1382,23 +1406,28 @@ def render_treasury_monitor():
                 'soma_accepted': ('SOMA (Fed)', '#CC79A7'),                       # Reddish Purple
                 'noncomp_accepted': ('Non-comp (Retail)', '#E69F00')              # Orange
             }
-            for col, (name, color) in cols.items():
-                fig3a_allot.add_trace(go.Bar(
-                    x=coupon_auctions['record_date'] + " " + coupon_auctions['security_type'],
-                    y=coupon_auctions[col] / 1e9,
-                    name=name, marker_color=color
-                ))
-            
             # Add Total Volume Line on Secondary Axis
-            coupon_auctions['total_accepted'] = coupon_auctions[[c for c in cols.keys()]].sum(axis=1)
-            fig3a_allot.add_trace(go.Scatter(
-                x=coupon_auctions['record_date'] + " " + coupon_auctions['security_type'],
-                y=coupon_auctions['total_accepted'] / 1e9,
-                name='Total Volume ($B)',
-                line=dict(color='white', width=2, dash='dot'),
-                yaxis='y2',
-                hovertemplate="Total Volume: $%{y:.1f}B<extra></extra>"
-            ))
+            # Filter out pending auctions for the breakdown chart
+            coupon_auctions_breakdown = coupon_auctions[coupon_auctions['total_accepted'] > 0].copy()
+            
+            if not coupon_auctions_breakdown.empty:
+                for col, (name, color) in cols.items():
+                    fig3a_allot.add_trace(go.Bar(
+                        x=coupon_auctions_breakdown['record_date'] + " " + coupon_auctions_breakdown['security_type'],
+                        y=coupon_auctions_breakdown[col] / 1e9,
+                        name=name, marker_color=color
+                    ))
+                
+                # Total Volume Line
+                coupon_auctions_breakdown['total_calc'] = coupon_auctions_breakdown[[c for c in cols.keys()]].sum(axis=1)
+                fig3a_allot.add_trace(go.Scatter(
+                    x=coupon_auctions_breakdown['record_date'] + " " + coupon_auctions_breakdown['security_type'],
+                    y=coupon_auctions_breakdown['total_calc'] / 1e9,
+                    name='Total Volume ($B)',
+                    line=dict(color='white', width=2, dash='dot'),
+                    yaxis='y2',
+                    hovertemplate="Total Volume: $%{y:.1f}B<extra></extra>"
+                ))
             
             fig3a_allot.update_layout(
                 barmode='stack', 
@@ -1447,23 +1476,27 @@ def render_treasury_monitor():
             st.markdown("**Allotment Breakdown (Recent Bills)**")
             # For bills, let's just show top 15 most recent to avoid clutter
             bill_recent = bill_auctions.head(20).copy()
+            # Filter out pending for breakdown
+            bill_recent_breakdown = bill_recent[bill_recent['total_accepted'] > 0].copy()
+            
             fig3b_allot = go.Figure()
-            for col, (name, color) in cols.items():
-                fig3b_allot.add_trace(go.Bar(
-                    x=bill_recent['record_date'] + " " + bill_recent['security_type'],
-                    y=bill_recent[col] / 1e9,
-                    name=name, marker_color=color
+            if not bill_recent_breakdown.empty:
+                for col, (name, color) in cols.items():
+                    fig3b_allot.add_trace(go.Bar(
+                        x=bill_recent_breakdown['record_date'] + " " + bill_recent_breakdown['security_type'],
+                        y=bill_recent_breakdown[col] / 1e9,
+                        name=name, marker_color=color
+                    ))
+                # Add Total Volume Line on Secondary Axis
+                bill_recent_breakdown['total_calc'] = bill_recent_breakdown[[c for c in cols.keys()]].sum(axis=1)
+                fig3b_allot.add_trace(go.Scatter(
+                    x=bill_recent_breakdown['record_date'] + " " + bill_recent_breakdown['security_type'],
+                    y=bill_recent_breakdown['total_calc'] / 1e9,
+                    name='Total Volume ($B)',
+                    line=dict(color='white', width=2, dash='dot'),
+                    yaxis='y2',
+                    hovertemplate="Total Volume: $%{y:.1f}B<extra></extra>"
                 ))
-            # Add Total Volume Line on Secondary Axis
-            bill_recent['total_accepted'] = bill_recent[[c for c in cols.keys()]].sum(axis=1)
-            fig3b_allot.add_trace(go.Scatter(
-                x=bill_recent['record_date'] + " " + bill_recent['security_type'],
-                y=bill_recent['total_accepted'] / 1e9,
-                name='Total Volume ($B)',
-                line=dict(color='white', width=2, dash='dot'),
-                yaxis='y2',
-                hovertemplate="Total Volume: $%{y:.1f}B<extra></extra>"
-            ))
 
             fig3b_allot.update_layout(
                 barmode='stack', 
@@ -1492,6 +1525,90 @@ def render_treasury_monitor():
             st.plotly_chart(fig3b_allot, use_container_width=True)
         else:
             st.info("No Bill auction data found for this period.")
+
+    with tab3:
+        st.markdown("**SOMA Net Liquidity Flow**")
+        st.caption("Tracks the Federal Reserve's balance sheet mechanics via auction rollovers.")
+        
+        with st.expander("💡 How to read this?"):
+            st.markdown("""
+            **What it means:**
+            - **Net Flow (Bars):** The difference between what the Fed *bought* (Rollover) and what *matured* (Runoff).
+                - 🟢 **Green (> $0):** **Net Injection (QE-lite)**. The Fed bought *more* than it let expire.
+                - 🔴 **Red (< $0):** **Net Runoff (QT)**. The Fed let debt expire without replacing it, shrinking its balance sheet.
+            - **SOMA Accepted (Purple Line):** The total amount the Fed purchased at auction to roll over maturing debt.
+            """)
+        
+        # Prepare Data
+        soma_df = auctions_df.dropna(subset=['soma_accepted']).copy()
+        
+        if not soma_df.empty:
+            # Ensure we treat None as 0.0 using fillna
+            soma_df['soma_accepted'] = soma_df['soma_accepted'].fillna(0.0)
+            # Create column if it doesn't exist (handle legacy data)
+            if 'soma_maturing' not in soma_df.columns:
+                soma_df['soma_maturing'] = 0.0
+            soma_df['soma_maturing'] = soma_df['soma_maturing'].fillna(0.0)
+            
+            # Calculate Net Flow
+            soma_df['net_soma_flow'] = soma_df['soma_accepted'] - soma_df['soma_maturing']
+            
+            # Aggregate by Date (in case of multiple auctions per day)
+            soma_daily = soma_df.groupby('record_date').agg({
+                'net_soma_flow': 'sum',
+                'soma_accepted': 'sum',
+                'soma_maturing': 'sum'
+            }).reset_index().sort_values('record_date')
+            
+            # Color Logic
+            soma_daily['color'] = soma_daily['net_soma_flow'].apply(
+                lambda x: '#00CC96' if x > 0 else ('#EF553B' if x < 0 else 'gray')
+            )
+            
+            fig3c = go.Figure()
+            
+            # Net Flow Bars
+            fig3c.add_trace(go.Bar(
+                x=soma_daily['record_date'],
+                y=soma_daily['net_soma_flow'] / 1e9,
+                name='Net SOMA Flow ($B)',
+                marker_color=soma_daily['color'],
+                hovertemplate="<b>Date:</b> %{x}<br>Net Flow: $%{y:.2f}B<extra></extra>"
+            ))
+            
+            # Rollover (Accepted) Line
+            fig3c.add_trace(go.Scatter(
+                x=soma_daily['record_date'],
+                y=soma_daily['soma_accepted'] / 1e9,
+                name='Rollover Volume (Accepted)',
+                mode='lines',
+                line=dict(color='#AB63FA', width=2, dash='dot'),
+                hovertemplate="Rollover: $%{y:.2f}B<extra></extra>"
+            ))
+            
+            fig3c.update_layout(
+                title="Fed SOMA Net Liquidity Flow (Injection vs Runoff)",
+                yaxis=dict(title="Net Flow ($Billions)"),
+                hovermode="x unified",
+                height=450,
+                legend=dict(orientation="h", y=-0.2)
+            )
+            st.plotly_chart(fig3c, use_container_width=True)
+            
+            # Data Table for inspection
+            with st.expander("View SOMA Data Details"):
+                display_cols = ['record_date', 'soma_accepted', 'soma_maturing', 'net_soma_flow']
+                # Format for display
+                disp_df = soma_daily[display_cols].copy()
+                disp_df.iloc[:, 1:] = disp_df.iloc[:, 1:] / 1e9
+                disp_df.columns = ['Date', 'Accepted ($B)', 'Maturing ($B)', 'Net Flow ($B)']
+                st.dataframe(disp_df.style.format({
+                    'Accepted ($B)': '{:.2f}',
+                    'Maturing ($B)': '{:.2f}',
+                    'Net Flow ($B)': '{:.2f}'
+                }))
+        else:
+            st.info("No SOMA auction data available.")
 
     st.divider()
         
@@ -2207,6 +2324,146 @@ if dashboard_mode == "Main Dashboard":
             
             else:
                 st.warning(f"No data available for {v8_asset}")
+
+        # --- Visual 9: The Currency War (USD/JPY vs DXY) ---
+        st.divider()
+        st.subheader("Visual 9: The Currency War (USD/JPY vs DXY)")
+        st.caption("Comparing the Japanese Yen carry trade dynamics against Dollar Index strength. 30-day rolling correlation.")
+    
+        usdjpy_dxy_df = get_usdjpy_vs_dxy_data()
+    
+        if not usdjpy_dxy_df.empty and 'usdjpy' in usdjpy_dxy_df.columns and 'dxy' in usdjpy_dxy_df.columns:
+            # 1. Ensure Correlation Exists
+            if 'correlation' not in usdjpy_dxy_df.columns:
+                usdjpy_dxy_df['correlation'] = usdjpy_dxy_df['usdjpy'].rolling(30).corr(usdjpy_dxy_df['dxy'])
+            
+            current_corr_v9 = usdjpy_dxy_df['correlation'].iloc[-1] if not pd.isna(usdjpy_dxy_df['correlation'].iloc[-1]) else 0
+        
+            # 2. Calculate Slope (The Trend)
+            usdjpy_dxy_df['corr_slope'] = usdjpy_dxy_df['correlation'].diff(3)  # 3-day change
+            slope_v9 = usdjpy_dxy_df['corr_slope'].iloc[-1] if not pd.isna(usdjpy_dxy_df['corr_slope'].iloc[-1]) else 0
+        
+            # 3. Define Signal Logic
+            signal_color_v9 = "gray"
+            signal_msg_v9 = "NEUTRAL"
+            sub_msg_v9 = "No dominant regime detected."
+        
+            if current_corr_v9 > 0.6:
+                signal_color_v9 = "green"
+                signal_msg_v9 = "🔗 LOCKSTEP (Standard Dollar Strength)"
+                sub_msg_v9 = "USD/JPY and DXY moving together. Broad Dollar Strength = Yen Weakness."
+            elif current_corr_v9 < 0.2 and current_corr_v9 > -0.2:
+                if slope_v9 < -0.05:
+                    signal_color_v9 = "orange"
+                    signal_msg_v9 = "⚠️ DECOUPLING (Yen-Specific Event)"
+                    sub_msg_v9 = "Yen weakening/strengthening independently of Dollar. Watch for BOJ intervention or domestic factors."
+                else:
+                    signal_color_v9 = "blue"
+                    signal_msg_v9 = "🔀 DIVERGENCE (Mixed Signals)"
+                    sub_msg_v9 = "Currency pair and Dollar Index not correlated. No clear macro trend."
+            elif current_corr_v9 < -0.3:
+                signal_color_v9 = "red"
+                signal_msg_v9 = "🚨 INVERSE REGIME (Flight to Yen)"
+                sub_msg_v9 = "Yen strengthening WHILE Dollar is also strengthening. Flight to safety beyond USD."
+
+            # 4. Display Signal Banner
+            if signal_color_v9 == "green": st.success(f"**SIGNAL: {signal_msg_v9}**\n\n{sub_msg_v9}")
+            elif signal_color_v9 == "red": st.error(f"**SIGNAL: {signal_msg_v9}**\n\n{sub_msg_v9}")
+            elif signal_color_v9 == "blue": st.info(f"**SIGNAL: {signal_msg_v9}**\n\n{sub_msg_v9}")
+            elif signal_color_v9 == "orange": st.warning(f"**SIGNAL: {signal_msg_v9}**\n\n{sub_msg_v9}")
+            else: st.info(f"**SIGNAL: {signal_msg_v9}**\n\n{sub_msg_v9}")
+
+            # 5. Render Charts
+            holidays = get_dashboard_holidays()
+            
+            # Chart 9A: Main Dual-Axis (Full Width)
+            fig9 = go.Figure()
+            fig9.add_trace(go.Scatter(x=usdjpy_dxy_df['timestamp'], y=usdjpy_dxy_df['usdjpy'], name='USD/JPY', line=dict(color='orange', width=2), yaxis='y', connectgaps=True))
+            fig9.add_trace(go.Scatter(x=usdjpy_dxy_df['timestamp'], y=usdjpy_dxy_df['dxy'], name='DXY (ICE)', line=dict(color='#EF553B', width=2), yaxis='y2', connectgaps=True))
+            fig9.update_layout(
+                title="The Currency War: USD/JPY vs Dollar Index",
+                yaxis=dict(title="USD/JPY", title_font=dict(color='orange')),
+                yaxis2=dict(title="DXY", title_font=dict(color='#EF553B'), overlaying='y', side='right'),
+                legend=dict(orientation="h", x=0.5, xanchor="center"),
+                hovermode="x unified",
+                xaxis=dict(rangebreaks=[dict(bounds=["sat", "mon"]), dict(values=holidays)]),
+                height=400
+            )
+            st.plotly_chart(fig9, width="stretch", key="currency_war_main")
+        
+            # Metrics Row (Horizontal, above correlation chart)
+            st.markdown("**📊 30-Day Rolling Correlation Trend**")
+            m1_v9, m2_v9, m3_v9 = st.columns(3)
+            with m1_v9:
+                st.metric("Correlation", f"{current_corr_v9:.2f}")
+            with m2_v9:
+                # Dynamic Slope Interpretation
+                slope_color_v9 = "off"
+                slope_status_v9 = "FLAT"
+                if slope_v9 > 0.05:
+                    slope_status_v9 = "📈 STRENGTHENING"
+                    slope_color_v9 = "normal"
+                elif slope_v9 < -0.05:
+                    slope_status_v9 = "📉 WEAKENING"
+                    slope_color_v9 = "inverse"
+                else:
+                    slope_status_v9 = "➡️ STABLE"
+                    slope_color_v9 = "off"
+            
+                st.metric("Slope (3d)", f"{slope_v9:.3f}", delta=slope_status_v9, delta_color=slope_color_v9)
+            with m3_v9:
+                # Explicit Explanation
+                if slope_v9 < -0.05:
+                    st.error("⚠️ Link breaking down")
+                elif slope_v9 > 0.05:
+                    st.success("✅ Link strengthening")
+                else:
+                    st.info("⏸️ Stable relationship")
+        
+
+            # Chart 9B: Correlation (Full Width)
+            fig9b = go.Figure()
+            fig9b.add_trace(go.Scatter(x=usdjpy_dxy_df['timestamp'], y=usdjpy_dxy_df['correlation'], name='Correlation', line=dict(color='#636EFA', width=2), fill='tozeroy', fillcolor='rgba(99, 110, 250, 0.2)', connectgaps=True))
+            fig9b.add_hline(y=0.6, line_dash="dash", line_color="green", 
+                            annotation_text="Lockstep (+0.6)", annotation_position="top left")
+            fig9b.add_hline(y=0, line_dash="solid", line_color="grey")
+            fig9b.add_hline(y=-0.3, line_dash="dash", line_color="red", 
+                            annotation_text="Inverse (-0.3)", annotation_position="bottom left")
+            fig9b.update_layout(
+                yaxis=dict(title="Correlation", range=[-1, 1]),
+                xaxis=dict(rangebreaks=[dict(bounds=["sat", "mon"]), dict(values=holidays)]),
+                hovermode="x unified",
+                height=280,
+                margin=dict(t=20, r=50)
+            )
+            st.plotly_chart(fig9b, width="stretch", key="currency_war_corr")
+
+
+            # Interpretation Guide
+            with st.expander("ℹ️ How to Interpret The Currency War"):
+                st.markdown("""
+    This chart reveals the **relationship** between Yen Carry Trade dynamics (USD/JPY) and broad Dollar strength (DXY).
+
+    ### **Regime 1: Lockstep (Normal)**
+    * **Signal:** Correlation **> +0.6**
+    * **What it means:** **"The Dollar is King."**
+    * **Mechanism:** When the Dollar strengthens broadly (DXY Up), it also strengthens against the Yen (USD/JPY Up). This is standard behavior.
+    * **Action:** ✅ **Follow the Dollar.** Trade the Yen as a high-beta Dollar proxy.
+
+    ### **Regime 2: Divergence (Mixed)**
+    * **Signal:** Correlation **+0.2 to -0.2**
+    * **What it means:** **"Yen-Specific Forces."**
+    * **Mechanism:** Yen is moving based on factors OTHER than the Dollar (e.g., BOJ intervention, domestic Japanese economy, or specific carry trade unwinds). DXY and USD/JPY are disconnected.
+    * **Action:** ⚠️ **Watch Japan News.** Standard Dollar plays won't work on Yen.
+
+    ### **Regime 3: Inverse (Flight to Yen)**
+    * **Signal:** Correlation **< -0.3**
+    * **What it means:** **"Ultimate Safe Haven Activated."**
+    * **Mechanism:** Both the Dollar AND the Yen are strengthening together (USD/JPY falling while DXY rising). This happens during extreme global risk-off events where investors repatriate capital to both USD and JPY.
+    * **Action:** 🛡️ **DEFCON 1.** This is a rare and extreme signal. Reduce risk across the board.
+                """)
+        else:
+            st.warning("No data available for USD/JPY vs DXY visualization. Please run the data sync.")
 
         # --- DATA FRESHNESS FOOTER ---
         st.divider()

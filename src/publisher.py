@@ -65,7 +65,7 @@ def main():
     parser.add_argument("--user", required=True, help="API User")
     parser.add_argument("--pass", dest="password", required=True, help="API Password")
     parser.add_argument("--db", default="liquidity_monitor.db", help="Local DB path")
-    parser.add_argument("--limit", type=int, default=10, help="Number of records to sync (if not backfilling)")
+    parser.add_argument("--limit", type=int, default=500, help="Number of records to sync (if not backfilling)")
     parser.add_argument("--backfill", action="store_true", help="Sync ALL historical data")
     parser.add_argument("--chunk", type=int, default=100, help="Records per API request")
     
@@ -120,6 +120,10 @@ def main():
     print(f"Syncing treasury buybacks to {base_url}/lfm/api/upload/treasury-buybacks ...")
     buybacks = get_data_from_db(args.db, "treasury_buybacks", limit)
     if buybacks:
+        # Coalesce null values to 0.0 to prevent API 422 errors
+        for b in buybacks:
+            if b.get('total_offered') is None: b['total_offered'] = 0.0
+            if b.get('total_accepted') is None: b['total_accepted'] = 0.0
         inserted = push_to_api(f"{base_url}/lfm/api/upload/treasury-buybacks", buybacks, args.user, args.password, args.chunk)
         print(f"Success: {inserted} buyback records synced.")
 

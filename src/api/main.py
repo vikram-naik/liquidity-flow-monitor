@@ -65,6 +65,7 @@ class TreasuryAuctionUpload(BaseModel):
     direct_bidder_accepted: Optional[float] = None
     indirect_bidder_accepted: Optional[float] = None
     soma_accepted: Optional[float] = None
+    soma_maturing: Optional[float] = None
     noncomp_accepted: Optional[float] = None
     is_new_issuance: Optional[bool] = False
 
@@ -235,11 +236,11 @@ def upload_treasury_auctions(data: List[TreasuryAuctionUpload], conn: sqlite3.Co
             cursor.execute("""
                 INSERT OR REPLACE INTO treasury_auctions 
                 (record_date, auction_date, security_type, maturity, bid_to_cover, tail_bps, high_yield, offering_amount, total_accepted,
-                 primary_dealer_accepted, direct_bidder_accepted, indirect_bidder_accepted, soma_accepted, noncomp_accepted, is_new_issuance)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 primary_dealer_accepted, direct_bidder_accepted, indirect_bidder_accepted, soma_accepted, soma_maturing, noncomp_accepted, is_new_issuance)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (item.record_date, item.auction_date, item.security_type, item.maturity, item.bid_to_cover, item.tail_bps, item.high_yield, 
                  item.offering_amount, item.total_accepted, item.primary_dealer_accepted, item.direct_bidder_accepted,
-                 item.indirect_bidder_accepted, item.soma_accepted, item.noncomp_accepted, item.is_new_issuance))
+                 item.indirect_bidder_accepted, item.soma_accepted, item.soma_maturing, item.noncomp_accepted, item.is_new_issuance))
             count += 1
         conn.commit()
     except Exception as e:

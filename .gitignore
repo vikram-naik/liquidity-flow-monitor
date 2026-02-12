@@ -8,3 +8,7 @@ data
 cron_debug.log
 debug_shift.py
 report_coupons_2026.py
+list_treasury_tables.py
+test_api_soma_2.py
+test_api_soma_3.py
+test_api_soma.py

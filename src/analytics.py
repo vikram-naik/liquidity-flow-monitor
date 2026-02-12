@@ -445,6 +445,57 @@ def get_usdjpy_vs_asset_data(asset_symbol: str = 'SILVER'):
     return df
 
 
+def get_usdjpy_vs_dxy_data():
+    """
+    Fetches USD/JPY and DXY (Dollar Index) data for the Currency War visualization.
+    Calculates 30-day rolling correlation.
+    
+    Returns: DataFrame with timestamp, usdjpy, dxy, correlation
+    """
+    conn = get_db_connection()
+
+    # Fetch USD/JPY (stored as JPY Spot)
+    jpy_df = pd.read_sql("""
+        SELECT timestamp, rate as usdjpy 
+        FROM yield_logs 
+        WHERE currency='JPY' AND tenor='Spot'
+    """, conn)
+    
+    if jpy_df.empty:
+        conn.close()
+        return pd.DataFrame()
+        
+    jpy_df['timestamp'] = pd.to_datetime(jpy_df['timestamp']).dt.date
+    # Deduplicate: take last value per date
+    jpy_df = jpy_df.groupby('timestamp', as_index=False).last()
+
+    # Fetch DXY ICE (stored as USD DXY_ICE)
+    dxy_df = pd.read_sql("""
+        SELECT timestamp, rate as dxy 
+        FROM yield_logs 
+        WHERE currency='USD' AND tenor='DXY_ICE'
+    """, conn)
+    conn.close()
+    
+    if dxy_df.empty:
+        return pd.DataFrame()
+        
+    dxy_df['timestamp'] = pd.to_datetime(dxy_df['timestamp']).dt.date
+    # Deduplicate: take last value per date
+    dxy_df = dxy_df.groupby('timestamp', as_index=False).last()
+
+    # Merge using outer join and forward-fill to handle date mismatches
+    df = pd.merge(jpy_df, dxy_df, on='timestamp', how='outer').sort_values('timestamp')
+    df = df.ffill()  # Forward-fill missing values
+    df = df.dropna()  # Drop any remaining NaN at the start
+    
+    if len(df) < 2:
+        return pd.DataFrame()
+
+    # Calculate Rolling Correlation (30D) to quantify the "Currency Link"
+    df['correlation'] = df['usdjpy'].rolling(30, min_periods=5).corr(df['dxy'])
+
+    return df
 
 
 def check_credit_stress():
@@ -827,7 +878,7 @@ def get_treasury_fiscal_stress_data():
     # Fetch Auctions
     auctions_df = pd.read_sql("""
         SELECT record_date, auction_date, security_type, maturity, bid_to_cover, tail_bps, high_yield, offering_amount, total_accepted,
-               primary_dealer_accepted, direct_bidder_accepted, indirect_bidder_accepted, soma_accepted, noncomp_accepted, is_new_issuance
+               primary_dealer_accepted, direct_bidder_accepted, indirect_bidder_accepted, soma_accepted, soma_maturing, noncomp_accepted, is_new_issuance
         FROM treasury_auctions
         ORDER BY record_date ASC
     """, conn)
@@ -1011,10 +1062,17 @@ def get_treasury_fiscal_stress_data():
     latest_liquidity = liquidity_df.iloc[-1]
     
     if not completed_auctions.empty:
-        latest_auction = completed_auctions.iloc[-1]
-        # Get latest BTC for 10Y específicamente, fallback to latest overall
+        # Get latest BTC for 10-Year Note specifically
         ten_year_auctions = completed_auctions[completed_auctions['security_type'].str.contains('10-Year', na=False)]
-        btc_10y = ten_year_auctions['bid_to_cover'].iloc[-1] if not ten_year_auctions.empty else latest_auction['bid_to_cover']
+        if not ten_year_auctions.empty:
+            btc_10y = ten_year_auctions['bid_to_cover'].iloc[-1]
+        else:
+            # Fallback: latest coupon auction (Note/Bond), NOT Bills — Bill BTCs are structurally different
+            coupon_auctions = completed_auctions[completed_auctions['maturity'].isin(['Note', 'Bond'])]
+            if not coupon_auctions.empty:
+                btc_10y = coupon_auctions['bid_to_cover'].iloc[-1]
+            else:
+                btc_10y = completed_auctions['bid_to_cover'].iloc[-1]  # Last resort
     else:
         btc_10y = None
 
@@ -1023,11 +1081,14 @@ def get_treasury_fiscal_stress_data():
     # Buyback Acceptance Ratio Logic
     latest_buyback_ratio = None
     if not buybacks_df.empty:
-        # Group by date to get aggregate ratio if multiple operations on same day
-        daily_buybacks = buybacks_df.groupby('record_date').agg({'total_offered': 'sum', 'total_accepted': 'sum'}).reset_index()
-        latest_bb = daily_buybacks.iloc[-1]
-        if latest_bb['total_offered'] > 0:
-            latest_buyback_ratio = latest_bb['total_accepted'] / latest_bb['total_offered']
+        # Filter out pending operations (null values) before calculating ratio
+        completed_buybacks = buybacks_df.dropna(subset=['total_offered'])
+        if not completed_buybacks.empty:
+            # Group by date to get aggregate ratio if multiple operations on same day
+            daily_buybacks = completed_buybacks.groupby('record_date').agg({'total_offered': 'sum', 'total_accepted': 'sum'}).reset_index()
+            latest_bb = daily_buybacks.iloc[-1]
+            if latest_bb['total_offered'] > 0:
+                latest_buyback_ratio = latest_bb['total_accepted'] / latest_bb['total_offered']
 
     stress_level_num = 0
     stress_msg = "Fiscal Conditions Stable"

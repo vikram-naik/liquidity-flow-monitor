@@ -110,11 +110,19 @@ def init_db():
         direct_bidder_accepted REAL,
         indirect_bidder_accepted REAL,
         soma_accepted REAL,
+        soma_maturing REAL,
         noncomp_accepted REAL,
         is_new_issuance BOOLEAN,
         PRIMARY KEY (record_date, security_type, maturity)
     );
     """)
+    
+    # Migration: Add soma_maturing if it doesn't exist
+    try:
+        cursor.execute("SELECT soma_maturing FROM treasury_auctions LIMIT 1")
+    except sqlite3.OperationalError:
+        print("Migrating: Adding soma_maturing column to treasury_auctions...")
+        cursor.execute("ALTER TABLE treasury_auctions ADD COLUMN soma_maturing REAL")
 
     # Table: treasury_liquidity
     cursor.execute("""
