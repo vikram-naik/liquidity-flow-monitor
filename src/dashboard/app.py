@@ -260,7 +260,7 @@ if st.runtime.exists():
     st.sidebar.header("🧭 Navigation")
     dashboard_mode = st.sidebar.radio(
         "Select View:",
-        ["Main Dashboard", "US Treasury Monitor", "Precious Metal ETF Monitor"],
+        ["Main Dashboard", "US Treasury Monitor", "Precious Metal ETF Monitor", "NSE Delivery Monitor"],
         index=0
     )
     
@@ -2580,9 +2580,11 @@ elif dashboard_mode == "Precious Metal ETF Monitor":
     with tab2:
         render_gold_monitor()
 
+elif dashboard_mode == "NSE Delivery Monitor":
+    from src.dashboard.nse_monitor import render_nse_monitor
+    render_nse_monitor()
+
 if __name__ == "__main__":
     # Standard Streamlit entry point when run via 'streamlit run'
     pass
-
-
 

@@ -31,7 +31,7 @@ def get_data_from_db(db_path, table, limit=None):
         if table == "treasury_issuance_plan":
             sort_col = "auction_date"
         else:
-            sort_col = "record_date" if "treasury" in table else "timestamp"
+            sort_col = "record_date" if ("treasury" in table or "nse" in table) else "timestamp"
         query = f"SELECT * FROM {table} ORDER BY {sort_col} DESC {limit_str}"
         
     cursor.execute(query)
@@ -155,7 +155,15 @@ def main():
         inserted = push_to_api(f"{base_url}/lfm/api/upload/issuance-plan", issuance_plan, args.user, args.password, args.chunk)
         print(f"Success: {inserted} issuance plan records synced.")
 
-    # 12. Update sync timestamp on remote
+    # 13. Sync NSE Delivery Log
+    nse_limit = None if args.backfill else 5000  # ~2 days of full market data
+    print(f"Syncing NSE delivery data to {base_url}/lfm/api/upload/nse-delivery ...")
+    nse_data = get_data_from_db(args.db, "nse_delivery_log", nse_limit)
+    if nse_data:
+        inserted = push_to_api(f"{base_url}/lfm/api/upload/nse-delivery", nse_data, args.user, args.password, chunk_size=500)
+        print(f"Success: {inserted} NSE delivery records synced.")
+
+    # 14. Update sync timestamp on remote
     print(f"Updating sync timestamp on {base_url}/lfm/api/sync-timestamp ...")
     try:
         sync_time = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')

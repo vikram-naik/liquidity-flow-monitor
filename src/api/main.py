@@ -112,6 +112,17 @@ class TreasuryIssuancePlanUpload(BaseModel):
     offering_amount: float
     is_new_issuance: bool
 
+class NSEUpload(BaseModel):
+    record_date: date
+    symbol: str
+    price_close: float
+    volume_total: int
+    delivery_qty: int
+    delivery_pct: float
+    price_change_pct: Optional[float] = 0.0
+    volume_change_pct: Optional[float] = 0.0
+    delivery_change_pct: Optional[float] = 0.0
+
 # --- Database Helpers ---
 
 def get_db():
@@ -365,6 +376,27 @@ def upload_treasury_debt(data: List[TreasuryDebtProfileUpload], conn: sqlite3.Co
                 INSERT OR REPLACE INTO treasury_debt_profile (record_date, maturing_1yr, maturing_5yr, total_debt)
                 VALUES (?, ?, ?, ?)
             """, (item.record_date, item.maturing_1yr, item.maturing_5yr, item.total_debt))
+            count += 1
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    return {"status": "success", "inserted": count}
+
+
+@app.post("/lfm/api/upload/nse-delivery")
+def upload_nse_delivery(data: List[NSEUpload], conn: sqlite3.Connection = Depends(get_db)):
+    cursor = conn.cursor()
+    count = 0
+    try:
+        for item in data:
+            cursor.execute("""
+                INSERT OR REPLACE INTO nse_delivery_log 
+                (record_date, symbol, price_close, volume_total, delivery_qty, delivery_pct, 
+                 price_change_pct, volume_change_pct, delivery_change_pct)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (item.record_date, item.symbol, item.price_close, item.volume_total, item.delivery_qty, item.delivery_pct,
+                 item.price_change_pct, item.volume_change_pct, item.delivery_change_pct))
             count += 1
         conn.commit()
     except Exception as e:

@@ -92,6 +92,31 @@ def init_db():
     );
     """)
 
+    # --- NEW: NSE Delivery Monitor ---
+    
+    # Table: nse_delivery_log
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS nse_delivery_log (
+        record_date DATE,
+        symbol TEXT,
+        price_close REAL,
+        volume_total INTEGER,
+        delivery_qty INTEGER,
+        delivery_pct REAL,
+        price_change_pct REAL,
+        volume_change_pct REAL,
+        delivery_change_pct REAL,
+        PRIMARY KEY (record_date, symbol)
+    );
+    """)
+
+    # Migration: Add price_change_pct if it doesn't exist
+    try:
+        cursor.execute("SELECT price_change_pct FROM nse_delivery_log LIMIT 1")
+    except sqlite3.OperationalError:
+        print("Migrating: Adding price_change_pct column to nse_delivery_log...")
+        cursor.execute("ALTER TABLE nse_delivery_log ADD COLUMN price_change_pct REAL DEFAULT 0.0")
+
     # --- NEW: Treasury Monitor Tables ---
     
     # Table: treasury_auctions
