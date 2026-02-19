@@ -111,6 +111,11 @@ ledgerChart.priceScale('right').applyOptions({
     borderColor: '#262a42',
     minimumWidth: 60
 });
+// Ghost scale for Cumulative DVL (Independent, Invisible)
+ledgerChart.priceScale('ghost').applyOptions({
+    visible: false,
+    scaleMargins: { top: 0.1, bottom: 0.1 } // Give it some breathing room
+});
 
 // Series - Pane 0
 const candleSeries = priceChart.addCandlestickSeries(candleOpts);
@@ -122,6 +127,16 @@ const davwapSeries = priceChart.addLineSeries({
 });
 
 // Series - Pane 1
+const cumulativeLedgerSeries = ledgerChart.addLineSeries({
+    color: 'rgba(255, 255, 255, 0.4)',
+    lineWidth: 1,
+    lineStyle: 3, // Dotted
+    priceScaleId: 'ghost', // Separate scale
+    crosshairMarkerVisible: false,
+    lastValueVisible: false,
+    priceLineVisible: false
+});
+
 const ledgerSeries = ledgerChart.addLineSeries({
     color: '#FFD700',
     lineWidth: 2,
@@ -432,6 +447,18 @@ window.loadSymbol = function (sym) {
 
     if (typeof fetchStockData === 'function') fetchStockData(symbol);
     else console.warn("fetchStockData not found");
+
+    // Update Anchor Button Visibility based on current aggregation
+    const agg = document.querySelector('#ctrl-agg .tbtn.active')?.dataset.val || 'daily';
+    const btn = document.getElementById('btn-set-anchor');
+    if (btn) {
+        if (agg === 'monthly') {
+            btn.style.display = 'block';
+        } else {
+            btn.style.display = 'none';
+            if (typeof isSelectingAnchor !== 'undefined' && isSelectingAnchor) toggleAnchorMode();
+        }
+    }
 };
 
 
@@ -448,6 +475,8 @@ function updateMetrics(meta) {
 
     const mPrice = document.getElementById('m-price');
     mPrice.className = 'metric ' + (chg >= 0 ? 'green' : 'red');
+
+    document.getElementById('m-anchor-val').textContent = meta.anchor_date || '—';
 }
 
 // ─── Toast ────────────────────────────────────────────────────
@@ -477,6 +506,17 @@ async function fetchStockData(sym) {
 
     const agg = document.querySelector('#ctrl-agg .tbtn.active')?.dataset.val || 'daily';
 
+    // Show/Hide Anchor Button
+    const btn = document.getElementById('btn-set-anchor');
+    if (btn) {
+        if (agg === 'monthly') {
+            btn.style.display = 'block';
+        } else {
+            btn.style.display = 'none';
+            if (typeof isSelectingAnchor !== 'undefined' && isSelectingAnchor) toggleAnchorMode();
+        }
+    }
+
     let lookback = 365;
     if (agg === 'weekly') lookback = 1000;
     if (agg === 'monthly') lookback = 4000;
@@ -500,6 +540,7 @@ async function fetchStockData(sym) {
         // Update all series
         candleSeries.setData(data.candles);
         davwapSeries.setData(data.davwap || []);
+        cumulativeLedgerSeries.setData(data.ledger_cumulative || []);
         ledgerSeries.setData(data.ledger || []);
         volumeSeries.setData(data.volumes || []);
 
@@ -525,8 +566,10 @@ async function fetchStockData(sym) {
         if (err.name === 'AbortError') return;
 
         // Clear data on error
+        // Clear data on error
         candleSeries.setData([]);
         davwapSeries.setData([]);
+        cumulativeLedgerSeries.setData([]);
         ledgerSeries.setData([]);
         volumeSeries.setData([]);
         document.getElementById('symbol-display').textContent = '';
@@ -548,6 +591,79 @@ document.getElementById('symbol-input').addEventListener('keydown', e => {
 document.querySelector('.symbol-search button').addEventListener('click', () => {
     loadSymbol();
 });
+
+// ─── Manual Anchor Logic ──────────────────────────────────────
+let isSelectingAnchor = false;
+
+window.toggleAnchorMode = function () {
+    isSelectingAnchor = !isSelectingAnchor;
+    const btn = document.getElementById('btn-set-anchor');
+    const chartDiv = document.getElementById('price-chart'); // Cursor on Price Chart
+
+    if (isSelectingAnchor) {
+        btn.classList.add('active');
+        btn.style.color = '#00e396';
+        chartDiv.style.cursor = 'crosshair';
+        toast("Select a MONTH to anchor...");
+    } else {
+        btn.classList.remove('active');
+        btn.style.color = '';
+        chartDiv.style.cursor = 'default';
+    }
+};
+
+async function setManualAnchor(dateInput) {
+    const symbol = document.getElementById('symbol-input').value.trim().toUpperCase();
+
+    // Handle LightweightCharts date object {year, month, day}
+    let dateStr = dateInput;
+    if (typeof dateInput === 'object' && dateInput !== null) {
+        if (dateInput.year && dateInput.month && dateInput.day) {
+            const y = dateInput.year;
+            const m = String(dateInput.month).padStart(2, '0');
+            const d = String(dateInput.day).padStart(2, '0');
+            dateStr = `${y}-${m}-${d}`;
+        }
+    }
+
+    if (!confirm(`Set Day Zero anchor to month of ${dateStr}?`)) {
+        toggleAnchorMode(); // Cancel
+        return;
+    }
+
+    try {
+        toast(`⚓ Setting anchor for ${symbol}...`);
+
+        const res = await fetch(`/lfm/api/analysis/stock/${symbol}/anchor/manual`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ date: String(dateStr) })
+        });
+
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({ detail: "Update failed" }));
+            throw new Error(err.detail || "Update failed");
+        }
+
+        const newAnchor = await res.json();
+        toast(`✅ Anchor updated: ${newAnchor.anchor_date}`);
+        toggleAnchorMode(); // Reset UI
+        loadSymbol(symbol); // Reload
+    } catch (e) {
+        toast(`❌ ${e.message}`);
+        toggleAnchorMode();
+    }
+}
+
+// Click Listener for Anchor Selection
+priceChart.subscribeClick(param => {
+    if (!isSelectingAnchor || !param.time) return;
+    // param.time is YYYY-MM-DD string
+    setManualAnchor(param.time);
+});
+
+// Update visibility based on Aggregation
+
 
 // ─── Initial Load ─────────────────────────────────────────────
 (function initLoad() {

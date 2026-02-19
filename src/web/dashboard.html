@@ -67,7 +67,7 @@
                     <button class="icon-btn" onclick="toggleSidebar()" style="font-size:20px;">☰</button>
                     <h2
                         style="font-size:16px; font-weight:700; background:linear-gradient(135deg,var(--purple),var(--blue)); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent;">
-                        Liquidity Flow</h2>
+                        Smart Money</h2>
                 </div>
 
                 <div class="controls">
@@ -86,6 +86,15 @@
                         <span class="label">Price</span>
                         <span class="value" id="m-price-val">—</span>
                         <span class="sub" id="m-price-sub"></span>
+                    </div>
+                    <div class="metric" id="m-anchor">
+                        <span class="label">Anchor</span>
+                        <div style="display:flex; align-items:center;">
+                            <span class="value" id="m-anchor-val" style="font-size:13px;">—</span>
+                            <button id="btn-set-anchor" class="icon-btn" onclick="toggleAnchorMode()"
+                                title="Set Manual Anchor (Monthly Only)"
+                                style="font-size:14px; margin-left:6px; display:none;">⚓</button>
+                        </div>
                     </div>
                 </div>
             </header>

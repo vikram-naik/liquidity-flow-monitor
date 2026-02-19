@@ -17,6 +17,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../'
 # Import DB path from analytics or database if possible
 from src.database import DB_PATH, init_db
 from src.analysis.data import get_stock_data, load_stock_list
+from src.analysis.ledger import get_or_create_anchor
 
 
 app = FastAPI(title="LFM Data Ingestion API", docs_url="/lfm/api/docs", openapi_url="/lfm/api/openapi.json")
@@ -78,6 +79,9 @@ class NSEUpload(BaseModel):
     price_change_pct: Optional[float] = 0.0
     volume_change_pct: Optional[float] = 0.0
     delivery_change_pct: Optional[float] = 0.0
+
+class ManualAnchorRequest(BaseModel):
+    date: str # YYYY-MM-DD string
 
 # --- Database Helpers ---
 
@@ -368,6 +372,24 @@ def list_stocks():
     """Return all available stock symbols."""
     return {'symbols': load_stock_list()}
 
+@app.post('/lfm/api/analysis/stock/{symbol}/anchor/manual')
+def set_manual_anchor(symbol: str, req: ManualAnchorRequest):
+    """Manually set the Day Zero anchor by specifying a target month."""
+    # Fetch full history
+    df, _ = get_stock_data(symbol, lookback_days=0)
+    
+    if df.empty:
+        raise HTTPException(status_code=404, detail="No data found for symbol")
+    
+    # ensure index is datetime for calculation
+    if 'record_date' in df.columns:
+        df = df.set_index('record_date')
+
+    # Force recalculation with manual date
+    # The date provided should be used to identify the target month
+    anchor = get_or_create_anchor(symbol, df, manual_date=req.date)
+    return anchor
+
 
 @app.get('/lfm/api/analysis/stock/{symbol}')
 def get_stock_analysis(
@@ -411,6 +433,7 @@ def get_stock_analysis(
     candles = []
     volumes = []
     ledger = []
+    ledger_cumulative = []
     davwap = []
 
     for _, r in df.iterrows():
@@ -446,11 +469,18 @@ def get_stock_analysis(
                 "time": t,
                 "value": _safe(r.get("davwap")),
             })
+            
+        if not pd.isna(r.get("dvl_cumulative")):
+            ledger_cumulative.append({
+                "time": t,
+                "value": _safe(r.get("dvl_cumulative")),
+            })
 
     return {
         "meta": meta,
         "candles": candles,
         "volumes": volumes,
         "ledger": ledger,
+        "ledger_cumulative": ledger_cumulative,
         "davwap": davwap
     }

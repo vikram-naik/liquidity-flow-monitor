@@ -10,7 +10,7 @@ def load_stock_list() -> list[str]:
     conn.close()
     return df["symbol"].tolist()
 
-from src.analysis.ledger import calculate_mfm, calculate_dvl, calculate_davwap, get_or_create_anchor
+from src.analysis.ledger import calculate_mfm, calculate_dvl, calculate_cumulative_dvl, calculate_davwap, get_or_create_anchor
 
 def get_stock_data(symbol: str, agg_period: str = "daily", lookback_days: int = 365) -> tuple[pd.DataFrame, dict]:
     """
@@ -50,6 +50,7 @@ def get_stock_data(symbol: str, agg_period: str = "daily", lookback_days: int = 
     # Calculate DVL and DAVWAP on daily data
     df['dvl'] = calculate_dvl(df, anchor_date)
     df['davwap'] = calculate_davwap(df, anchor_date)
+    df['dvl_cumulative'] = calculate_cumulative_dvl(df)
 
     # Aggregation
     if agg_period == "weekly":
@@ -59,6 +60,7 @@ def get_stock_data(symbol: str, agg_period: str = "daily", lookback_days: int = 
             "volume_total": "sum", "delivery_qty": "sum",
             "daily_flow": "sum", # Preserves daily granularity for Ledger
             "dvl": "last",       # Latest state of ledger
+            "dvl_cumulative": "last",
             "davwap": "last",    # Final AVWAP value for the week
             "symbol": "last",
         })
@@ -76,6 +78,7 @@ def get_stock_data(symbol: str, agg_period: str = "daily", lookback_days: int = 
             "volume_total": "sum", "delivery_qty": "sum",
             "daily_flow": "sum",
             "dvl": "last",
+            "dvl_cumulative": "last",
             "davwap": "last",
             "symbol": "last",
         })

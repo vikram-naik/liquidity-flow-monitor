@@ -17,3 +17,6 @@ backlog.txt
 *.pdf
 temp_pdf_context.txt
 temp_pdf_content.txt
+debug_manual_anchor.py
+debug_anchor.py
+output.json
