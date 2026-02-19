@@ -13,3 +13,7 @@ test_api_soma_2.py
 test_api_soma_3.py
 test_api_soma.py
 test_nse_fetch.py
+backlog.txt
+*.pdf
+temp_pdf_context.txt
+temp_pdf_content.txt

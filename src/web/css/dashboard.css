@@ -1,0 +1,724 @@
+/* ── Design Tokens ──────────────────────────────────── */
+:root {
+    --bg-0: #0b0d14;
+    --bg-1: #111320;
+    --bg-2: #181b2c;
+    --bg-3: #1f2340;
+    --border: #262a42;
+    --border-hover: #3a3f62;
+    --text-0: #f0f2ff;
+    --text-1: #b0b5d0;
+    --text-2: #6e7399;
+    --green: #00e396;
+    --green-dim: rgba(0, 227, 150, .12);
+    --red: #ff4976;
+    --red-dim: rgba(255, 73, 118, .12);
+    --blue: #4dabf7;
+    --purple: #b197fc;
+    --gold: #ffd43b;
+    --fuchsia: #e040fb;
+    --orange: #ff9f43;
+    --radius: 10px;
+    --scale-width: 60px;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Inter', -apple-system, sans-serif;
+    background: var(--bg-0);
+    color: var(--text-0);
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+/* ── App Container & Sidebar ────────────────────────── */
+#app-container {
+    display: flex;
+    height: 100vh;
+    overflow: hidden;
+}
+
+#sidebar {
+    width: 260px;
+    background: var(--bg-1);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    padding: 16px;
+    gap: 16px;
+    transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1), padding 0.3s;
+    position: relative;
+}
+
+#sidebar.collapsed {
+    width: 0;
+    padding: 0;
+    border-right: none;
+    overflow: hidden;
+}
+
+#main-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: var(--bg-0);
+}
+
+.sidebar-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.sidebar-header h1 {
+    font-size: 18px;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+    background: linear-gradient(135deg, var(--green), var(--blue));
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+/* ── Dropdown Menu ──────────────────────────────────── */
+.dropdown {
+    position: relative;
+    display: inline-block;
+}
+
+.dropdown-content {
+    display: none;
+    position: absolute;
+    right: 0;
+    background-color: var(--bg-2);
+    min-width: 160px;
+    box-shadow: 0px 8px 16px 0px rgba(0, 0, 0, 0.5);
+    z-index: 100;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    overflow: hidden;
+    margin-top: 4px;
+}
+
+.dropdown-content button {
+    color: var(--text-0);
+    padding: 10px 14px;
+    text-decoration: none;
+    display: block;
+    width: 100%;
+    text-align: left;
+    background: none;
+    border: none;
+    font-size: 13px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.dropdown-content button:hover {
+    background-color: var(--bg-3);
+}
+
+.dropdown-content button.danger {
+    color: var(--red);
+}
+
+.menu-divider {
+    height: 1px;
+    background: var(--border);
+    margin: 4px 0;
+}
+
+.menu-label {
+    font-size: 10px;
+    font-weight: 800;
+    color: var(--text-2);
+    padding: 8px 14px 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.menu-scroll {
+    max-height: 250px;
+    overflow-y: auto;
+}
+
+/* Custom scrollbar for menu */
+.menu-scroll::-webkit-scrollbar {
+    width: 4px;
+}
+
+.menu-scroll::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 4px;
+}
+
+.show {
+    display: block !important;
+}
+
+/* Watchlist Styles */
+.watchlist-section {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    gap: 10px;
+    border-top: 1px solid var(--border);
+    padding-top: 16px;
+}
+
+.wl-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.wl-title {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text-2);
+    letter-spacing: 1px;
+}
+
+.icon-btn {
+    background: none;
+    border: none;
+    color: var(--text-2);
+    cursor: pointer;
+    font-size: 16px;
+    padding: 4px;
+}
+
+.icon-btn:hover {
+    color: var(--text-0);
+}
+
+#wl-selector {
+    width: 100%;
+    background: var(--bg-2);
+    border: 1px solid var(--border);
+    color: var(--text-0);
+    padding: 8px;
+    border-radius: 6px;
+    outline: none;
+    font-size: 13px;
+}
+
+.wl-controls {
+    display: flex;
+    gap: 10px;
+}
+
+.text-btn {
+    background: none;
+    border: none;
+    color: var(--blue);
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 0;
+}
+
+.text-btn:hover {
+    text-decoration: underline;
+}
+
+.wl-list {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding-right: 4px;
+}
+
+/* Scrollbar for wl-list */
+.wl-list::-webkit-scrollbar {
+    width: 4px;
+}
+
+.wl-list::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 4px;
+}
+
+.wl-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background .15s;
+    font-size: 13px;
+    color: var(--text-1);
+}
+
+.wl-item:hover {
+    background: var(--bg-2);
+    color: var(--text-0);
+}
+
+.wl-item.active {
+    background: rgba(77, 171, 247, 0.1);
+    color: var(--blue);
+    border-left: 2px solid var(--blue);
+}
+
+.wl-item .del-btn {
+    opacity: 0;
+    font-size: 14px;
+    color: var(--text-2);
+    padding: 2px 6px;
+}
+
+.wl-item:hover .del-btn {
+    opacity: 1;
+}
+
+.wl-item .del-btn:hover {
+    color: var(--red);
+}
+
+.wl-empty {
+    font-size: 12px;
+    color: var(--text-2);
+    text-align: center;
+    margin-top: 20px;
+    font-style: italic;
+}
+
+.sidebar-footer {
+    margin-top: auto;
+    border-top: 1px solid var(--border);
+    padding-top: 16px;
+}
+
+/* ── Header (Reduced) ──────────────────────────────── */
+#top-bar {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 8px 20px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+    background: var(--bg-1);
+    justify-content: space-between;
+}
+
+.chart-btn-add {
+    position: absolute;
+    top: 6px;
+    right: 50px;
+    /* Left of the price scale */
+    z-index: 10;
+    background: var(--bg-2);
+    border: 1px solid var(--border);
+    color: var(--text-1);
+    width: 20px;
+    height: 20px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.chart-btn-add:hover {
+    color: var(--green);
+    border-color: var(--green);
+}
+
+/* ── Header ─────────────────────────────────────────── */
+#header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 10px 20px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+    background: var(--bg-1);
+}
+
+#header h1 {
+    font-size: 15px;
+    font-weight: 800;
+    letter-spacing: .3px;
+    background: linear-gradient(135deg, var(--purple), var(--blue));
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    white-space: nowrap;
+}
+
+/* Search */
+.symbol-search {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    background: var(--bg-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    transition: border-color .2s;
+}
+
+.symbol-search:focus-within {
+    border-color: var(--blue);
+}
+
+.symbol-search input {
+    padding: 7px 12px;
+    border: none;
+    background: transparent;
+    color: var(--text-0);
+    font-family: inherit;
+    font-size: 13px;
+    width: 140px;
+    outline: none;
+}
+
+.symbol-search input::placeholder {
+    color: var(--text-2);
+}
+
+.symbol-search button {
+    padding: 7px 14px;
+    border: none;
+    cursor: pointer;
+    background: linear-gradient(135deg, var(--blue), var(--purple));
+    color: #fff;
+    font-family: inherit;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .6px;
+    text-transform: uppercase;
+}
+
+.symbol-search button:hover {
+    opacity: .85;
+}
+
+/* Guide Button */
+.btn-guide {
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-1);
+    border: 1px solid var(--border);
+    padding: 7px 12px;
+    border-radius: var(--radius);
+    cursor: pointer;
+    font-size: 11px;
+    font-weight: 600;
+    margin-left: auto;
+    /* Push to right */
+}
+
+.btn-guide:hover {
+    background: var(--bg-3);
+    color: var(--text-0);
+}
+
+/* Controls */
+.controls {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    margin-left: 12px;
+}
+
+.ctrl-group {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.ctrl-group label {
+    font-size: 10px;
+    color: var(--text-2);
+    text-transform: uppercase;
+    letter-spacing: .6px;
+    font-weight: 600;
+}
+
+.ctrl-group select {
+    padding: 5px 8px;
+    background: var(--bg-2);
+    color: var(--text-1);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-family: inherit;
+    font-size: 12px;
+    outline: none;
+    cursor: pointer;
+}
+
+/* Toggle button group */
+.btn-group {
+    display: flex;
+    gap: 0;
+    border-radius: 6px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+}
+
+.btn-group .tbtn {
+    padding: 5px 12px;
+    background: var(--bg-2);
+    color: var(--text-2);
+    border: none;
+    font-family: inherit;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .4px;
+    cursor: pointer;
+    transition: all .15s;
+    border-right: 1px solid var(--border);
+}
+
+.btn-group .tbtn:last-child {
+    border-right: none;
+}
+
+.btn-group .tbtn:hover {
+    background: var(--bg-3);
+    color: var(--text-1);
+}
+
+.btn-group .tbtn.active {
+    background: linear-gradient(135deg, var(--blue), var(--purple));
+    color: #fff;
+}
+
+/* Metric cards */
+#metrics {
+    display: flex;
+    gap: 8px;
+    margin-left: 12px;
+}
+
+.metric {
+    display: flex;
+    flex-direction: column;
+    padding: 6px 14px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--bg-2);
+    min-width: 120px;
+}
+
+.metric .label {
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .8px;
+    color: var(--text-2);
+}
+
+.metric .value {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text-0);
+}
+
+.metric .sub {
+    font-size: 10px;
+    color: var(--text-2);
+}
+
+.metric.green {
+    border-color: var(--green);
+    background: var(--green-dim);
+}
+
+.metric.green .value {
+    color: var(--green);
+}
+
+.metric.red {
+    border-color: var(--red);
+    background: var(--red-dim);
+}
+
+.metric.red .value {
+    color: var(--red);
+}
+
+/* ── Chart Area ─────────────────────────────────────── */
+#chart-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    padding: 8px 0;
+    /* Minimal padding */
+    gap: 0;
+}
+
+.chart-row {
+    flex: 1;
+    position: relative;
+    border: 1px solid var(--border);
+}
+
+/* Seamless vertical transition */
+.chart-row+.chart-row {
+    border-top: none;
+}
+
+.chart-row:last-child {
+    border-bottom: none;
+}
+
+.chart-pane-header {
+    background: var(--bg-2);
+    /* Slightly darker for better separation */
+    border: 1px solid var(--border);
+    border-bottom: none;
+    margin-left: var(--scale-width);
+    margin-right: var(--scale-width);
+    padding: 4px 12px;
+    height: 32px;
+    /* Aligned such that container box starts at grid */
+    font-size: 11px;
+    font-weight: 800;
+    color: var(--text-1);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-top-left-radius: 6px;
+    border-top-right-radius: 6px;
+}
+
+/* Hide TradingView Logo to remove gap */
+.tv-lightweight-charts-logo,
+#tv-attr-logo {
+    display: none !important;
+}
+
+.legend-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: 16px;
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--text-2);
+    opacity: 0.8;
+}
+
+.legend-tag .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+}
+
+.chart-label {
+    display: none;
+    /* Removed from chart area as per user request */
+}
+
+/* ── Loading ────────────────────────────────────────── */
+#loading {
+    position: fixed;
+    inset: 0;
+    background: rgba(11, 13, 20, .85);
+    display: none;
+    justify-content: center;
+    align-items: center;
+    z-index: 100;
+}
+
+.spinner {
+    width: 36px;
+    height: 36px;
+    border: 3px solid var(--border);
+    border-top-color: var(--blue);
+    border-radius: 50%;
+    animation: spin .7s linear infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* ── Toast ──────────────────────────────────────────── */
+#toast {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: var(--bg-3);
+    color: var(--text-0);
+    padding: 16px 32px;
+    border-radius: 12px;
+    border: 1px solid var(--blue);
+    font-size: 14px;
+    font-weight: 600;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+    opacity: 0;
+    transition: all .3s cubic-bezier(0.4, 0, 0.2, 1);
+    z-index: 1000;
+    pointer-events: none;
+    text-align: center;
+}
+
+#toast.show {
+    opacity: 1;
+    top: 48%;
+    /* Slight upward drift on show */
+}
+
+/* ── Symbol Watermark ───────────────────────────────── */
+.symbol-watermark {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 120px;
+    font-weight: 900;
+    color: rgba(255, 255, 255, 0.05);
+    /* Increased visibility */
+    z-index: 10;
+    /* Above chart canvas */
+    pointer-events: none;
+    user-select: none;
+    letter-spacing: -5px;
+    white-space: nowrap;
+}
+
+.chart-label {
+    position: absolute;
+    top: 6px;
+    left: 12px;
+    z-index: 5;
+    font-size: 11px;
+    font-weight: 800;
+    color: var(--text-1);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    background: var(--bg-2);
+    padding: 4px 10px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    pointer-events: none;
+}
+
+.tag-gray {
+    color: var(--text-2);
+    font-weight: 700;
+}

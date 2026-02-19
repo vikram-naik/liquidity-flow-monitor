@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Money Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lightweight-charts@4.2.2/dist/lightweight-charts.standalone.production.js"></script>
+    <link rel="stylesheet" href="static/css/dashboard.css?v=6">
+</head>
+
+<body>
+
+    <!-- ── App Container (Sidebar + Main) ────────────────── -->
+    <div id="app-container">
+
+        <!-- ── Sidebar ───────────────────────────────────────── -->
+        <aside id="sidebar">
+            <div class="sidebar-header">
+                <h1>Smart Money</h1>
+            </div>
+
+            <!-- Symbol Search -->
+            <div class="symbol-search">
+                <input type="text" id="symbol-input" placeholder="Search Symbol…" value="GESHIP">
+                <button onclick="loadSymbol()">Go</button>
+            </div>
+
+            <!-- Watchlist Section -->
+            <div class="watchlist-section">
+                <div class="wl-header">
+                    <span class="wl-title">WATCHLIST</span>
+                    <div class="dropdown">
+                        <button class="icon-btn" onclick="toggleWlMenu(event)">⋮</button>
+                        <div id="wl-menu" class="dropdown-content">
+                            <button onclick="watchlistManager.createList()">+ New List</button>
+                            <div class="menu-divider"></div>
+                            <div class="menu-label">Indices / Templates</div>
+                            <div id="wl-menu-indices" class="menu-scroll">
+                                <!-- Dynamic indices injected here -->
+                            </div>
+                            <div class="menu-divider"></div>
+                            <button onclick="watchlistManager.renameCurrent()">✎ Rename List</button>
+                            <button class="danger" onclick="watchlistManager.deleteCurrent()">🗑 Delete List</button>
+                        </div>
+                    </div>
+                </div>
+
+                <select id="wl-selector" onchange="watchlistManager.switchList(this.value)">
+                    <option value="" disabled selected>Loading...</option>
+                </select>
+
+                <div id="wl-items" class="wl-list">
+                    <!-- Items injected here -->
+                    <div class="wl-empty">Select or create a watchlist</div>
+                </div>
+            </div>
+
+        </aside>
+
+        <!-- ── Main Content ──────────────────────────────────── -->
+        <main id="main-content">
+            <!-- Header (Reduced) -->
+            <header id="top-bar">
+                <div style="display:flex; align-items:center; gap:12px;">
+                    <button class="icon-btn" onclick="toggleSidebar()" style="font-size:20px;">☰</button>
+                    <h2
+                        style="font-size:16px; font-weight:700; background:linear-gradient(135deg,var(--purple),var(--blue)); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent;">
+                        Liquidity Flow</h2>
+                </div>
+
+                <div class="controls">
+                    <div class="ctrl-group">
+                        <label>Agg</label>
+                        <div class="btn-group" id="ctrl-agg">
+                            <button class="tbtn active" data-val="daily" onclick="switchTbtn(this)">D</button>
+                            <button class="tbtn" data-val="weekly" onclick="switchTbtn(this)">W</button>
+                            <button class="tbtn" data-val="monthly" onclick="switchTbtn(this)">M</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="metrics">
+                    <div class="metric" id="m-price">
+                        <span class="label">Price</span>
+                        <span class="value" id="m-price-val">—</span>
+                        <span class="sub" id="m-price-sub"></span>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Charts -->
+            <div id="chart-area">
+                <!-- Pane 0: Price & DAVWAP -->
+                <div style="flex: 2; display:flex; flex-direction:column; overflow: hidden;">
+                    <div class="chart-pane-header">
+                        <div style="display:flex; align-items:center;">
+                            <span>Price</span>
+                            <div class="legend-tag">
+                                <div class="dot" style="background:var(--blue);"></div>DAVWAP
+                            </div>
+                        </div>
+                        <button class="text-btn" style="color:var(--green); font-size:14px; margin-right:12px;"
+                            onclick="watchlistManager.addToCurrent(document.getElementById('symbol-input').value)"
+                            title="Add to Watchlist">+</button>
+                    </div>
+                    <div class="chart-row" id="price-row"
+                        style="flex: 1; position:relative; overflow: hidden; border-top-left-radius:0; border-top-right-radius:0;">
+                        <div class="symbol-watermark" id="symbol-display"></div>
+                        <div id="price-chart" style="position:absolute; inset:0;"></div>
+                    </div>
+                </div>
+
+                <!-- Pane 1: Ledger & Volume -->
+                <div style="flex: 1; display:flex; flex-direction:column; min-height: 200px; overflow: hidden;">
+                    <div class="chart-pane-header">
+                        <div style="display:flex; align-items:center;">
+                            <span>Volume Ledger & Delivery Qty</span>
+                            <div class="legend-tag">
+                                <div class="dot" style="background:var(--gold);"></div>Ledger
+                            </div>
+                        </div>
+                    </div>
+                    <div class="chart-row" id="ledger-row"
+                        style="flex: 1; position:relative; overflow: hidden; border-top-left-radius:0; border-top-right-radius:0;">
+                        <div id="ledger-chart" style="position:absolute; inset:0;"></div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div id="loading">
+        <div class="spinner"></div>
+    </div>
+    <!-- Toast -->
+    <div id="toast"></div>
+
+
+    <script src="static/js/dashboard.js"></script>
+</body>
+
+</html>

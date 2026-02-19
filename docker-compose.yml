@@ -15,21 +15,7 @@ services:
     environment:
       - DB_PATH=/app/data/liquidity_monitor.db
 
-  lfm-dashboard:
-    image: vjdev/lfm-app:${TAG:-latest}
-    build: .
-    command: streamlit run src/dashboard/app.py --server.port 8501 --server.address 0.0.0.0 --client.toolbarMode viewer --server.baseUrlPath /lfm/dashboard
-    ports:
-      - "8501:8501"
-    volumes:
-      - ${DATA_MOUNT_PATH:-lfm-data}:/app/data
-    restart: always
-    deploy:
-      resources:
-        limits:
-          memory: 256M
-    environment:
-      - DB_PATH=/app/data/liquidity_monitor.db
+
 
 volumes:
   lfm-data:

@@ -21,6 +21,6 @@ ENV DB_PATH=/app/data/liquidity_monitor.db
 
 # Expose ports (8000 for API, 8501 for Streamlit)
 EXPOSE 8000
-EXPOSE 8501
+
 
 # Command is specified in docker-compose
