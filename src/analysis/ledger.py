@@ -178,6 +178,70 @@ def find_day_zero_anchor(df: pd.DataFrame, lookback_left: int = 10, lookback_rig
         })
     }
 
+def calculate_mcs(df: pd.DataFrame, window: int = 30) -> pd.Series:
+    """
+    Calculates a rolling 30-day Pearson correlation between the Typical Price
+    (High+Low+Close)/3 and the Relative Delivery Volume (RDV).
+    RDV is delivery_qty divided by its 30-day SMA.
+    """
+    typical_price = (df['price_high'] + df['price_low'] + df['price_close']) / 3
+    
+    # Relative Delivery Volume (RDV)
+    sma_delivery = df['delivery_qty'].rolling(window=window).mean()
+    rdv = df['delivery_qty'] / sma_delivery
+    
+    # Pearson correlation over a rolling window
+    mcs = typical_price.rolling(window=window).corr(rdv)
+    
+    # Fill NaNs with 0
+    return mcs.fillna(0)
+
+def calculate_volume_profile(df: pd.DataFrame, bins: int = 50, anchor_date=None) -> list[dict]:
+    """
+    Calculates the volume profile across the dataframe, filtered from anchor_date if provided.
+    Groups delivery_qty by price bins based on Typical Price.
+    Returns: [{"price_start": float, "price_end": float, "volume": float, "is_poc": bool}, ...]
+    """
+    if anchor_date:
+        df = df[df.index >= pd.to_datetime(anchor_date)]
+        
+    if df.empty or 'delivery_qty' not in df.columns:
+        return []
+
+    typical_price = (df['price_high'] + df['price_low'] + df['price_close']) / 3
+    
+    df_temp = pd.DataFrame({
+        'typical_price': typical_price,
+        'delivery_qty': df['delivery_qty']
+    }).dropna()
+    
+    if df_temp.empty:
+        return []
+
+    # Use pd.cut to create bins
+    df_temp['bin'] = pd.cut(df_temp['typical_price'], bins=bins)
+    
+    # Group by bins and aggregate volume
+    profile = df_temp.groupby('bin', observed=False)['delivery_qty'].sum().reset_index()
+    
+    # Find POC (Point of Control)
+    poc_index = profile['delivery_qty'].idxmax()
+    
+    result = []
+    for idx, row in profile.iterrows():
+        bin_interval = row['bin']
+        if pd.isna(bin_interval):
+            continue
+            
+        result.append({
+            "price_start": float(bin_interval.left),
+            "price_end": float(bin_interval.right),
+            "volume": float(row['delivery_qty']),
+            "is_poc": bool(idx == poc_index)
+        })
+        
+    return result
+
 def get_or_create_anchor(symbol: str, df: pd.DataFrame, force_new: bool = False, manual_date: str = None) -> dict:
     """Check DB for stored anchor, else calculate and save. force_new=True avoids DB read."""
     conn = get_db_connection()

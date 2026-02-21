@@ -375,8 +375,8 @@ def list_stocks():
 @app.post('/lfm/api/analysis/stock/{symbol}/anchor/manual')
 def set_manual_anchor(symbol: str, req: ManualAnchorRequest):
     """Manually set the Day Zero anchor by specifying a target month."""
-    # Fetch full history
-    df, _ = get_stock_data(symbol, lookback_days=0)
+    # Fetch full history (returns df, anchor, volume_profile)
+    df, _, _ = get_stock_data(symbol, lookback_days=0)
     
     if df.empty:
         raise HTTPException(status_code=404, detail="No data found for symbol")
@@ -398,7 +398,7 @@ def get_stock_analysis(
     agg: str = Query('daily', description='Aggregation: daily, weekly, monthly'),
 ):
     """Simple OHLC + Delivery data for a single stock."""
-    df, anchor = get_stock_data(
+    df, anchor, volume_profile = get_stock_data(
         symbol=symbol.upper(),
         lookback_days=lookback,
         agg_period=agg,
@@ -435,6 +435,7 @@ def get_stock_analysis(
     ledger = []
     ledger_cumulative = []
     davwap = []
+    mcs_data = []
 
     for _, r in df.iterrows():
         t = r["display_date_iso"]
@@ -444,6 +445,12 @@ def get_stock_analysis(
             "high": _safe(r["price_high"]),
             "low": _safe(r["price_low"]),
             "close": _safe(r["price_close"]),
+            "is_coil": bool(r.get("is_coil", False)),
+            "coil_score": _safe(r.get("coil_score", 0)),
+            "is_ignition": bool(r.get("is_ignition", False)),
+            "ignition_score": _safe(r.get("ignition_score", 0)),
+            "is_poc_bounce": bool(r.get("is_poc_bounce", False)),
+            "is_poc_breakout": bool(r.get("is_poc_breakout", False))
         })
         
         # Color coding for volume bars based on MFM (as per PDF)
@@ -475,6 +482,16 @@ def get_stock_analysis(
                 "time": t,
                 "value": _safe(r.get("dvl_cumulative")),
             })
+            
+        if not pd.isna(r.get("mcs")):
+            mcs_val = _safe(r.get("mcs"))
+            if mcs_val is not None:
+                mcs_color = "rgba(0, 227, 150, 0.8)" if mcs_val >= 0 else "rgba(255, 73, 118, 0.8)"
+                mcs_data.append({
+                    "time": t,
+                    "value": mcs_val,
+                    "color": mcs_color
+                })
 
     return {
         "meta": meta,
@@ -482,5 +499,7 @@ def get_stock_analysis(
         "volumes": volumes,
         "ledger": ledger,
         "ledger_cumulative": ledger_cumulative,
-        "davwap": davwap
+        "davwap": davwap,
+        "mcs": mcs_data,
+        "volume_profile": volume_profile
     }

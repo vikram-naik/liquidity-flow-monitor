@@ -20,3 +20,4 @@ temp_pdf_content.txt
 debug_manual_anchor.py
 debug_anchor.py
 output.json
+scripts/debug*.py

@@ -77,14 +77,12 @@ const priceChart = createChart('price-chart', {
     handleScale: { axisPressedMouseMove: true, mouseWheel: true, pinch: true },
 });
 priceChart.priceScale('left').applyOptions({
-    visible: true,
-    borderColor: '#262a42',
-    entireTextOnly: true,
-    minimumWidth: 60
+    visible: false
 });
 priceChart.priceScale('right').applyOptions({
-    mode: 1,
-    minimumWidth: 60
+    visible: true,
+    borderColor: '#262a42',
+    minimumWidth: 100
 });
 
 // Number Abbreviation Helper
@@ -98,18 +96,16 @@ function abbrev(val) {
 }
 
 const ledgerChart = createChart('ledger-chart', {
-    timeScale: { visible: true },
+    timeScale: { visible: false, height: 0 },
     localization: { priceFormatter: abbrev }
 });
 ledgerChart.priceScale('left').applyOptions({
-    visible: true,
-    borderColor: '#262a42',
-    minimumWidth: 60
+    visible: false
 });
 ledgerChart.priceScale('right').applyOptions({
     visible: true,
     borderColor: '#262a42',
-    minimumWidth: 60
+    minimumWidth: 100
 });
 // Ghost scale for Cumulative DVL (Independent, Invisible)
 ledgerChart.priceScale('ghost').applyOptions({
@@ -124,6 +120,16 @@ const davwapSeries = priceChart.addLineSeries({
     lineWidth: 2,
     lastValueVisible: true,
     priceLineVisible: false,
+});
+const volumeSeries = priceChart.addHistogramSeries({
+    priceFormat: { type: 'volume' },
+    priceScaleId: '', // Attach to overlay
+});
+priceChart.priceScale('').applyOptions({
+    scaleMargins: {
+        top: 0.8,    // Push volume down (leaves top 80% for price)
+        bottom: 0,
+    },
 });
 
 // Series - Pane 1
@@ -140,12 +146,35 @@ const cumulativeLedgerSeries = ledgerChart.addLineSeries({
 const ledgerSeries = ledgerChart.addLineSeries({
     color: '#FFD700',
     lineWidth: 2,
-    priceScaleId: 'left',
+    priceScaleId: 'right',
 });
 
-const volumeSeries = ledgerChart.addHistogramSeries({
-    priceFormat: { type: 'volume' },
+// Pane 2: MCS Chart Setup
+const mcsChart = createChart('mcs-chart', {
+    timeScale: { visible: true },
+});
+mcsChart.priceScale('left').applyOptions({
+    visible: false
+});
+mcsChart.priceScale('right').applyOptions({
+    visible: true,
+    borderColor: '#262a42',
+    minimumWidth: 100
+});
+const mcsSeries = mcsChart.addHistogramSeries({
     priceScaleId: 'right',
+    base: 0,
+    autoscaleInfoProvider: () => ({
+        priceRange: {
+            minValue: -1,
+            maxValue: 1,
+        }
+    })
+});
+mcsSeries.createPriceLine({
+    price: 0,
+    color: '#6e7399',
+    lineStyle: 2, // Dashed
 });
 
 // Synchronize Charts
@@ -155,12 +184,21 @@ function syncCharts() {
         if (!range || isSyncing) return;
         isSyncing = true;
         ledgerChart.timeScale().setVisibleRange(range);
+        mcsChart.timeScale().setVisibleRange(range);
         isSyncing = false;
     });
     ledgerChart.timeScale().subscribeVisibleTimeRangeChange(range => {
         if (!range || isSyncing) return;
         isSyncing = true;
         priceChart.timeScale().setVisibleRange(range);
+        mcsChart.timeScale().setVisibleRange(range);
+        isSyncing = false;
+    });
+    mcsChart.timeScale().subscribeVisibleTimeRangeChange(range => {
+        if (!range || isSyncing) return;
+        isSyncing = true;
+        priceChart.timeScale().setVisibleRange(range);
+        ledgerChart.timeScale().setVisibleRange(range);
         isSyncing = false;
     });
 
@@ -171,8 +209,10 @@ function syncCharts() {
         isMovingCrosshair = true;
         if (param.time) {
             ledgerChart.setCrosshairPosition(null, param.time, ledgerSeries);
+            mcsChart.setCrosshairPosition(null, param.time, mcsSeries);
         } else {
             ledgerChart.clearCrosshairPosition();
+            mcsChart.clearCrosshairPosition();
         }
         isMovingCrosshair = false;
     });
@@ -181,8 +221,22 @@ function syncCharts() {
         isMovingCrosshair = true;
         if (param.time) {
             priceChart.setCrosshairPosition(null, param.time, candleSeries);
+            mcsChart.setCrosshairPosition(null, param.time, mcsSeries);
         } else {
             priceChart.clearCrosshairPosition();
+            mcsChart.clearCrosshairPosition();
+        }
+        isMovingCrosshair = false;
+    });
+    mcsChart.subscribeCrosshairMove(param => {
+        if (isMovingCrosshair) return;
+        isMovingCrosshair = true;
+        if (param.time) {
+            priceChart.setCrosshairPosition(null, param.time, candleSeries);
+            ledgerChart.setCrosshairPosition(null, param.time, ledgerSeries);
+        } else {
+            priceChart.clearCrosshairPosition();
+            ledgerChart.clearCrosshairPosition();
         }
         isMovingCrosshair = false;
     });
@@ -490,6 +544,7 @@ function toast(msg) {
 
 // The main data fetcher
 let fetchController = null;
+let currentPocLine = null;
 
 async function fetchStockData(sym) {
     if (sym) document.getElementById('symbol-input').value = sym;
@@ -499,6 +554,12 @@ async function fetchStockData(sym) {
     // Abort previous fetch
     if (fetchController) fetchController.abort();
     fetchController = new AbortController();
+
+    // Cleanly remove POC line immediately on switch
+    if (currentPocLine) {
+        candleSeries.removePriceLine(currentPocLine);
+        currentPocLine = null;
+    }
 
     const urlParams = new URLSearchParams(window.location.search);
     urlParams.set('symbol', symbol);
@@ -539,10 +600,65 @@ async function fetchStockData(sym) {
 
         // Update all series
         candleSeries.setData(data.candles);
+
+        // Build and Set Chart Markers
+        let markers = [];
+
+        data.candles.forEach(d => {
+            if (d.is_ignition) {
+                markers.push({
+                    time: d.time,
+                    position: 'aboveBar',
+                    color: '#b197fc', // Purple
+                    shape: 'arrowUp',
+                    text: agg === 'daily' ? `${d.ignition_score}` : ''
+                });
+            } else if (d.is_poc_breakout) {
+                markers.push({
+                    time: d.time,
+                    position: 'aboveBar',
+                    color: '#ffd43b', // Gold
+                    shape: 'arrowUp'
+                });
+            } else if (d.is_poc_bounce) {
+                markers.push({
+                    time: d.time,
+                    position: 'belowBar',
+                    color: '#ffd43b', // Gold
+                    shape: 'star'
+                });
+            } else if (d.is_coil) {
+                markers.push({
+                    time: d.time,
+                    position: 'belowBar',
+                    color: '#4dabf7', // Blue
+                    shape: 'circle',
+                    text: agg === 'daily' ? `${d.coil_score}` : ''
+                });
+            }
+        });
+
+        candleSeries.setMarkers(markers);
         davwapSeries.setData(data.davwap || []);
         cumulativeLedgerSeries.setData(data.ledger_cumulative || []);
         ledgerSeries.setData(data.ledger || []);
         volumeSeries.setData(data.volumes || []);
+        mcsSeries.setData(data.mcs || []);
+
+        // Add Volume Profile POC
+        if (data.volume_profile && data.volume_profile.length > 0) {
+            const pocBin = data.volume_profile.find(b => b.is_poc);
+            if (pocBin) {
+                const pocPrice = (pocBin.price_start + pocBin.price_end) / 2;
+                currentPocLine = candleSeries.createPriceLine({
+                    price: pocPrice,
+                    color: '#ffd43b',
+                    lineStyle: 3, // Dotted
+                    lineWidth: 2,
+                    axisLabelVisible: true
+                });
+            }
+        }
 
         const len = data.candles.length;
         if (len > 0) {
@@ -566,12 +682,12 @@ async function fetchStockData(sym) {
         if (err.name === 'AbortError') return;
 
         // Clear data on error
-        // Clear data on error
         candleSeries.setData([]);
         davwapSeries.setData([]);
         cumulativeLedgerSeries.setData([]);
         ledgerSeries.setData([]);
         volumeSeries.setData([]);
+        mcsSeries.setData([]);
         document.getElementById('symbol-display').textContent = '';
 
         toast(`❌ ${err.message}`);

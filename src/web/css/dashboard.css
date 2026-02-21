@@ -19,7 +19,7 @@
     --fuchsia: #e040fb;
     --orange: #ff9f43;
     --radius: 10px;
-    --scale-width: 60px;
+    --scale-width: 100px;
 }
 
 * {
@@ -585,9 +585,10 @@ body {
     /* Slightly darker for better separation */
     border: 1px solid var(--border);
     border-bottom: none;
-    margin-left: var(--scale-width);
+    margin-left: 0;
     margin-right: var(--scale-width);
-    padding: 4px 12px;
+    padding: 4px 0 4px 6px;
+    /* Aligned left */
     height: 32px;
     /* Aligned such that container box starts at grid */
     font-size: 11px;
@@ -625,10 +626,7 @@ body {
     border-radius: 50%;
 }
 
-.chart-label {
-    display: none;
-    /* Removed from chart area as per user request */
-}
+
 
 /* ── Loading ────────────────────────────────────────── */
 #loading {
