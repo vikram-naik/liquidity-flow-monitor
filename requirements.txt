@@ -5,3 +5,5 @@ fastapi
 pydantic
 python-dotenv
 redis
+yfinance
+tabulate

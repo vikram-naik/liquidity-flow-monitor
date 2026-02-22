@@ -33,14 +33,43 @@ def get_stock_data(symbol: str, agg_period: str = "daily", lookback_days: int = 
     else:
         print(f"DEBUG: Cache Miss for {symbol.upper()}")
         conn = get_db_connection()
-        # Fetch all data for calculations (we need history for DVL/AVWAP)
         df = pd.read_sql(
             "SELECT * FROM nse_delivery_log WHERE symbol = ? ORDER BY record_date ASC",
             conn, params=(symbol.upper(),)
         )
-        conn.close()
+        
         if not df.empty:
+            # --- APPLY CORPORATE ACTIONS (SPLITS) ---
+            cas = pd.read_sql(
+                "SELECT ex_date, ratio_factor FROM corporate_actions WHERE symbol = ? AND ca_type = 'SPLIT' ORDER BY ex_date DESC",
+                conn, params=(symbol.upper(),)
+            )
+            
+            for _, ca in cas.iterrows():
+                ex_date = pd.to_datetime(ca['ex_date'])
+                factor = float(ca['ratio_factor'])
+                
+                # Mask dates strictly BEFORE the ex_date
+                # Ensure record_date is datetime for comparison
+                temp_dates = pd.to_datetime(df['record_date'])
+                mask = temp_dates < ex_date
+                
+                # Adjust Prices (Divide by factor)
+                price_cols = ['price_open', 'price_high', 'price_low', 'price_close']
+                for col in price_cols:
+                    if col in df.columns:
+                        df.loc[mask, col] = df.loc[mask, col] / factor
+                
+                # Adjust Volumes (Multiply by factor)
+                vol_cols = ['volume_total', 'delivery_qty']
+                for col in vol_cols:
+                    if col in df.columns:
+                        df.loc[mask, col] = (df.loc[mask, col] * factor).round(0)
+            
+            # --- CACHE THE ADJUSTED DATAFRAME ---
             cache.set(cache_key, df, ttl=86400) # Cache for 24h by default
+        
+        conn.close()
 
     if df.empty:
         return df, None, []

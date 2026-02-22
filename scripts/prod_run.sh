@@ -13,6 +13,10 @@ echo "[$(date)] Starting Production Run" >> "$LOG_FILE"
 
 cd "$PROJECT_ROOT" || { echo "Failed to cd to $PROJECT_ROOT" >> "$LOG_FILE"; exit 1; }
 
+# 0. Sync Corporate Actions (Splits)
+echo "[$(date)] Step 0: Syncing Corporate Actions..." >> "$LOG_FILE"
+docker exec scripts-lfm-api-1 python3 scripts/sync_ca.py >> "$LOG_FILE" 2>&1
+
 # 1. Run NSE Data Sync
 echo "[$(date)] Step 1: Syncing NSE Data..." >> "$LOG_FILE"
 docker exec scripts-lfm-api-1 python3 src/agents/nse_agent.py --sync >> "$LOG_FILE" 2>&1

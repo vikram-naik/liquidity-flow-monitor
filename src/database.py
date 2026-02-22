@@ -91,6 +91,20 @@ def init_db():
     );
     """)
 
+    # Table: corporate_actions
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS corporate_actions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        symbol TEXT,
+        ex_date DATE,
+        ca_type TEXT,
+        ratio_factor REAL,
+        notes TEXT,
+        UNIQUE(symbol, ex_date, ca_type)
+    );
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_ca_symbol ON corporate_actions(symbol);")
+
     # --- Secondary Indices for Performance ---
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_nse_symbol_date ON nse_delivery_log (symbol, record_date);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_watchlists_created ON watchlists (created_at DESC);")
