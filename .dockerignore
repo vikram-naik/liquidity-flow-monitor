@@ -1,0 +1,16 @@
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.db
+.sqlite
+.sqlite3
+*.log
+.git/
+.gitignore
+.env
+data/
+liquidity_monitor.db
+brain/
+.gemini/

@@ -16,6 +16,9 @@ import random
 # Add project root
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
 from src.database import get_db_connection
+from src.cache import get_cache
+
+cache = get_cache()
 
 # Archives URL structure
 BASE_URL = "https://nsearchives.nseindia.com/products/content/sec_bhavdata_full_{date_str}.csv"
@@ -198,7 +201,7 @@ def process_and_store_data(df, record_date):
     
     # Aggressively strip whitespace from all string columns
     df.columns = [c.strip() for c in df.columns]
-    for col in df.select_dtypes(include=['object']).columns:
+    for col in df.select_dtypes(include=['object', 'string']).columns:
         df[col] = df[col].str.strip()
     
     # Filter for Series = 'EQ' (Equity) or 'BE' (Book Entry / Trade-to-Trade)
@@ -282,6 +285,13 @@ def process_and_store_data(df, record_date):
     """, records)
     
     conn.commit()
+    
+    # Invalidate cache for processed symbols
+    for s in df['SYMBOL'].unique():
+        cache_key = f"lfm:raw_data:{s.upper()}"
+        cache.delete(cache_key)
+    
+    print(f"[NSE] Invalidated cache for {len(df['SYMBOL'].unique())} symbols.")
     conn.close()
 
 def update_changes_for_date(current_date):

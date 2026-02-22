@@ -18,9 +18,13 @@ RUN mkdir -p /app/data
 # Environment variables
 ENV PYTHONPATH=/app
 ENV DB_PATH=/app/data/liquidity_monitor.db
+ENV REDIS_HOST=localhost
+ENV REDIS_PORT=6379
+ENV REDIS_DB=0
 
 # Expose ports (8000 for API, 8501 for Streamlit)
 EXPOSE 8000
 
 
-# Command is specified in docker-compose
+# Command to run the application
+CMD ["uvicorn", "src.api.main:app", "--host", "0.0.0.0", "--port", "8000"]

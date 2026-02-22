@@ -3,6 +3,9 @@ import sqlite3
 import os
 import numpy as np
 from src.database import get_db_connection, DB_PATH
+from src.cache import get_cache
+
+cache = get_cache()
 
 def load_stock_list() -> list[str]:
     """Return sorted list of distinct symbols in the DB."""
@@ -21,16 +24,26 @@ def get_stock_data(symbol: str, agg_period: str = "daily", lookback_days: int = 
     Fetch OHLCV + delivery data for *symbol* with optional aggregation.
     Returns: (DataFrame, anchor_metadata)
     """
-    conn = get_db_connection()
-    # Fetch all data for calculations (we need history for DVL/AVWAP)
-    df = pd.read_sql(
-        "SELECT * FROM nse_delivery_log WHERE symbol = ? ORDER BY record_date ASC",
-        conn, params=(symbol.upper(),)
-    )
-    conn.close()
+    # Try cache first
+    cache_key = f"lfm:raw_data:{symbol.upper()}"
+    df = cache.get(cache_key)
+    
+    if df is not None:
+        print(f"DEBUG: Cache Hit for {symbol.upper()}")
+    else:
+        print(f"DEBUG: Cache Miss for {symbol.upper()}")
+        conn = get_db_connection()
+        # Fetch all data for calculations (we need history for DVL/AVWAP)
+        df = pd.read_sql(
+            "SELECT * FROM nse_delivery_log WHERE symbol = ? ORDER BY record_date ASC",
+            conn, params=(symbol.upper(),)
+        )
+        conn.close()
+        if not df.empty:
+            cache.set(cache_key, df, ttl=86400) # Cache for 24h by default
 
     if df.empty:
-        return df, None
+        return df, None, []
 
     df["record_date"] = pd.to_datetime(df["record_date"])
     
@@ -149,9 +162,9 @@ def get_stock_data(symbol: str, agg_period: str = "daily", lookback_days: int = 
                  (upper_wick >= range_total * 0.1) & \
                  (lower_wick >= range_total * 0.1)
 
-    # Decision: Trigger Coil if Score >= 50 and it's a structural 'wicky' candle. 
+    # Decision: Trigger Coil if Score >= 50 and it's a structural 'wicky' candle AND within 3% of DAVWAP.
     # Note: ctx_pass removed to allow coils to trigger slightly below DAVWAP (Accumulation trap).
-    df['is_coil'] = wick_check & (df['coil_score'] >= 50)
+    df['is_coil'] = wick_check & (df['coil_score'] >= 50) & (dist_pct <= 0.03)
     df['is_coil'] = df['is_coil'].fillna(False)
 
     # Ignition Strength Multi-Pillar Scoring (0-100 pts)
@@ -183,11 +196,11 @@ def get_stock_data(symbol: str, agg_period: str = "daily", lookback_days: int = 
     
     df['ignition_score'] = (score_prox_ign + score_vol_ign + score_ledger_ign + score_mom_ign + score_base_ign).round(0)
     
-    # Decision: Trigger Ignition if Score >= 50 and it passes hard breakout candle requirements
+    # Decision: Trigger Ignition if Score >= 50 and it passes hard breakout candle requirements AND within 3% of DAVWAP.
     is_expansion_candle = (df['price_close'] > df['price_open']) & \
                           (df['price_close'] > df['prev_high'])
                           
-    df['is_ignition'] = is_expansion_candle & (df['ignition_score'] >= 50)
+    df['is_ignition'] = is_expansion_candle & (df['ignition_score'] >= 50) & (abs(dist_raw) <= 0.03)
     df['is_ignition'] = df['is_ignition'].fillna(False)
 
     # POC Bounce: Touching POC zone (<2.0% from low) and closing above it, supported by rising DVL/MCS, holding context
@@ -209,6 +222,39 @@ def get_stock_data(symbol: str, agg_period: str = "daily", lookback_days: int = 
         df['is_poc_breakout'] = False
     df['is_poc_breakout'] = df['is_poc_breakout'].fillna(False)
 
+    # 4. Quiet Period Requirement
+    # Per user request: Suppress all signals for the first 3 days after an anchor (Day 0 kickstart)
+    # This ensure slopes have enough history (min 3 dots) to reflect meaningful conviction.
+    quiet_mask = df['days_since_anchor'] <= 3
+    for col in ['is_coil', 'is_ignition', 'is_poc_bounce', 'is_poc_breakout']:
+        df.loc[quiet_mask, col] = False
+
+    # 5. Trend Intensity (0-90°) & Velocity Status
+    # Ledger Intensity: Normalized vs GLS (Global Ledger Slope from Anchor)
+    # GLS is calculated at line 94 as cum_dvl_slope_anchor
+    gls = df['dvl_slope_5'].where(df['days_since_anchor'] <= 5, cum_dvl_slope_anchor) 
+    # ^ Fallback to local if very near anchor, otherwise use global baseline
+    
+    # We use GLS specifically as the baseline for 'Angle'
+    # Current pace / Trend Average pace
+    l_ratio = (df['dvl_slope_5'] / gls.abs().replace(0, np.nan)).fillna(0)
+    df['ledger_angle'] = np.degrees(np.arctan(l_ratio.clip(0))).round(1)
+    
+    # Velocity Status Logic
+    # Accelerating: >1.0 ratio (>45 deg)
+    # Steady: 0.7-1.0 ratio (35-45 deg)
+    # Weakening: 0-0.7 ratio (0-35 deg)
+    # Reversing: <0 ratio (0 deg)
+    df['ledger_velocity'] = "Steady"
+    df.loc[l_ratio > 1.0, 'ledger_velocity'] = "Accelerating"
+    df.loc[(l_ratio <= 1.0) & (l_ratio >= 0.7), 'ledger_velocity'] = "Steady"
+    df.loc[(l_ratio < 0.7) & (l_ratio >= 0), 'ledger_velocity'] = "Weakening"
+    df.loc[l_ratio < 0, 'ledger_velocity'] = "Reversing"
+
+    # MCS Intensity: Normalized vs 0.1 shift/day (Keep local for high-sensitivity spark)
+    m_intensity = (df['mcs_slope_5'] / 0.1).fillna(0)
+    df['mcs_angle'] = np.degrees(np.arctan(m_intensity.clip(0))).round(1)
+
     # Aggregation
     if agg_period == "weekly":
         df = df.resample("W-FRI").agg({
@@ -224,6 +270,9 @@ def get_stock_data(symbol: str, agg_period: str = "daily", lookback_days: int = 
             "is_ignition": "any",
             "is_poc_bounce": "any",
             "is_poc_breakout": "any",
+            "ledger_angle": "last",
+            "mcs_angle": "last",
+            "ledger_velocity": "last",
             "symbol": "last",
         })
         # Only drop rows where price_close is NaN (no trading data for that week)
@@ -247,6 +296,9 @@ def get_stock_data(symbol: str, agg_period: str = "daily", lookback_days: int = 
             "is_ignition": "any",
             "is_poc_bounce": "any",
             "is_poc_breakout": "any",
+            "ledger_angle": "last",
+            "mcs_angle": "last",
+            "ledger_velocity": "last",
             "symbol": "last",
         })
         df = df.dropna(subset=["price_close"])

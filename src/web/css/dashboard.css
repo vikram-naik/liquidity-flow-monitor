@@ -721,3 +721,280 @@ body {
     color: var(--text-2);
     font-weight: 700;
 }
+
+/* ── Intensity Guide Modal ───────────────────────────── */
+.help-icon {
+    font-size: 10px;
+    cursor: pointer;
+    color: var(--text-2);
+    margin-left: 4px;
+    opacity: 0.6;
+    transition: opacity 0.2s;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    border: 1px solid var(--border);
+    vertical-align: middle;
+}
+
+.help-icon:hover {
+    opacity: 1;
+    color: var(--blue);
+    border-color: var(--blue);
+}
+
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(8px);
+    z-index: 2000;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    animation: fadeIn 0.3s ease;
+}
+
+.modal-content {
+    background: var(--bg-1);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    width: 100%;
+    max-width: 600px;
+    box-shadow: 0 30px 60px rgba(0, 0, 0, 0.6);
+    overflow: hidden;
+    position: relative;
+    animation: slideUp 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
+}
+
+@keyframes slideUp {
+    from {
+        transform: translateY(20px);
+        opacity: 0;
+    }
+
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+.modal-header {
+    padding: 20px 24px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: var(--bg-2);
+}
+
+.modal-header h3 {
+    margin: 0;
+    font-size: 18px;
+    background: linear-gradient(135deg, var(--blue), var(--purple));
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.modal-close {
+    background: none;
+    border: none;
+    color: var(--text-2);
+    font-size: 24px;
+    cursor: pointer;
+    line-height: 1;
+}
+
+.modal-close:hover {
+    color: var(--text-0);
+}
+
+.modal-body {
+    padding: 24px;
+    max-height: 80vh;
+    overflow-y: auto;
+}
+
+.guide-section {
+    margin-bottom: 24px;
+}
+
+.guide-section h4 {
+    font-size: 13px;
+    color: var(--blue);
+    margin-bottom: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.guide-section p {
+    font-size: 14px;
+    line-height: 1.6;
+    color: var(--text-1);
+    margin-bottom: 12px;
+}
+
+.intensity-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+
+.intensity-card {
+    background: var(--bg-2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+}
+
+.intensity-card .title {
+    font-weight: 700;
+    font-size: 12px;
+    margin-bottom: 6px;
+}
+
+.intensity-card .description {
+    font-size: 12px;
+    color: var(--text-2);
+    line-height: 1.4;
+}
+
+.combo-hh {
+    border-color: var(--green);
+}
+
+.combo-hh .title {
+    color: var(--green);
+}
+
+.combo-hl {
+    border-color: var(--blue);
+}
+
+.combo-hl .title {
+    color: var(--blue);
+}
+
+.combo-lh {
+    border-color: var(--orange);
+}
+
+.combo-lh .title {
+    color: var(--orange);
+}
+
+.combo-ll {
+    border-color: var(--text-2);
+}
+
+.combo-ll .title {
+    color: var(--text-2);
+}
+
+/* ── Intensity Badges ────────────────────────────────── */
+.i-badge {
+    font-size: 10px;
+    font-weight: 800;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: var(--bg-3);
+    color: var(--text-1);
+    border: 1px solid var(--border);
+    transition: all 0.2s;
+    line-height: 1;
+}
+
+.i-badge.high {
+    background: var(--green-dim);
+    color: var(--green);
+    border-color: var(--green);
+    box-shadow: 0 0 10px rgba(0, 227, 150, 0.2);
+}
+
+.i-badge.low {
+    background: var(--bg-1);
+    color: var(--text-2);
+    border-color: var(--border);
+}
+
+/* ── Visual Matrix Table ─────────────────────────────── */
+.visual-matrix {
+    margin: 10px 0;
+    border-radius: 12px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+}
+
+.matrix-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: var(--bg-2);
+}
+
+.matrix-table th,
+.matrix-table td {
+    padding: 12px;
+    text-align: center;
+    border: 1px solid var(--border);
+}
+
+.matrix-table th {
+    background: var(--bg-3);
+    font-size: 11px;
+    color: var(--text-2);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.m-row-head {
+    background: var(--bg-3);
+    font-size: 11px;
+    color: var(--text-2);
+    font-weight: 700;
+}
+
+.matrix-table td strong {
+    font-size: 16px;
+    display: block;
+    margin-bottom: 2px;
+}
+
+.matrix-table td small {
+    font-size: 10px;
+    opacity: 0.7;
+}
+
+.matrix-table .combo-hh {
+    background: rgba(0, 227, 150, 0.1);
+    color: var(--green);
+}
+
+.matrix-table .combo-hl {
+    background: rgba(77, 171, 247, 0.1);
+    color: var(--blue);
+}
+
+.matrix-table .combo-lh {
+    background: rgba(255, 159, 67, 0.1);
+    color: var(--orange);
+}
+
+.matrix-table .combo-ll {
+    background: rgba(110, 115, 153, 0.1);
+    color: var(--text-2);
+}

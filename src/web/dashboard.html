@@ -7,7 +7,7 @@
     <title>Smart Money Dashboard</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/lightweight-charts@4.2.2/dist/lightweight-charts.standalone.production.js"></script>
-    <link rel="stylesheet" href="static/css/dashboard.css?v=6">
+    <link rel="stylesheet" href="/lfm/static/css/dashboard.css?v=6">
 </head>
 
 <body>
@@ -104,12 +104,11 @@
                             </div>Breakout
                         </div>
                         <div class="legend-tag" style="margin: 0;">
-                            <div class="dot"
-                                style="background:#ffd43b; clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%); border-radius: 0;">
-                            </div>Bounce
+                            <div class="dot" style="background:#ffd43b; border-radius: 50%;">
+                            </div>Bounce (B)
                         </div>
                         <div class="legend-tag" style="margin: 0;">
-                            <div class="dot" style="background:#4dabf7;"></div>Coil
+                            <div class="dot" style="background:#4dabf7; border-radius: 50%;"></div>Coil
                         </div>
                     </div>
                     <div class="metric" id="m-price">
@@ -131,6 +130,26 @@
                                 title="Set Manual Anchor (Monthly Only)"
                                 style="font-size:14px; margin-left:6px; display:none;">⚓</button>
                         </div>
+                    </div>
+                    <div class="metric" id="m-ledger-tilt">
+                        <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+                            <span class="label">Ledger Tilt <span class="help-icon"
+                                    onclick="openIntensityGuide()">?</span></span>
+                            <span id="badge-ledger" class="i-badge">L</span>
+                        </div>
+                        <div style="display:flex; align-items:baseline; gap:8px;">
+                            <span class="value" id="m-ledger-tilt-val">—</span>
+                            <span id="m-ledger-velocity-val"
+                                style="font-size:10px; opacity:0.8; font-weight:500;"></span>
+                        </div>
+                    </div>
+                    <div class="metric" id="m-mcs-tilt">
+                        <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+                            <span class="label">MCS Tilt <span class="help-icon"
+                                    onclick="openIntensityGuide()">?</span></span>
+                            <span id="badge-mcs" class="i-badge">L</span>
+                        </div>
+                        <span class="value" id="m-mcs-tilt-val">—</span>
                     </div>
                 </div>
             </header>
@@ -174,8 +193,78 @@
     <!-- Toast -->
     <div id="toast"></div>
 
+    <!-- Intensity Guide Modal -->
+    <div id="intensity-modal" class="modal-overlay" onclick="closeIntensityGuide(event)">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <h3>Trend Intensity Guide</h3>
+                <button class="modal-close" onclick="closeIntensityGuide()">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="guide-section">
+                    <h4>Legder Tilt (Institutional Conviction)</h4>
+                    <p>Measures the strength of cumulative institutional flow. High angles (&ge;45&deg;) indicate
+                        aggressive buying, while lower angles signify slow absorption.</p>
+                </div>
 
-    <script src="static/js/dashboard.js"></script>
+                <div class="guide-section">
+                    <h4>MCS Tilt (Momentum Spark)</h4>
+                    <p>Measures acceleration of Correlation. High angles (&ge;45&deg;) indicate a synchronized momentum
+                        spark (baseline = 0.1 shift/day).</p>
+                </div>
+
+                <div class="guide-section">
+                    <h4>The Power Matrix</h4>
+                    <div class="visual-matrix">
+                        <table class="matrix-table">
+                            <thead>
+                                <tr>
+                                    <th>Ledger \ MCS</th>
+                                    <th>H (Spark)</th>
+                                    <th>L (Dormant)</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td class="m-row-head">High (Conviction)</td>
+                                    <td class="combo-hh"><strong>HH</strong><br><small>Vertical Launch</small></td>
+                                    <td class="combo-hl"><strong>HL</strong><br><small>Stealth Entry</small></td>
+                                </tr>
+                                <tr>
+                                    <td class="m-row-head">Low (Slow)</td>
+                                    <td class="combo-lh"><strong>LH</strong><br><small>Speculative</small></td>
+                                    <td class="combo-ll"><strong>LL</strong><br><small>Dormant</small></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="intensity-grid" style="margin-top:20px;">
+                        <div class="intensity-card combo-hh">
+                            <div class="title">HH (Vertical Launch)</div>
+                            <div class="description">Maximum conviction. Institutions and momentum are fully synced.
+                            </div>
+                        </div>
+                        <div class="intensity-card combo-hl">
+                            <div class="title">HL (Stealth Entry)</div>
+                            <div class="description">Early entry. Heavy institutional buying before the big price move
+                                starts.</div>
+                        </div>
+                        <div class="intensity-card combo-lh">
+                            <div class="title">LH (Speculative)</div>
+                            <div class="description">Price moving on low conviction. Possibly retail-driven or fragile
+                                squeeze.</div>
+                        </div>
+                        <div class="intensity-card combo-ll">
+                            <div class="title">LL (Dormant)</div>
+                            <div class="description">No institutional interest or momentum. Stay patient or avoid.</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/lfm/static/js/dashboard.js"></script>
 </body>
 
 </html>

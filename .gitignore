@@ -21,3 +21,5 @@ debug_manual_anchor.py
 debug_anchor.py
 output.json
 scripts/debug*.py
+screener_run.log
+server.log

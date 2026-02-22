@@ -91,6 +91,11 @@ def init_db():
     );
     """)
 
+    # --- Secondary Indices for Performance ---
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_nse_symbol_date ON nse_delivery_log (symbol, record_date);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_watchlists_created ON watchlists (created_at DESC);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_watchlist_items_order ON watchlist_items (watchlist_id, display_order);")
+
 
 
 

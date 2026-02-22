@@ -18,6 +18,9 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../'
 from src.database import DB_PATH, init_db
 from src.analysis.data import get_stock_data, load_stock_list
 from src.analysis.ledger import get_or_create_anchor
+from src.cache import get_cache
+
+cache = get_cache()
 
 
 app = FastAPI(title="LFM Data Ingestion API", docs_url="/lfm/api/docs", openapi_url="/lfm/api/openapi.json")
@@ -25,7 +28,12 @@ app = FastAPI(title="LFM Data Ingestion API", docs_url="/lfm/api/docs", openapi_
 # Mount static web assets
 _WEB_DIR = os.path.join(os.path.dirname(__file__), '..', 'web')
 if os.path.isdir(_WEB_DIR):
-    app.mount('/static', StaticFiles(directory=_WEB_DIR), name='static')
+    app.mount('/lfm/static', StaticFiles(directory=_WEB_DIR), name='static')
+
+from fastapi.responses import RedirectResponse
+@app.get("/")
+def root_redirect():
+    return RedirectResponse(url="/lfm/dashboard")
 
 @app.on_event("startup")
 def startup_event():
@@ -61,7 +69,7 @@ class WatchlistItemAdd(BaseModel):
 class WatchlistItemResponse(BaseModel):
     id: int
     symbol: str
-    display_order: int
+    display_order: Optional[int] = 0
     added_at: str
 
 class IndexImportRequest(BaseModel):
@@ -121,6 +129,11 @@ def upload_nse_delivery(data: List[NSEUpload], conn: sqlite3.Connection = Depend
                  item.price_change_pct, item.volume_change_pct, item.delivery_change_pct))
             count += 1
         conn.commit()
+        # Invalidate cache for uploaded symbols
+        for item in data:
+            cache_key = f"lfm:raw_data:{item.symbol.upper()}"
+            cache.delete(cache_key)
+            print(f"DEBUG: Invalidated cache for {item.symbol.upper()}")
     except Exception as e:
         conn.rollback()
         raise HTTPException(status_code=500, detail=str(e))
@@ -358,7 +371,7 @@ def import_index_constituents(req: IndexImportRequest, conn: sqlite3.Connection 
 #  ANALYSIS ENDPOINTS (Consumption — powers the Lightweight Charts dashboard)
 # ═══════════════════════════════════════════════════════════════════════════
 
-@app.get('/dashboard')
+@app.get('/lfm/dashboard')
 def serve_dashboard():
     """Serve the Single Stock Analysis dashboard."""
     html_path = os.path.join(_WEB_DIR, 'dashboard.html')
@@ -427,7 +440,10 @@ def get_stock_analysis(
         "price_change_pct": round(float(price_chg), 2) if not pd.isna(price_chg) else 0.0,
         "data_points": len(df),
         "anchor_date": anchor['anchor_date'] if anchor else None,
-        "anchor_status": "CONFIRMED" if anchor else "MISSING"
+        "anchor_status": "CONFIRMED" if anchor else "MISSING",
+        "ledger_angle": _safe(latest.get("ledger_angle")),
+        "mcs_angle": _safe(latest.get("mcs_angle")),
+        "ledger_velocity": _safe(latest.get("ledger_velocity"))
     }
 
     candles = []

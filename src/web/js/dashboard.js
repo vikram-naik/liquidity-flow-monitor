@@ -531,6 +531,68 @@ function updateMetrics(meta) {
     mPrice.className = 'metric ' + (chg >= 0 ? 'green' : 'red');
 
     document.getElementById('m-anchor-val').textContent = meta.anchor_date || '—';
+
+    // Trend Intensity Tilt (0-90)
+    const lAngle = meta.ledger_angle;
+    const mAngle = meta.mcs_angle;
+    const lVelocity = meta.ledger_velocity;
+
+    const lEl = document.getElementById('m-ledger-tilt-val');
+    const mEl = document.getElementById('m-mcs-tilt-val');
+    const lVEl = document.getElementById('m-ledger-velocity-val');
+    const lBadge = document.getElementById('badge-ledger');
+    const mBadge = document.getElementById('badge-mcs');
+
+    // Threshold-based badges (High >= 45)
+    if (lAngle !== null && lAngle !== undefined) {
+        lEl.innerHTML = `${lAngle}&deg; <span style="font-size:10px; opacity:0.8;">↗</span>`;
+        if (lVEl) {
+            lVEl.textContent = lVelocity || '';
+            // Color code velocity
+            if (lVelocity === 'Accelerating') lVEl.style.color = '#00e396';
+            else if (lVelocity === 'Weakening') lVEl.style.color = '#ffb01f';
+            else if (lVelocity === 'Reversing') lVEl.style.color = '#ff4976';
+            else lVEl.style.color = '#6e7399';
+        }
+        if (lAngle >= 45) {
+            lBadge.textContent = 'H';
+            lBadge.className = 'i-badge high';
+        } else {
+            lBadge.textContent = 'L';
+            lBadge.className = 'i-badge low';
+        }
+    } else {
+        lEl.textContent = '—';
+        if (lVEl) lVEl.textContent = '';
+        lBadge.textContent = '—';
+        lBadge.className = 'i-badge';
+    }
+
+    if (mAngle !== null && mAngle !== undefined) {
+        mEl.innerHTML = `${mAngle}&deg; <span style="font-size:10px; opacity:0.8;">↗</span>`;
+        if (mAngle >= 45) {
+            mBadge.textContent = 'H';
+            mBadge.className = 'i-badge high';
+        } else {
+            mBadge.textContent = 'L';
+            mBadge.className = 'i-badge low';
+        }
+    } else {
+        mEl.textContent = '—';
+        mBadge.textContent = '—';
+        mBadge.className = 'i-badge';
+    }
+}
+
+// ─── Intensity Guide Modal ────────────────────────────
+function openIntensityGuide() {
+    const modal = document.getElementById('intensity-modal');
+    if (modal) modal.style.display = 'flex';
+}
+
+function closeIntensityGuide(event) {
+    const modal = document.getElementById('intensity-modal');
+    if (modal) modal.style.display = 'none';
 }
 
 // ─── Toast ────────────────────────────────────────────────────
@@ -613,21 +675,25 @@ async function fetchStockData(sym) {
                     shape: 'arrowUp',
                     text: agg === 'daily' ? `${d.ignition_score}` : ''
                 });
-            } else if (d.is_poc_breakout) {
+            }
+            if (d.is_poc_breakout) {
                 markers.push({
                     time: d.time,
                     position: 'aboveBar',
                     color: '#ffd43b', // Gold
                     shape: 'arrowUp'
                 });
-            } else if (d.is_poc_bounce) {
+            }
+            if (d.is_poc_bounce) {
                 markers.push({
                     time: d.time,
                     position: 'belowBar',
                     color: '#ffd43b', // Gold
-                    shape: 'star'
+                    shape: 'circle',
+                    text: 'B'
                 });
-            } else if (d.is_coil) {
+            }
+            if (d.is_coil) {
                 markers.push({
                     time: d.time,
                     position: 'belowBar',
