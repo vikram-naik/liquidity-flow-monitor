@@ -33,43 +33,43 @@ def get_stock_data(symbol: str, agg_period: str = "daily", lookback_days: int = 
     else:
         print(f"DEBUG: Cache Miss for {symbol.upper()}")
         conn = get_db_connection()
-        df = pd.read_sql(
-            "SELECT * FROM nse_delivery_log WHERE symbol = ? ORDER BY record_date ASC",
-            conn, params=(symbol.upper(),)
-        )
-        
-        if not df.empty:
-            # --- APPLY CORPORATE ACTIONS (SPLITS) ---
-            cas = pd.read_sql(
-                "SELECT ex_date, ratio_factor FROM corporate_actions WHERE symbol = ? AND ca_type = 'SPLIT' ORDER BY ex_date DESC",
+        try:
+            df = pd.read_sql(
+                "SELECT * FROM nse_delivery_log WHERE symbol = ? ORDER BY record_date ASC",
                 conn, params=(symbol.upper(),)
             )
             
-            for _, ca in cas.iterrows():
-                ex_date = pd.to_datetime(ca['ex_date'])
-                factor = float(ca['ratio_factor'])
+            if not df.empty:
+                # --- APPLY CORPORATE ACTIONS (SPLITS) ---
+                cas = pd.read_sql(
+                    "SELECT ex_date, ratio_factor FROM corporate_actions WHERE symbol = ? ORDER BY ex_date DESC",
+                    conn, params=(symbol.upper(),)
+                )
                 
-                # Mask dates strictly BEFORE the ex_date
-                # Ensure record_date is datetime for comparison
-                temp_dates = pd.to_datetime(df['record_date'])
-                mask = temp_dates < ex_date
+                for _, ca in cas.iterrows():
+                    ex_date = pd.to_datetime(ca['ex_date'])
+                    factor = float(ca['ratio_factor'])
+                    
+                    # Mask dates strictly BEFORE the ex_date
+                    temp_dates = pd.to_datetime(df['record_date'])
+                    mask = temp_dates < ex_date
+                    
+                    # Adjust Prices
+                    price_cols = ['price_open', 'price_high', 'price_low', 'price_close']
+                    for col in price_cols:
+                        if col in df.columns:
+                            df.loc[mask, col] = df.loc[mask, col] / factor
+                    
+                    # Adjust Volumes
+                    vol_cols = ['volume_total', 'delivery_qty']
+                    for col in vol_cols:
+                        if col in df.columns:
+                            df.loc[mask, col] = (df.loc[mask, col] * factor).round(0)
                 
-                # Adjust Prices (Divide by factor)
-                price_cols = ['price_open', 'price_high', 'price_low', 'price_close']
-                for col in price_cols:
-                    if col in df.columns:
-                        df.loc[mask, col] = df.loc[mask, col] / factor
-                
-                # Adjust Volumes (Multiply by factor)
-                vol_cols = ['volume_total', 'delivery_qty']
-                for col in vol_cols:
-                    if col in df.columns:
-                        df.loc[mask, col] = (df.loc[mask, col] * factor).round(0)
-            
-            # --- CACHE THE ADJUSTED DATAFRAME ---
-            cache.set(cache_key, df, ttl=86400) # Cache for 24h by default
-        
-        conn.close()
+                # --- CACHE THE ADJUSTED DATAFRAME ---
+                cache.set(cache_key, df, ttl=86400)
+        finally:
+            conn.close()
 
     if df.empty:
         return df, None, []
@@ -232,30 +232,12 @@ def get_stock_data(symbol: str, agg_period: str = "daily", lookback_days: int = 
     df['is_ignition'] = is_expansion_candle & (df['ignition_score'] >= 50) & (abs(dist_raw) <= 0.03)
     df['is_ignition'] = df['is_ignition'].fillna(False)
 
-    # POC Bounce: Touching POC zone (<2.0% from low) and closing above it, supported by rising DVL/MCS, holding context
-    if poc_price > 0:
-        dist_to_poc = abs(df['price_low'] - poc_price) / poc_price
-        df['is_poc_bounce'] = ctx_pass & (dist_to_poc < 0.02) & (df['price_close'] > poc_price) & \
-                              (df['mcs_slope_5'] > 0) & (df['dvl_slope_5'] > 0)
-    else:
-        df['is_poc_bounce'] = False
-    df['is_poc_bounce'] = df['is_poc_bounce'].fillna(False)
-
-    # POC Breakout: Opening below POC, surging through with high delivery and positive structural momentum
-    if poc_price > 0:
-        df['is_poc_breakout'] = (df['price_close'] > poc_price) & \
-                                (df['price_open'] < poc_price) & \
-                                (df['delivery_qty'] > df['deliv_sma_10']) & \
-                                (df['mcs_slope_5'] > 0) & (df['dvl_slope_5'] > 0)
-    else:
-        df['is_poc_breakout'] = False
-    df['is_poc_breakout'] = df['is_poc_breakout'].fillna(False)
 
     # 4. Quiet Period Requirement
     # Per user request: Suppress all signals for the first 3 days after an anchor (Day 0 kickstart)
     # This ensure slopes have enough history (min 3 dots) to reflect meaningful conviction.
     quiet_mask = df['days_since_anchor'] <= 3
-    for col in ['is_coil', 'is_ignition', 'is_poc_bounce', 'is_poc_breakout']:
+    for col in ['is_coil', 'is_ignition']:
         df.loc[quiet_mask, col] = False
 
     # 5. Trend Intensity (0-90°) & Velocity Status
@@ -297,8 +279,6 @@ def get_stock_data(symbol: str, agg_period: str = "daily", lookback_days: int = 
             "mcs": "last",
             "is_coil": "any",
             "is_ignition": "any",
-            "is_poc_bounce": "any",
-            "is_poc_breakout": "any",
             "ledger_angle": "last",
             "mcs_angle": "last",
             "ledger_velocity": "last",
@@ -323,8 +303,6 @@ def get_stock_data(symbol: str, agg_period: str = "daily", lookback_days: int = 
             "mcs": "last",
             "is_coil": "any",
             "is_ignition": "any",
-            "is_poc_bounce": "any",
-            "is_poc_breakout": "any",
             "ledger_angle": "last",
             "mcs_angle": "last",
             "ledger_velocity": "last",

@@ -91,21 +91,9 @@
                             <div class="dot" style="background:var(--gold);"></div>Ledger
                         </div>
                         <div class="legend-tag" style="margin: 0;">
-                            <div class="dot" style="background:#ffd43b; border-radius: 0; height: 2px;"></div>POC
-                        </div>
-                        <div class="legend-tag" style="margin: 0;">
                             <div class="dot"
                                 style="background:#b197fc; clip-path: polygon(50% 0%, 0% 100%, 100% 100%); border-radius: 0;">
                             </div>Ignition
-                        </div>
-                        <div class="legend-tag" style="margin: 0;">
-                            <div class="dot"
-                                style="background:#ffd43b; clip-path: polygon(50% 0%, 0% 100%, 100% 100%); border-radius: 0;">
-                            </div>Breakout
-                        </div>
-                        <div class="legend-tag" style="margin: 0;">
-                            <div class="dot" style="background:#ffd43b; border-radius: 50%;">
-                            </div>Bounce (B)
                         </div>
                         <div class="legend-tag" style="margin: 0;">
                             <div class="dot" style="background:#4dabf7; border-radius: 50%;"></div>Coil
@@ -123,7 +111,7 @@
                         <span class="sub" id="m-price-sub"></span>
                     </div>
                     <div class="metric" id="m-anchor">
-                        <span class="label">Anchor</span>
+                        <span class="label">Anchor <span class="help-icon" onclick="openHelp('anchor')">?</span></span>
                         <div style="display:flex; align-items:center;">
                             <span class="value" id="m-anchor-val" style="font-size:13px;">—</span>
                             <button id="btn-set-anchor" class="icon-btn" onclick="toggleAnchorMode()"
@@ -160,7 +148,8 @@
                 <div style="flex: 3; display:flex; flex-direction:column; overflow: hidden; min-height: 250px;">
                     <div class="chart-row" id="price-row"
                         style="flex: 1; position:relative; overflow: hidden; border-top-left-radius:6px; border-top-right-radius:6px;">
-                        <div class="chart-label">Price &amp; Delivery Volume</div>
+                        <div class="chart-label">Price &amp; Delivery Volume <span class="help-icon"
+                                onclick="openHelp('price')">?</span></div>
                         <div class="symbol-watermark" id="symbol-display"></div>
                         <div id="price-chart" style="position:absolute; inset:0;"></div>
                     </div>
@@ -169,7 +158,8 @@
                 <!-- Pane 1: Ledger -->
                 <div style="flex: 1; display:flex; flex-direction:column; min-height: 150px; overflow: hidden;">
                     <div class="chart-row" id="ledger-row" style="flex: 1; position:relative; overflow: hidden;">
-                        <div class="chart-label">Momentum Ledger</div>
+                        <div class="chart-label">Momentum Ledger <span class="help-icon"
+                                onclick="openHelp('ledger')">?</span></div>
                         <div id="ledger-chart" style="position:absolute; inset:0;"></div>
                     </div>
                 </div>
@@ -178,7 +168,8 @@
                 <div style="flex: 1; display:flex; flex-direction:column; min-height: 150px; overflow: hidden;">
                     <div class="chart-row" id="mcs-row"
                         style="flex: 1; position:relative; overflow: hidden; border-bottom-left-radius:6px; border-bottom-right-radius:6px;">
-                        <div class="chart-label">MCS (30D Correlation)</div>
+                        <div class="chart-label">MCS (30D Correlation) <span class="help-icon"
+                                onclick="openHelp('mcs')">?</span></div>
                         <div id="mcs-chart" style="position:absolute; inset:0;"></div>
                     </div>
                 </div>
@@ -260,6 +251,19 @@
                         </div>
                     </div>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Help Guide Modal -->
+    <div id="help-modal" class="modal-overlay" onclick="closeHelp(event)">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <h3 id="help-title">Help Guide</h3>
+                <button class="modal-close" onclick="closeHelp()">×</button>
+            </div>
+            <div class="modal-body" id="help-body">
+                <!-- Data injected via JS -->
             </div>
         </div>
     </div>

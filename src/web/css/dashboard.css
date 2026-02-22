@@ -738,6 +738,7 @@ body {
     border-radius: 50%;
     border: 1px solid var(--border);
     vertical-align: middle;
+    pointer-events: auto;
 }
 
 .help-icon:hover {

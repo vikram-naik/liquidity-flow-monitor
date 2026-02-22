@@ -78,103 +78,122 @@ def calculate_davwap(df: pd.DataFrame, anchor_date: datetime = None) -> pd.Serie
     davwap[~mask] = np.nan
     return davwap
 
-def find_day_zero_anchor(df: pd.DataFrame, lookback_left: int = 10, lookback_right: int = 5, target_month_date: str = None) -> dict:
+def find_day_zero_anchor(df: pd.DataFrame, manual_date: str = None) -> dict:
     """
-    Identify THE latest valid Day Zero anchor date based on PDF logic:
-    If target_month_date is provided (YYYY-MM-DD), it forces the anchor to be the lowest low within that month.
+    Identify the Day Zero anchor date.
+    - If manual_date is provided, it uses that exact date.
+    - Otherwise, it uses a Volume-Confirmed Volatility Pivot (ATR + Delivery Volume) 
+      over the last 104 weeks (2 years).
     """
-    if len(df) < lookback_left + lookback_right + 20:
+    if df.empty:
         return None
 
     df = df.sort_index()
     
     # --- Manual Override Logic ---
-    if target_month_date:
+    if manual_date:
         try:
-            t_date = pd.to_datetime(target_month_date)
-            # Find the month containing this date
-            start_of_month = t_date.replace(day=1)
-            # End of month
-            next_month = start_of_month + pd.DateOffset(months=1)
-            end_of_month = next_month - pd.DateOffset(days=1)
+            day_zero_date = pd.to_datetime(manual_date)
+            # Find the actual closest trading day in the index to avoid alignment issues
+            if day_zero_date not in df.index:
+                idx = df.index.get_indexer([day_zero_date], method='nearest')[0]
+                day_zero_date = df.index[idx]
             
-            min_month_date = end_of_month # Alignment for code below
-            min_month_val = 0 # Placeholder
-        except Exception as e:
-            logger.error(f"Invalid target_month_date: {target_month_date}")
-            return None
-    else:
-        # --- Hybrid Logic: Monthly Context ---
-        
-        # 1. Resample to Monthly to find major structural lows
-        # distinct months
-        df_monthly = df.resample('ME').agg({
-            'price_low': 'min',
-            'price_close': 'last',
-            'delivery_qty': 'sum'
-        }).dropna()
-
-        if len(df_monthly) < 3:
-            # Not enough monthly data, fallback to simple daily min
-            daily_min_idx = df['price_low'].idxmin()
+            day_zero_low = float(df.loc[day_zero_date]['price_low'])
+            
             return {
-                'anchor_date': daily_min_idx.strftime('%Y-%m-%d'),
-                'anchor_type': 'ABS_MIN',
-                'meta': json.dumps({'low': float(df.loc[daily_min_idx]['price_low'])})
+                'anchor_date': day_zero_date.strftime('%Y-%m-%d'),
+                'anchor_type': 'MANUAL',
+                'meta': json.dumps({
+                    'low': day_zero_low,
+                    'is_manual': True
+                })
             }
+        except Exception as e:
+            logger.error(f"Invalid manual_date: {manual_date} - {e}")
+            return None
 
-        # 2. Find the lowest low in the last 5 years
-        min_month_date = df_monthly['price_low'].idxmin()
-        min_month_val = df_monthly.loc[min_month_date]['price_low']
+    # --- Automatic Logic: Volume-Confirmed Volatility Pivot ---
     
-    # 3. Drill down to Daily to find specific date
-    if not target_month_date:
-        start_of_month = min_month_date.replace(day=1)
-        end_of_month = min_month_date
+    # 1. Isolate the last 2 years (approx 500 trading days)
+    recent_df = df.tail(500).copy()
+    if len(recent_df) < 50:
+        # Fallback to absolute low if not enough data
+        day_zero_date = df['price_low'].idxmin()
+        return {
+            'anchor_date': day_zero_date.strftime('%Y-%m-%d'),
+            'anchor_type': 'FALLBACK_MIN',
+            'meta': json.dumps({'low': float(df.loc[day_zero_date]['price_low'])})
+        }
+
+    # 2. Resample to Weekly to smooth out noise
+    weekly = recent_df.resample('W-FRI').agg({
+        'price_open': 'first',
+        'price_high': 'max',
+        'price_low': 'min',
+        'price_close': 'last',
+        'delivery_qty': 'sum'
+    }).dropna()
+
+    if len(weekly) < 20:
+        day_zero_date = recent_df['price_low'].idxmin()
+        return {
+            'anchor_date': day_zero_date.strftime('%Y-%m-%d'),
+            'anchor_type': 'FALLBACK_MIN',
+            'meta': json.dumps({'low': float(recent_df.loc[day_zero_date]['price_low'])})
+        }
+
+    # 3. Calculate True Range and 10-Week ATR
+    weekly['prev_close'] = weekly['price_close'].shift(1)
+    weekly['tr'] = weekly[['price_high', 'prev_close']].max(axis=1) - weekly[['price_low', 'prev_close']].min(axis=1)
+    weekly['atr_10'] = weekly['tr'].rolling(window=10).mean()
+
+    # 4. Calculate 10-Week Delivery Volume SMA
+    weekly['deliv_sma_10'] = weekly['delivery_qty'].rolling(window=10).mean()
+    weekly = weekly.dropna()
+
+    # 5. Scan backwards for "Structural Ignition"
+    day_zero_date = None
+    anchor_type = 'FALLBACK_MIN'
     
-    
-    # 3. Drill down to Daily to find specific date
-    # Define range for that month
-    start_of_month = min_month_date.replace(day=1)
-    end_of_month = min_month_date  # 'ME' index is end of month
-    
-    mask_month = (df.index >= start_of_month) & (df.index <= end_of_month)
-    df_target_month = df[mask_month]
-    
-    if df_target_month.empty:
-        # Fallback
-        return None
+    # Iterate from latest down to 10th week
+    for i in range(len(weekly) - 1, 9, -1):
+        current_week = weekly.iloc[i]
         
-    # The specific day with the lowest low
-    day_zero_date = df_target_month['price_low'].idxmin()
-    day_zero_low = df_target_month.loc[day_zero_date]['price_low']
-    
-    # 4. Light Validation (Volume)
-    # Check if this low has "stopping volume" or accumulated volume.
-    # We won't strictly REJECT it if volume is low, because Price Structure is King for Day Zero,
-    # but we will tag it.
-    
-    # Check 3-day volume around the low vs 20-day average
-    idx_loc = df.index.get_loc(day_zero_date)
-    start_loc = max(0, idx_loc - 1)
-    end_loc = min(len(df), idx_loc + 2)
-    
-    vol_3d = df.iloc[start_loc:end_loc]['delivery_qty'].sum()
-    avg_vol = df['delivery_qty'].rolling(20).mean().iloc[idx_loc]
-    
-    is_climax = False
-    if not pd.isna(avg_vol) and avg_vol > 0:
-        if vol_3d > avg_vol * 1.5: # 1.5x avg volume
-            is_climax = True
+        # 10-week base preceding this breakout week
+        base_window = weekly.iloc[i-10 : i]
+        base_low = base_window['price_low'].min()
+        
+        # Resistance Band: Base Low + (3 * ATR)
+        breakout_threshold = base_low + (3 * current_week['atr_10'])
+        
+        # Condition 1: Price break above resistance
+        is_price_breakout = current_week['price_close'] > breakout_threshold
+        # Condition 2: Institutional volume confirm
+        is_vol_confirmed = current_week['delivery_qty'] > current_week['deliv_sma_10']
+        
+        if is_price_breakout and is_vol_confirmed:
+            # Pivot confirmed. Find the exact daily low in that 10-week base.
+            window_start = base_window.index[0] - pd.Timedelta(days=6)
+            window_end = base_window.index[-1]
             
+            daily_base = recent_df.loc[window_start:window_end]
+            if not daily_base.empty:
+                day_zero_date = daily_base['price_low'].idxmin()
+                anchor_type = 'VOL_PIVOT'
+                break
+    
+    # Final Fallback: use absolute low of 2-year window if no pivot found
+    if day_zero_date is None:
+        day_zero_date = recent_df['price_low'].idxmin()
+
+    day_zero_low = float(df.loc[day_zero_date]['price_low'])
     return {
         'anchor_date': day_zero_date.strftime('%Y-%m-%d'),
-        'anchor_type': 'MANUAL_MONTHLY_MIN' if target_month_date else 'HYBRID_MONTHLY_MIN',
+        'anchor_type': anchor_type,
         'meta': json.dumps({
-            'low': float(day_zero_low),
-            'monthly_context': start_of_month.strftime('%Y-%m'), # Use start_of_month for consistency
-            'vol_climax': is_climax,
-            'is_manual': bool(target_month_date)
+            'low': day_zero_low,
+            'is_manual': False
         })
     }
 
@@ -245,28 +264,28 @@ def calculate_volume_profile(df: pd.DataFrame, bins: int = 50, anchor_date=None)
 def get_or_create_anchor(symbol: str, df: pd.DataFrame, force_new: bool = False, manual_date: str = None) -> dict:
     """Check DB for stored anchor, else calculate and save. force_new=True avoids DB read."""
     conn = get_db_connection()
-    cursor = conn.cursor()
-    
-    if not force_new and not manual_date:
-        cursor.execute("SELECT anchor_date, anchor_type, meta FROM symbol_anchors WHERE symbol = ?", (symbol.upper(),))
-        row = cursor.fetchone()
+    try:
+        cursor = conn.cursor()
         
-        if row:
-            conn.close()
-            return {
-                'anchor_date': row[0],
-                'anchor_type': row[1],
-                'meta': row[2]
-            }
-    
-    # Not in DB or Forced, find it
-    anchor = find_day_zero_anchor(df, target_month_date=manual_date)
-    if anchor:
-        cursor.execute(
-            "INSERT OR REPLACE INTO symbol_anchors (symbol, anchor_date, anchor_type, meta) VALUES (?, ?, ?, ?)",
-            (symbol.upper(), anchor['anchor_date'], anchor['anchor_type'], anchor['meta'])
-        )
-        conn.commit()
-    
-    conn.close()
-    return anchor
+        if not force_new and not manual_date:
+            cursor.execute("SELECT anchor_date, anchor_type, meta FROM symbol_anchors WHERE symbol = ?", (symbol.upper(),))
+            row = cursor.fetchone()
+            
+            if row:
+                return {
+                    'anchor_date': row[0],
+                    'anchor_type': row[1],
+                    'meta': row[2]
+                }
+        
+        # Not in DB or Forced, find it
+        anchor = find_day_zero_anchor(df, manual_date=manual_date)
+        if anchor:
+            cursor.execute(
+                "INSERT OR REPLACE INTO symbol_anchors (symbol, anchor_date, anchor_type, meta) VALUES (?, ?, ?, ?)",
+                (symbol.upper(), anchor['anchor_date'], anchor['anchor_type'], anchor['meta'])
+            )
+            conn.commit()
+        return anchor
+    finally:
+        conn.close()

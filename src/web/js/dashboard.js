@@ -506,7 +506,7 @@ window.loadSymbol = function (sym) {
     const agg = document.querySelector('#ctrl-agg .tbtn.active')?.dataset.val || 'daily';
     const btn = document.getElementById('btn-set-anchor');
     if (btn) {
-        if (agg === 'monthly') {
+        if (agg === 'daily') {
             btn.style.display = 'block';
         } else {
             btn.style.display = 'none';
@@ -590,6 +590,98 @@ function openIntensityGuide() {
     if (modal) modal.style.display = 'flex';
 }
 
+// ─── Help Guide Modal ────────────────────────────
+const helpContent = {
+    price: {
+        title: "Price & DAVWAP",
+        body: `
+            <div class="guide-section">
+                <h4>What it is</h4>
+                <p>The main chart area showing raw price action (candlesticks), delivery volume (histograms), and the Delivery Anchored VWAP (DAVWAP).</p>
+            </div>
+            <div class="guide-section">
+                <h4>DAVWAP (Delivery Anchored VWAP)</h4>
+                <p><strong>Calculation:</strong> Measured as the volume-weighted average price of all <em>delivery</em> shares since the anchor point.</p>
+                <p><strong>Interpretation:</strong> Acts as the "Heart Line" of the cycle. Price trading above a rising DAVWAP indicates healthy institutional support.</p>
+            </div>
+        `
+    },
+    ledger: {
+        title: "Momentum Ledger (DVL)",
+        body: `
+            <div class="guide-section">
+                <h4>What it is</h4>
+                <p>Measures the net intent behind institutional delivery volume. It filters out speculative volume to focus on "Quality" volume.</p>
+            </div>
+            <div class="guide-section">
+                <h4>Calculation</h4>
+                <p><code>DVL = Cumulative Sum of (MFM * Delivery Volume)</code></p>
+                <p><strong>MFM (Money Flow Multiplier):</strong> Determined by the close's position within the high-low range. Ranges from -1 (selling at lows) to +1 (buying into highs).</p>
+            </div>
+            <div class="guide-section">
+                <h4>Interpretation</h4>
+                <p>A rising ledger signifies active <strong>Accumulation</strong>. A falling ledger indicates <strong>Distribution</strong> (selling pressure). "Divergence" occurs when price rises while the ledger falls, indicating fragile momentum.</p>
+            </div>
+        `
+    },
+    mcs: {
+        title: "MCS (Money Capacity Score)",
+        body: `
+            <div class="guide-section">
+                <h4>What it is</h4>
+                <p>Measures "Absorption" capacity—how efficiently the price is absorbing institutional volume spikes.</p>
+            </div>
+            <div class="guide-section">
+                <h4>Calculation</h4>
+                <p>Measured as a 30-day Pearson correlation between Typical Price and Relative Delivery Volume (RDV).</p>
+            </div>
+            <div class="guide-section">
+                <h4>Interpretation</h4>
+                <p><strong>Positive (0 to 1):</strong> High Capacity. Price and volume are moving together, indicating strong trend participation.</p>
+                <p><strong>Negative (-1 to 0):</strong> Low Capacity/Absorption. Volume is spiking on price drops or stalls, indicating high overhead supply.</p>
+            </div>
+        `
+    },
+    anchor: {
+        title: "Day Zero Anchor",
+        body: `
+            <div class="guide-section">
+                <h4>What it is</h4>
+                <p>The "Start Point" for all cumulative flow calculations, including the <strong>Momentum Ledger</strong> and <strong>DAVWAP</strong>.</p>
+            </div>
+            <div class="guide-section">
+                <h4>Calculation (Automatic)</h4>
+                <p>The system uses a <strong>Volume-Confirmed Volatility Pivot</strong> algorithm over a 2-year (104 week) lookback:</p>
+                <ul>
+                    <li><strong>Volatility Check:</strong> Scans for a weekly breakout above <code>Recent Low + (3 * 10-week ATR)</code>.</li>
+                    <li><strong>Liquidity Check:</strong> Requires weekly delivery volume to exceed its 10-week moving average.</li>
+                    <li><strong>Precision:</strong> Once a pivot is found, the anchor is set to the exact daily date of the structural base low preceding the breakout.</li>
+                </ul>
+            </div>
+            <div class="guide-section">
+                <h4>How to set it</h4>
+                <p><strong>Automatic:</strong> The system identifies the major structural low within the last few years using the logic above.</p>
+                <p><strong>Manual:</strong> Switch to <strong>Daily (D)</strong> view, click the ⚓ icon, and then click on a specific candle in the chart. This allows you to set the anchor to an exact daily timestamp.</p>
+            </div>
+        `
+    }
+};
+
+function openHelp(metricId) {
+    const modal = document.getElementById('help-modal');
+    const content = helpContent[metricId];
+    if (!modal || !content) return;
+
+    document.getElementById('help-title').textContent = content.title;
+    document.getElementById('help-body').innerHTML = content.body;
+    modal.style.display = 'flex';
+}
+
+function closeHelp(event) {
+    const modal = document.getElementById('help-modal');
+    if (modal) modal.style.display = 'none';
+}
+
 function closeIntensityGuide(event) {
     const modal = document.getElementById('intensity-modal');
     if (modal) modal.style.display = 'none';
@@ -632,7 +724,7 @@ async function fetchStockData(sym) {
     // Show/Hide Anchor Button
     const btn = document.getElementById('btn-set-anchor');
     if (btn) {
-        if (agg === 'monthly') {
+        if (agg === 'daily') {
             btn.style.display = 'block';
         } else {
             btn.style.display = 'none';
@@ -674,23 +766,6 @@ async function fetchStockData(sym) {
                     color: '#b197fc', // Purple
                     shape: 'arrowUp',
                     text: agg === 'daily' ? `${d.ignition_score}` : ''
-                });
-            }
-            if (d.is_poc_breakout) {
-                markers.push({
-                    time: d.time,
-                    position: 'aboveBar',
-                    color: '#ffd43b', // Gold
-                    shape: 'arrowUp'
-                });
-            }
-            if (d.is_poc_bounce) {
-                markers.push({
-                    time: d.time,
-                    position: 'belowBar',
-                    color: '#ffd43b', // Gold
-                    shape: 'circle',
-                    text: 'B'
                 });
             }
             if (d.is_coil) {
@@ -786,7 +861,7 @@ window.toggleAnchorMode = function () {
         btn.classList.add('active');
         btn.style.color = '#00e396';
         chartDiv.style.cursor = 'crosshair';
-        toast("Select a MONTH to anchor...");
+        toast("Select a DATE/CANDLE to anchor...");
     } else {
         btn.classList.remove('active');
         btn.style.color = '';
@@ -808,7 +883,7 @@ async function setManualAnchor(dateInput) {
         }
     }
 
-    if (!confirm(`Set Day Zero anchor to month of ${dateStr}?`)) {
+    if (!confirm(`Set Day Zero anchor to ${dateStr}?`)) {
         toggleAnchorMode(); // Cancel
         return;
     }

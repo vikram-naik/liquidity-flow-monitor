@@ -5,15 +5,20 @@ import os
 DB_PATH = os.getenv("DB_PATH", "liquidity_monitor.db")
 
 def get_db_connection():
-    return sqlite3.connect(DB_PATH)
+    # Add timeout to handle concurrent writes better (default is 5s)
+    conn = sqlite3.connect(DB_PATH, timeout=20)
+    # Use WAL mode for better concurrency (multiple readers, one writer)
+    conn.execute("PRAGMA journal_mode=WAL;")
+    return conn
 
 
 def init_db():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     
-    # Enable Foreign Keys support in SQLite
+    # Enable Foreign Keys and WAL mode
     cursor.execute("PRAGMA foreign_keys = ON;")
+    cursor.execute("PRAGMA journal_mode = WAL;")
 
 
     
