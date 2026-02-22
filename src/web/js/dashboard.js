@@ -34,9 +34,7 @@ const theme = {
         minBarSpacing: 2,
         visible: true,
     },
-    localization: {
-        priceFormatter: (p) => p.toFixed(2),
-    },
+    // Localization move to individual charts to allow mixed formats
     crosshair: {
         mode: LightweightCharts.CrosshairMode.Normal,
         vertLine: {
@@ -114,22 +112,31 @@ ledgerChart.priceScale('ghost').applyOptions({
 });
 
 // Series - Pane 0
-const candleSeries = priceChart.addCandlestickSeries(candleOpts);
+const candleSeries = priceChart.addCandlestickSeries({
+    ...candleOpts,
+    priceFormat: { type: 'price', precision: 2, minMove: 0.05 },
+});
 const davwapSeries = priceChart.addLineSeries({
     color: '#2962FF',
     lineWidth: 2,
     lastValueVisible: true,
     priceLineVisible: false,
+    priceFormat: { type: 'price', precision: 2, minMove: 0.05 },
 });
 const volumeSeries = priceChart.addHistogramSeries({
-    priceFormat: { type: 'volume' },
-    priceScaleId: '', // Attach to overlay
+    priceFormat: {
+        type: 'custom',
+        minMove: 1,
+        formatter: (val) => abbrev(val)
+    },
+    priceScaleId: 'volume-overlay',
 });
-priceChart.priceScale('').applyOptions({
+priceChart.priceScale('volume-overlay').applyOptions({
     scaleMargins: {
-        top: 0.8,    // Push volume down (leaves top 80% for price)
+        top: 0.8,
         bottom: 0,
     },
+    visible: false,
 });
 
 // Series - Pane 1
@@ -484,8 +491,27 @@ window.onclick = function (event) {
     }
 }
 
+window.showMethodology = function () {
+    document.getElementById('charts-view').style.display = 'none';
+    document.getElementById('methodology-view').style.display = 'block';
+
+    // Clear url symbol so it feels like a standalone page
+    const urlParams = new URLSearchParams(window.location.search);
+    urlParams.delete('symbol');
+    window.history.replaceState({}, '', `${window.location.pathname}`);
+    document.title = "LFM Methodology";
+};
+
+window.showCharts = function () {
+    const chartsView = document.getElementById('charts-view');
+    const methodologyView = document.getElementById('methodology-view');
+    if (chartsView) chartsView.style.display = 'flex';
+    if (methodologyView) methodologyView.style.display = 'none';
+};
+
 // Fixed loadSymbol
 window.loadSymbol = function (sym) {
+    showCharts();
     const input = document.getElementById('symbol-input');
     const symbol = sym || input.value.trim().toUpperCase();
     if (!symbol) return;
@@ -504,14 +530,15 @@ window.loadSymbol = function (sym) {
 
     // Update Anchor Button Visibility based on current aggregation
     const agg = document.querySelector('#ctrl-agg .tbtn.active')?.dataset.val || 'daily';
-    const btn = document.getElementById('btn-set-anchor');
-    if (btn) {
-        if (agg === 'daily') {
-            btn.style.display = 'block';
-        } else {
-            btn.style.display = 'none';
-            if (typeof isSelectingAnchor !== 'undefined' && isSelectingAnchor) toggleAnchorMode();
-        }
+    const btnSet = document.getElementById('btn-set-anchor');
+    const btnAuto = document.getElementById('btn-auto-anchor');
+    if (agg === 'daily') {
+        if (btnSet) btnSet.style.display = 'block';
+        if (btnAuto) btnAuto.style.display = 'block';
+    } else {
+        if (btnSet) btnSet.style.display = 'none';
+        if (btnAuto) btnAuto.style.display = 'none';
+        if (typeof isSelectingAnchor !== 'undefined' && isSelectingAnchor) toggleAnchorMode();
     }
 };
 
@@ -531,6 +558,22 @@ function updateMetrics(meta) {
     mPrice.className = 'metric ' + (chg >= 0 ? 'green' : 'red');
 
     document.getElementById('m-anchor-val').textContent = meta.anchor_date || '—';
+
+    // Anchor Warning Logic
+    const warningEl = document.getElementById('m-anchor-warning');
+    if (warningEl) {
+        if (meta.anchor_type === 'FALLBACK_MIN') {
+            warningEl.style.display = 'inline-block';
+            warningEl.title = 'Warning: Low confidence anchor. System fell back to 2-year absolute low.';
+        } else if (meta.anchor_type === 'MANUAL') {
+            warningEl.style.display = 'inline-block';
+            warningEl.title = 'Manual Anchor Override';
+            warningEl.textContent = '⚙️'; // Gear icon for manual
+            warningEl.style.color = '#00e396';
+        } else {
+            warningEl.style.display = 'none';
+        }
+    }
 
     // Trend Intensity Tilt (0-90)
     const lAngle = meta.ledger_angle;
@@ -654,14 +697,19 @@ const helpContent = {
                 <p>The system uses a <strong>Volume-Confirmed Volatility Pivot</strong> algorithm over a 2-year (104 week) lookback:</p>
                 <ul>
                     <li><strong>Volatility Check:</strong> Scans for a weekly breakout above <code>Recent Low + (3 * 10-week ATR)</code>.</li>
-                    <li><strong>Liquidity Check:</strong> Requires weekly delivery volume to exceed its 10-week moving average.</li>
-                    <li><strong>Precision:</strong> Once a pivot is found, the anchor is set to the exact daily date of the structural base low preceding the breakout.</li>
+                    <li><strong>Liquidity Check:</strong> Requires weekly delivery volume to exceed its 10-week moving average by at least 1.5x.</li>
+                    <li><strong>Anchor Score:</strong> Evaluates all valid pivots based on volume expansion and base tightness, selecting the strongest structural pivot.</li>
+                    <li><strong>Precision:</strong> Pinpoints the exact daily date of the structural base low preceding the breakout.</li>
                 </ul>
+            </div>
+            <div class="guide-section">
+                <h4>Anchor Warnings ⚠️</h4>
+                <p>If you see a warning icon next to the anchor date, it means the system could not find a confirmed structural pivot and has fallen back to the absolute 2-year low. This is a low-confidence anchor and you may want to set it manually.</p>
             </div>
             <div class="guide-section">
                 <h4>How to set it</h4>
                 <p><strong>Automatic:</strong> The system identifies the major structural low within the last few years using the logic above.</p>
-                <p><strong>Manual:</strong> Switch to <strong>Daily (D)</strong> view, click the ⚓ icon, and then click on a specific candle in the chart. This allows you to set the anchor to an exact daily timestamp.</p>
+                <p><strong>Manual:</strong> Switch to <strong>Daily (D)</strong> view, click the ⚓ icon, and then click on a specific candle in the chart. This allows you to set the anchor to an exact timestamp.</p>
             </div>
         `
     }
@@ -722,14 +770,15 @@ async function fetchStockData(sym) {
     const agg = document.querySelector('#ctrl-agg .tbtn.active')?.dataset.val || 'daily';
 
     // Show/Hide Anchor Button
-    const btn = document.getElementById('btn-set-anchor');
-    if (btn) {
-        if (agg === 'daily') {
-            btn.style.display = 'block';
-        } else {
-            btn.style.display = 'none';
-            if (typeof isSelectingAnchor !== 'undefined' && isSelectingAnchor) toggleAnchorMode();
-        }
+    const btnSet = document.getElementById('btn-set-anchor');
+    const btnAuto = document.getElementById('btn-auto-anchor');
+    if (agg === 'daily') {
+        if (btnSet) btnSet.style.display = 'block';
+        if (btnAuto) btnAuto.style.display = 'block';
+    } else {
+        if (btnSet) btnSet.style.display = 'none';
+        if (btnAuto) btnAuto.style.display = 'none';
+        if (typeof isSelectingAnchor !== 'undefined' && isSelectingAnchor) toggleAnchorMode();
     }
 
     let lookback = 365;
@@ -909,6 +958,34 @@ async function setManualAnchor(dateInput) {
     } catch (e) {
         toast(`❌ ${e.message}`);
         toggleAnchorMode();
+    }
+}
+
+async function setAutoAnchor() {
+    const symbol = document.getElementById('symbol-input').value.trim().toUpperCase();
+
+    if (!confirm(`Force a recalculation of the Auto-Anchor for ${symbol}?\nThis will clear any manual overrides.`)) {
+        return;
+    }
+
+    try {
+        toast(`🔄 Calculating optimal anchor for ${symbol}...`);
+
+        const res = await fetch(`/lfm/api/analysis/stock/${symbol}/anchor/auto`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({ detail: "Auto-anchor calculation failed" }));
+            throw new Error(err.detail || "Auto-anchor calculation failed");
+        }
+
+        const newAnchor = await res.json();
+        toast(`✅ Auto-Anchor found: ${newAnchor.anchor_date}`);
+        loadSymbol(symbol); // Reload
+    } catch (e) {
+        toast(`❌ ${e.message}`);
     }
 }
 

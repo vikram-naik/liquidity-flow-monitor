@@ -153,8 +153,7 @@ def find_day_zero_anchor(df: pd.DataFrame, manual_date: str = None) -> dict:
     weekly = weekly.dropna()
 
     # 5. Scan backwards for "Structural Ignition"
-    day_zero_date = None
-    anchor_type = 'FALLBACK_MIN'
+    valid_pivots = []
     
     # Iterate from latest down to 10th week
     for i in range(len(weekly) - 1, 9, -1):
@@ -169,8 +168,9 @@ def find_day_zero_anchor(df: pd.DataFrame, manual_date: str = None) -> dict:
         
         # Condition 1: Price break above resistance
         is_price_breakout = current_week['price_close'] > breakout_threshold
-        # Condition 2: Institutional volume confirm
-        is_vol_confirmed = current_week['delivery_qty'] > current_week['deliv_sma_10']
+        
+        # Condition 2: Institutional volume confirm (TIGHTENED to 1.5x SMA)
+        is_vol_confirmed = current_week['delivery_qty'] > (current_week['deliv_sma_10'] * 1.5)
         
         if is_price_breakout and is_vol_confirmed:
             # Pivot confirmed. Find the exact daily low in that 10-week base.
@@ -179,9 +179,38 @@ def find_day_zero_anchor(df: pd.DataFrame, manual_date: str = None) -> dict:
             
             daily_base = recent_df.loc[window_start:window_end]
             if not daily_base.empty:
-                day_zero_date = daily_base['price_low'].idxmin()
-                anchor_type = 'VOL_PIVOT'
-                break
+                daily_low_date = daily_base['price_low'].idxmin()
+                
+                # Calculate Anchor Score
+                # 1. Volume Expansion Multiple (e.g., 2.5x SMA = 2.5 score)
+                vol_expansion = current_week['delivery_qty'] / current_week['deliv_sma_10'] if current_week['deliv_sma_10'] > 0 else 0
+                
+                # 2. Base Tightness (Inverse of standard deviation of closes)
+                base_closes = base_window['price_close']
+                base_std = base_closes.std()
+                # Normalize tightness: lower std = higher score. Prevent div by zero.
+                tightness_score = 1.0 / (base_std / base_closes.mean() + 1e-6) 
+                
+                # Total Score - heavily weight the volume expansion
+                total_score = (vol_expansion * 2.0) + tightness_score
+
+                valid_pivots.append({
+                    'date': daily_low_date,
+                    'score': total_score,
+                    'vol_expansion': vol_expansion
+                })
+    
+    # Select the best pivot
+    day_zero_date = None
+    anchor_type = 'FALLBACK_MIN'
+    
+    if valid_pivots:
+        # Sort by score descending and take the best
+        valid_pivots.sort(key=lambda x: x['score'], reverse=True)
+        best_pivot = valid_pivots[0]
+        day_zero_date = best_pivot['date']
+        anchor_type = 'VOL_PIVOT'
+        logger.info(f"Selected Anchor {day_zero_date} with score {best_pivot['score']:.2f} (Vol Expansion {best_pivot['vol_expansion']:.2f}x)")
     
     # Final Fallback: use absolute low of 2-year window if no pivot found
     if day_zero_date is None:

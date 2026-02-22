@@ -379,7 +379,6 @@ def serve_dashboard():
         raise HTTPException(status_code=404, detail='Dashboard not found')
     return FileResponse(html_path, media_type='text/html')
 
-
 @app.get('/lfm/api/analysis/stocks')
 def list_stocks():
     """Return all available stock symbols."""
@@ -401,6 +400,20 @@ def set_manual_anchor(symbol: str, req: ManualAnchorRequest):
     # Force recalculation with manual date
     # The date provided should be used to identify the target month
     anchor = get_or_create_anchor(symbol, df, manual_date=req.date)
+    return anchor
+
+@app.post('/lfm/api/analysis/stock/{symbol}/anchor/auto')
+def set_auto_anchor(symbol: str):
+    """Force the system to recalculate the auto-anchor, dropping any manual override."""
+    df, _, _ = get_stock_data(symbol, lookback_days=0)
+    
+    if df.empty:
+        raise HTTPException(status_code=404, detail="No data found for symbol")
+    
+    if 'record_date' in df.columns:
+        df = df.set_index('record_date')
+
+    anchor = get_or_create_anchor(symbol, df, force_new=True)
     return anchor
 
 
@@ -440,6 +453,7 @@ def get_stock_analysis(
         "price_change_pct": round(float(price_chg), 2) if not pd.isna(price_chg) else 0.0,
         "data_points": len(df),
         "anchor_date": anchor['anchor_date'] if anchor else None,
+        "anchor_type": anchor['anchor_type'] if anchor else None,
         "anchor_status": "CONFIRMED" if anchor else "MISSING",
         "ledger_angle": _safe(latest.get("ledger_angle")),
         "mcs_angle": _safe(latest.get("mcs_angle")),

@@ -57,121 +57,253 @@
                 </div>
             </div>
 
+            <!-- Documentation Link -->
+            <div style="padding: 16px; border-top: 1px solid var(--border-color); margin-top: auto;">
+                <a href="#" onclick="showMethodology(); return false;"
+                    style="color: var(--text-2); text-decoration: none; font-size: 13px; display: flex; align-items: center; gap: 8px;">
+                    <span style="font-size: 16px;">📖</span> LFM Methodology
+                </a>
+            </div>
+
         </aside>
 
         <!-- ── Main Content ──────────────────────────────────── -->
         <main id="main-content">
-            <!-- Header (Reduced) -->
-            <header id="top-bar">
-                <div style="display:flex; align-items:center; gap:12px;">
-                    <button class="icon-btn" onclick="toggleSidebar()" style="font-size:20px;">☰</button>
-                    <h2
-                        style="font-size:16px; font-weight:700; background:linear-gradient(135deg,var(--purple),var(--blue)); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent;">
-                        Smart Money</h2>
+            <div id="charts-view" style="display: flex; flex-direction: column; height: 100%; width: 100%;">
+                <!-- Header (Reduced) -->
+                <header id="top-bar">
+                    <div style="display:flex; align-items:center; gap:12px;">
+                        <button class="icon-btn" onclick="toggleSidebar()" style="font-size:20px;">☰</button>
+                        <h2
+                            style="font-size:16px; font-weight:700; background:linear-gradient(135deg,var(--purple),var(--blue)); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent;">
+                            Smart Money</h2>
+                    </div>
+
+                    <div class="controls">
+                        <div class="ctrl-group">
+                            <label>Agg</label>
+                            <div class="btn-group" id="ctrl-agg">
+                                <button class="tbtn active" data-val="daily" onclick="switchTbtn(this)">D</button>
+                                <button class="tbtn" data-val="weekly" onclick="switchTbtn(this)">W</button>
+                                <button class="tbtn" data-val="monthly" onclick="switchTbtn(this)">M</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="metrics">
+                        <div class="metric" id="m-legends"
+                            style="flex-direction: row; align-items: center; justify-content: center; gap: 12px; padding: 0 14px;">
+                            <div class="legend-tag" style="margin: 0;">
+                                <div class="dot" style="background:var(--blue);"></div>DAVWAP
+                            </div>
+                            <div class="legend-tag" style="margin: 0;">
+                                <div class="dot" style="background:var(--gold);"></div>Ledger
+                            </div>
+                            <div class="legend-tag" style="margin: 0;">
+                                <div class="dot"
+                                    style="background:#b197fc; clip-path: polygon(50% 0%, 0% 100%, 100% 100%); border-radius: 0;">
+                                </div>Ignition
+                            </div>
+                            <div class="legend-tag" style="margin: 0;">
+                                <div class="dot" style="background:#4dabf7; border-radius: 50%;"></div>Coil
+                            </div>
+                        </div>
+                        <div class="metric" id="m-price">
+                            <div style="display:flex; justify-content:space-between; align-items: center; width: 100%;">
+                                <span class="label">Price</span>
+                                <button class="text-btn"
+                                    style="color:var(--green); font-size:14px; line-height:1; padding-left:12px;"
+                                    onclick="watchlistManager.addToCurrent(document.getElementById('symbol-input').value)"
+                                    title="Add to Watchlist">+</button>
+                            </div>
+                            <span class="value" id="m-price-val">—</span>
+                            <span class="sub" id="m-price-sub"></span>
+                        </div>
+                        <div class="metric" id="m-anchor">
+                            <span class="label">Anchor <span class="help-icon"
+                                    onclick="openHelp('anchor')">?</span></span>
+                            <div style="display:flex; align-items:center;">
+                                <span class="value" id="m-anchor-val" style="font-size:13px;">—</span>
+                                <span id="m-anchor-warning"
+                                    style="display:none; color:#ffb01f; margin-left:4px; font-size:12px; cursor:help;">⚠️</span>
+                                <button id="btn-auto-anchor" class="icon-btn" onclick="setAutoAnchor()"
+                                    title="Force Auto Anchor"
+                                    style="font-size:14px; margin-left:6px; display:none;">🔄</button>
+                                <button id="btn-set-anchor" class="icon-btn" onclick="toggleAnchorMode()"
+                                    title="Set Manual Anchor (Daily Only)"
+                                    style="font-size:14px; margin-left:2px; display:none;">⚓</button>
+                            </div>
+                        </div>
+                        <div class="metric" id="m-ledger-tilt">
+                            <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+                                <span class="label">Ledger Tilt <span class="help-icon"
+                                        onclick="openIntensityGuide()">?</span></span>
+                                <span id="badge-ledger" class="i-badge">L</span>
+                            </div>
+                            <div style="display:flex; align-items:baseline; gap:8px;">
+                                <span class="value" id="m-ledger-tilt-val">—</span>
+                                <span id="m-ledger-velocity-val"
+                                    style="font-size:10px; opacity:0.8; font-weight:500;"></span>
+                            </div>
+                        </div>
+                        <div class="metric" id="m-mcs-tilt">
+                            <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+                                <span class="label">MCS Tilt <span class="help-icon"
+                                        onclick="openIntensityGuide()">?</span></span>
+                                <span id="badge-mcs" class="i-badge">L</span>
+                            </div>
+                            <span class="value" id="m-mcs-tilt-val">—</span>
+                        </div>
+                    </div>
+                </header>
+
+                <!-- Charts -->
+                <div id="chart-area" style="display: flex; flex-direction: column; height: 100%;">
+                    <!-- Pane 0: Price & Volume & DAVWAP -->
+                    <div style="flex: 3; display:flex; flex-direction:column; overflow: hidden; min-height: 250px;">
+                        <div class="chart-row" id="price-row"
+                            style="flex: 1; position:relative; overflow: hidden; border-top-left-radius:6px; border-top-right-radius:6px;">
+                            <div class="chart-label">Price &amp; Delivery Volume <span class="help-icon"
+                                    onclick="openHelp('price')">?</span></div>
+                            <div class="symbol-watermark" id="symbol-display"></div>
+                            <div id="price-chart" style="position:absolute; inset:0;"></div>
+                        </div>
+                    </div>
+
+                    <!-- Pane 1: Ledger -->
+                    <div style="flex: 1; display:flex; flex-direction:column; min-height: 150px; overflow: hidden;">
+                        <div class="chart-row" id="ledger-row" style="flex: 1; position:relative; overflow: hidden;">
+                            <div class="chart-label">Momentum Ledger <span class="help-icon"
+                                    onclick="openHelp('ledger')">?</span></div>
+                            <div id="ledger-chart" style="position:absolute; inset:0;"></div>
+                        </div>
+                    </div>
+
+                    <!-- Pane 2: MCS -->
+                    <div style="flex: 1; display:flex; flex-direction:column; min-height: 150px; overflow: hidden;">
+                        <div class="chart-row" id="mcs-row"
+                            style="flex: 1; position:relative; overflow: hidden; border-bottom-left-radius:6px; border-bottom-right-radius:6px;">
+                            <div class="chart-label">MCS (30D Correlation) <span class="help-icon"
+                                    onclick="openHelp('mcs')">?</span></div>
+                            <div id="mcs-chart" style="position:absolute; inset:0;"></div>
+                        </div>
+                    </div>
                 </div>
 
-                <div class="controls">
-                    <div class="ctrl-group">
-                        <label>Agg</label>
-                        <div class="btn-group" id="ctrl-agg">
-                            <button class="tbtn active" data-val="daily" onclick="switchTbtn(this)">D</button>
-                            <button class="tbtn" data-val="weekly" onclick="switchTbtn(this)">W</button>
-                            <button class="tbtn" data-val="monthly" onclick="switchTbtn(this)">M</button>
-                        </div>
-                    </div>
-                </div>
+            </div>
 
-                <div id="metrics">
-                    <div class="metric" id="m-legends"
-                        style="flex-direction: row; align-items: center; justify-content: center; gap: 12px; padding: 0 14px;">
-                        <div class="legend-tag" style="margin: 0;">
-                            <div class="dot" style="background:var(--blue);"></div>DAVWAP
-                        </div>
-                        <div class="legend-tag" style="margin: 0;">
-                            <div class="dot" style="background:var(--gold);"></div>Ledger
-                        </div>
-                        <div class="legend-tag" style="margin: 0;">
-                            <div class="dot"
-                                style="background:#b197fc; clip-path: polygon(50% 0%, 0% 100%, 100% 100%); border-radius: 0;">
-                            </div>Ignition
-                        </div>
-                        <div class="legend-tag" style="margin: 0;">
-                            <div class="dot" style="background:#4dabf7; border-radius: 50%;"></div>Coil
-                        </div>
+            <!-- Methodology View -->
+            <div id="methodology-view" class="methodology-view" style="display: none;">
+                <div class="methodology-container">
+                    <div style="text-align: center;">
+                        <div class="badge">CFA Functional Review</div>
                     </div>
-                    <div class="metric" id="m-price">
-                        <div style="display:flex; justify-content:space-between; align-items: center; width: 100%;">
-                            <span class="label">Price</span>
-                            <button class="text-btn"
-                                style="color:var(--green); font-size:14px; line-height:1; padding-left:12px;"
-                                onclick="watchlistManager.addToCurrent(document.getElementById('symbol-input').value)"
-                                title="Add to Watchlist">+</button>
-                        </div>
-                        <span class="value" id="m-price-val">—</span>
-                        <span class="sub" id="m-price-sub"></span>
-                    </div>
-                    <div class="metric" id="m-anchor">
-                        <span class="label">Anchor <span class="help-icon" onclick="openHelp('anchor')">?</span></span>
-                        <div style="display:flex; align-items:center;">
-                            <span class="value" id="m-anchor-val" style="font-size:13px;">—</span>
-                            <button id="btn-set-anchor" class="icon-btn" onclick="toggleAnchorMode()"
-                                title="Set Manual Anchor (Monthly Only)"
-                                style="font-size:14px; margin-left:6px; display:none;">⚓</button>
-                        </div>
-                    </div>
-                    <div class="metric" id="m-ledger-tilt">
-                        <div style="display:flex; justify-content:space-between; align-items:flex-start;">
-                            <span class="label">Ledger Tilt <span class="help-icon"
-                                    onclick="openIntensityGuide()">?</span></span>
-                            <span id="badge-ledger" class="i-badge">L</span>
-                        </div>
-                        <div style="display:flex; align-items:baseline; gap:8px;">
-                            <span class="value" id="m-ledger-tilt-val">—</span>
-                            <span id="m-ledger-velocity-val"
-                                style="font-size:10px; opacity:0.8; font-weight:500;"></span>
-                        </div>
-                    </div>
-                    <div class="metric" id="m-mcs-tilt">
-                        <div style="display:flex; justify-content:space-between; align-items:flex-start;">
-                            <span class="label">MCS Tilt <span class="help-icon"
-                                    onclick="openIntensityGuide()">?</span></span>
-                            <span id="badge-mcs" class="i-badge">L</span>
-                        </div>
-                        <span class="value" id="m-mcs-tilt-val">—</span>
-                    </div>
-                </div>
-            </header>
+                    <h1>Liquidity Flow Monitor: Methodology</h1>
+                    <div class="meta-info">Institutional-Grade Accumulation & Distribution Analysis</div>
 
-            <!-- Charts -->
-            <div id="chart-area" style="display: flex; flex-direction: column; height: 100%;">
-                <!-- Pane 0: Price & Volume & DAVWAP -->
-                <div style="flex: 3; display:flex; flex-direction:column; overflow: hidden; min-height: 250px;">
-                    <div class="chart-row" id="price-row"
-                        style="flex: 1; position:relative; overflow: hidden; border-top-left-radius:6px; border-top-right-radius:6px;">
-                        <div class="chart-label">Price &amp; Delivery Volume <span class="help-icon"
-                                onclick="openHelp('price')">?</span></div>
-                        <div class="symbol-watermark" id="symbol-display"></div>
-                        <div id="price-chart" style="position:absolute; inset:0;"></div>
-                    </div>
-                </div>
+                    <h2>1. Core Philosophy: Quantifying Intent vs. Price Action</h2>
+                    <p>The standard retail approach to technical analysis relies heavily on historical, lagging price
+                        derivatives
+                        (moving averages, MACD, RSI) or subjective pattern recognition (trendlines, flags). These
+                        methods are flawed
+                        because they measure the <em>result</em> of an action rather than the <em>intent</em> behind it.
+                    </p>
+                    <p>This dashboard pivots to a professional, institutional-grade methodology: <strong>Liquidity
+                            Tracking and
+                            Order Flow Analysis</strong>. It seeks to answer three critical questions:</p>
+                    <ul>
+                        <li><strong>Who is in control?</strong> (Measured by the Cumulative Volume Ledger)</li>
+                        <li><strong>How urgent is their campaign?</strong> (Measured by Ledger Angle/Tilt)</li>
+                        <li><strong>When are they initiating the markup?</strong> (Measured by the MCS Correlation &
+                            Ignition
+                            markers)</li>
+                    </ul>
+                    <p>By anchoring analysis to structural shifts and multiplying "skin-in-the-game" volume (Delivery
+                        Quantity) by
+                        directional conviction (Money Flow Multiplier), the system isolates institutional accumulation
+                        and
+                        distribution, stripping out retail noise.</p>
 
-                <!-- Pane 1: Ledger -->
-                <div style="flex: 1; display:flex; flex-direction:column; min-height: 150px; overflow: hidden;">
-                    <div class="chart-row" id="ledger-row" style="flex: 1; position:relative; overflow: hidden;">
-                        <div class="chart-label">Momentum Ledger <span class="help-icon"
-                                onclick="openHelp('ledger')">?</span></div>
-                        <div id="ledger-chart" style="position:absolute; inset:0;"></div>
-                    </div>
-                </div>
+                    <h2>2. The "Day Zero" Anchor (Contextual Volume Profiling)</h2>
+                    <p>The "Day Zero" anchor is the foundational edge of the entire system.</p>
+                    <ul>
+                        <li><strong>The Problem with Traditional Indicators:</strong> Standard indicators carry infinite
+                            historical
+                            baggage. A 200-day moving average includes data from regimes that are complete irrelevant to
+                            the current
+                            market auction.</li>
+                        <li><strong>The LFM Edge:</strong> By programmatically identifying (or manually setting) a "Day
+                            Zero"
+                            anchor, the system establishes a precise cost basis for the <em>active</em> institutional
+                            campaign. It
+                            asks: "Since the smart money stepped in at this structural pivot, what is their net
+                            accumulated
+                            position?"</li>
+                        <li><strong>The Output:</strong> This bounded timeframe allows for the calculation of a highly
+                            accurate
+                            DAVWAP (Anchored Volume Weighted Average Price) and the <code>dvl_cumulative</code> (Ghost
+                            Line),
+                            aligning the analysis with the real-time physics of the auction.</li>
+                    </ul>
 
-                <!-- Pane 2: MCS -->
-                <div style="flex: 1; display:flex; flex-direction:column; min-height: 150px; overflow: hidden;">
-                    <div class="chart-row" id="mcs-row"
-                        style="flex: 1; position:relative; overflow: hidden; border-bottom-left-radius:6px; border-bottom-right-radius:6px;">
-                        <div class="chart-label">MCS (30D Correlation) <span class="help-icon"
-                                onclick="openHelp('mcs')">?</span></div>
-                        <div id="mcs-chart" style="position:absolute; inset:0;"></div>
-                    </div>
+                    <h2>3. The Cumulative Ledger (Isolating Institutional Flow)</h2>
+                    <p>The Cumulative DVL (represented by the <strong>Ghost Line</strong>) is the core diagnostic tool
+                        for
+                        identifying hidden accumulation or distribution.</p>
+                    <ul>
+                        <li><strong>Mechanism:</strong> It isolates institutional footprints by multiplying Delivery
+                            Quantity
+                            (actual shares changing hands and being held, not day-trading churn) by the Money Flow
+                            Multiplier (where
+                            the close occurs relative to the daily range).</li>
+                        <li><strong>Application:</strong> The power of this ledger is divergence. If the price is
+                            grinding sideways
+                            in a tight, frustrating range, but the Ghost Line is rising relentlessly at a high angle, it
+                            provides
+                            mathematical proof of <strong>Absorption</strong>. It reveals that institutions are
+                            aggressively buying
+                            every dip without causing a price markup, trapping weak hands who only look at the flat
+                            price action.
+                        </li>
+                    </ul>
+
+                    <h2>4. The Role of MCS (Momentum Correlation Score)</h2>
+                    <p>Accumulation can last a frustratingly long time. Institutions often build their books slowly to
+                        avoid tipping
+                        their hand.</p>
+                    <ul>
+                        <li><strong>Mechanism:</strong> The MCS measures the 30-day correlation between price and
+                            volume.</li>
+                        <li><strong>Application:</strong> It acts as a "Spark" sensor. It prevents capital from being
+                            tied up in an
+                            endless accumulation zone (dead money). When a prolonged, quiet accumulation phase (positive
+                            Ledger)
+                            finally syncs up with price momentum (MCS flipping positive and accelerating), the system
+                            identifies
+                            that the markup phase is likely imminent.</li>
+                    </ul>
+
+                    <h2>5. Objective Scoring & Derivative Markers (Coils/Ignitions)</h2>
+                    <p>Charting is inherently discretionary and biased. A user's interpretation of a "bull flag" often
+                        depends on
+                        whether they are already long.</p>
+                    <ul>
+                        <li><strong>Mechanism:</strong> The dashboard treats chart signals as mathematical derivatives
+                            of the
+                            primary liquidity data. It forces potential setups through a rigid 100-point multi-pillar
+                            scoring system
+                            (Ledger Flow, Momentum, Geometry, Dryness, Proximity to Value).</li>
+                        <li><strong>Application:</strong> For a "Coil" to trigger, it cannot just be a tight candle. It
+                            <em>must</em> exhibit volume dryness, it <em>must</em> be near value (DAVWAP), and the
+                            institutional
+                            ledger <em>must not</em> be dumping. Boolean filters (e.g., requiring 2-sided wicks) act as
+                            strict
+                            risk-management gates, ensuring the system prefers missing a marginal setup over presenting
+                            a false
+                            positive.
+                        </li>
+                    </ul>
+
                 </div>
             </div>
         </main>

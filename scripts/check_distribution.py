@@ -9,7 +9,7 @@ sys.path.append('/home/vn/python-projects/liquidity-flow-monitor')
 from src.analysis.data import get_stock_data
 
 def investigate_distribution():
-    symbol = "NESTLEIND"
+    symbol = "GODIGIT"
     agg_period = "daily"
     df, anchor, vol_prof = get_stock_data(symbol, agg_period, lookback_days=120)
     
