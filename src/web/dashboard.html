@@ -116,10 +116,20 @@
                         <div class="metric" id="m-price">
                             <div style="display:flex; justify-content:space-between; align-items: center; width: 100%;">
                                 <span class="label">Price</span>
-                                <button class="text-btn"
-                                    style="color:var(--green); font-size:14px; line-height:1; padding-left:12px;"
-                                    onclick="watchlistManager.addToCurrent(document.getElementById('symbol-input').value)"
-                                    title="Add to Watchlist">+</button>
+                                <div style="display: flex; align-items: center; position: relative;">
+                                    <button class="text-btn"
+                                        style="color:var(--green); font-size:16px; line-height:1; padding-left:12px;"
+                                        onclick="watchlistManager.addToCurrent(document.getElementById('symbol-input').value)"
+                                        title="Add to Current Watchlist">+</button>
+                                    <button class="text-btn"
+                                        style="color:var(--text-1); font-size:14px; line-height:1; padding-left:8px;"
+                                        onclick="window.toggleCopyToMenu(event)"
+                                        title="Copy to another Watchlist">⎘</button>
+                                    <div id="copy-to-menu" class="dropdown-content"
+                                        style="right: 0; top: 100%; min-width: 160px; z-index: 100;">
+                                        <!-- list items injected here -->
+                                    </div>
+                                </div>
                             </div>
                             <span class="value" id="m-price-val">—</span>
                             <span class="sub" id="m-price-sub"></span>

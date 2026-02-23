@@ -451,6 +451,26 @@ class WatchlistManager {
         } catch (e) { console.error(e); }
     }
 
+    async addToList(symbol, listId) {
+        if (!listId) return;
+        if (!symbol) return;
+
+        try {
+            const res = await fetch(`/lfm/api/watchlists/${listId}/items`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ symbol })
+            });
+            if (res.ok) {
+                if (listId == this.activeListId) {
+                    this.fetchItems(this.activeListId);
+                }
+                const targetList = this.lists.find(l => l.id == listId);
+                this.showToast(`Copied ${symbol} to ${targetList ? targetList.name : 'Watchlist'}`);
+            }
+        } catch (e) { console.error(e); }
+    }
+
     async removeItem(symbol) {
         if (!this.activeListId) return;
         if (!confirm(`Remove ${symbol}?`)) return;
@@ -486,9 +506,41 @@ function toggleWlMenu(event) {
     menu.classList.toggle('show');
 }
 
+window.toggleCopyToMenu = function (event) {
+    if (event) event.stopPropagation();
+    const menu = document.getElementById('copy-to-menu');
+    if (!menu) return;
+
+    const symbol = document.getElementById('symbol-input').value;
+    if (!symbol) {
+        menu.innerHTML = '<div style="padding: 10px; font-size: 12px; color: var(--text-2);">No symbol selected</div>';
+    } else {
+        const lists = watchlistManager.lists;
+        if (lists.length === 0) {
+            menu.innerHTML = '<div style="padding: 10px; font-size: 12px; color: var(--text-2);">No watchlists</div>';
+        } else {
+            let html = `<div class="menu-label" style="padding: 8px 14px; font-size: 11px; color: var(--text-2); text-transform: uppercase;">Copy ${symbol} to:</div><div class="menu-divider"></div>`;
+            lists.forEach(l => {
+                const isActive = l.id == watchlistManager.activeListId;
+                html += `<button onclick="watchlistManager.addToList('${symbol}', ${l.id}); document.getElementById('copy-to-menu').classList.remove('show');"
+                    style="${isActive ? 'color: var(--text-2);' : ''}">
+                    ${l.name} ${isActive ? '(Current)' : ''}
+                </button>`;
+            });
+            menu.innerHTML = html;
+        }
+    }
+
+    // close other menus
+    const wlMenu = document.getElementById('wl-menu');
+    if (wlMenu && wlMenu.classList.contains('show')) wlMenu.classList.remove('show');
+
+    menu.classList.toggle('show');
+};
+
 // Close dropdowns when clicking outside
 window.onclick = function (event) {
-    if (!event.target.closest('.icon-btn') && !event.target.closest('.dropdown-content')) {
+    if (!event.target.closest('.icon-btn') && !event.target.closest('.text-btn') && !event.target.closest('.dropdown-content')) {
         const dropdowns = document.getElementsByClassName("dropdown-content");
         for (let i = 0; i < dropdowns.length; i++) {
             const openDropdown = dropdowns[i];
@@ -793,9 +845,14 @@ const helpContent = {
             <div class="guide-section">
                 <h4>Color Coding</h4>
                 <ul>
-                    <li><strong style="color: #26a69a;">Green:</strong> Closing price is positive (Bullish intent).</li>
-                    <li><strong style="color: #ef5350;">Red:</strong> Closing price is negative (Bearish intent).</li>
+                    <li><strong>Candles:</strong> Colored based on the Open-to-Close relationship. Red if Close < Open, Green if Close >= Open.</li>
+                    <li><strong>Volume Bars:</strong> Colored based on the <strong>Money Flow Multiplier (MFM)</strong>, not the daily price change.</li>
                 </ul>
+            </div>
+            <div class="guide-section">
+                <h4>Understanding Volume Colors (Hidden Accumulation)</h4>
+                <p>It is entirely possible (and significant) to see a <strong><span style="color: #ef5350;">Red Candle</span></strong> paired with a <strong><span style="color: #26a69a;">Green Volume Bar</span></strong>.</p>
+                <p>The MFM measures intraday control. If a stock gaps down and drops hard, but buyers step in aggressively to push the price back up so it closes in the upper half of its daily range, the MFM is positive. This prints a green volume bar, indicating active <strong>Absorption/Accumulation</strong> despite the red price candle.</p>
             </div>
         `
     }
