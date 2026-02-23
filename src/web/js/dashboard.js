@@ -635,17 +635,16 @@ function openIntensityGuide() {
 
 // ─── Help Guide Modal ────────────────────────────
 const helpContent = {
-    price: {
-        title: "Price & DAVWAP",
+    davwap: {
+        title: "DAVWAP (Delivery Anchored VWAP)",
         body: `
             <div class="guide-section">
                 <h4>What it is</h4>
-                <p>The main chart area showing raw price action (candlesticks), delivery volume (histograms), and the Delivery Anchored VWAP (DAVWAP).</p>
+                <p>The Delivery Anchored VWAP is the "Heart Line" of a cycle. It's the volume-weighted average price of all <em>delivery</em> shares traded since the Day Zero anchor.</p>
             </div>
             <div class="guide-section">
-                <h4>DAVWAP (Delivery Anchored VWAP)</h4>
-                <p><strong>Calculation:</strong> Measured as the volume-weighted average price of all <em>delivery</em> shares since the anchor point.</p>
-                <p><strong>Interpretation:</strong> Acts as the "Heart Line" of the cycle. Price trading above a rising DAVWAP indicates healthy institutional support.</p>
+                <h4>Interpretation</h4>
+                <p>Price trading above a rising DAVWAP indicates healthy institutional support and cost-basis defense. Price breaking decisively below a rising DAVWAP signals distribution and cycle failure.</p>
             </div>
         `
     },
@@ -710,6 +709,65 @@ const helpContent = {
                 <h4>How to set it</h4>
                 <p><strong>Automatic:</strong> The system identifies the major structural low within the last few years using the logic above.</p>
                 <p><strong>Manual:</strong> Switch to <strong>Daily (D)</strong> view, click the ⚓ icon, and then click on a specific candle in the chart. This allows you to set the anchor to an exact timestamp.</p>
+            </div>
+        `
+    },
+    ignition: {
+        title: "Ignition Marker (Breakout)",
+        body: `
+            <div class="guide-section">
+                <h4>What it is</h4>
+                <p>The Ignition marker isolates a single day of explosive, structurally significant markup initiated near value. It is represented by a <strong>Purple Up-Arrow</strong> over the candle.</p>
+            </div>
+            <div class="guide-section">
+                <h4>Triggers & Scoring (0-100)</h4>
+                <ul>
+                    <li><strong>Expansion (30 pts):</strong> The candle's net expansion must inherently be huge (<code>>= 0.8 * Average True Range</code>).</li>
+                    <li><strong>Volume (30 pts):</strong> Delivery volume must significantly exceed the 10-day moving average.</li>
+                    <li><strong>Proximity (20 pts):</strong> The move must have <strong>originated</strong> strictly within <code>1.0 ATR</code> of the DAVWAP.</li>
+                    <li><strong>Ledger (20 pts):</strong> The 5-day Momentum Ledger slope must be strongly accelerating.</li>
+                </ul>
+                <p>A score >= 50 triggers the marker.</p>
+            </div>
+        `
+    },
+    coil: {
+        title: "Coil Marker (Compression)",
+        body: `
+            <div class="guide-section">
+                <h4>What it is</h4>
+                <p>The Coil marker highlights extreme volatility compression near value, often preceding an explosive move. It is represented by a <strong>Blue Circle</strong> beneath the candle.</p>
+            </div>
+            <div class="guide-section">
+                <h4>Triggers & Scoring (0-100)</h4>
+                <ul>
+                    <li><strong>Geometry (30 pts):</strong> The candle's Total Range and Body size must be drastically smaller than the 50-day ATR (<code>Range < 0.8 ATR</code> and <code>Body < 0.4 ATR</code>).</li>
+                    <li><strong>Dryness (30 pts):</strong> Institutional volume is drying up (well below average), indicating supply exhaustion.</li>
+                    <li><strong>Proximity (20 pts):</strong> The candle is occurring very close to the DAVWAP (within <code>1.0 ATR</code>).</li>
+                    <li><strong>Ledger (20 pts):</strong> Despite the dryness, the underlying Momentum Ledger remains positive or stable.</li>
+                </ul>
+                <p>A score >= 50 triggers the marker.</p>
+            </div>
+        `
+    },
+    grind: {
+        title: "Grind Marker (Hidden Accumulation)",
+        body: `
+            <div class="guide-section">
+                <h4>What it is</h4>
+                <p>The Grind marker, or "Composite Ignition", isolates a 3-day sequence of "slow grind" upward breakouts that fail standard single-day Ignition criteria, but mathematically achieve a commanding structural breakaway collectively.</p>
+            </div>
+            <div class="guide-section">
+                <h4>Progressive Triggers (G1 &rarr; G2 &rarr; G3)</h4>
+                <ul>
+                    <li><strong>G1 (Initiation):</strong> Day 1 begins a move from within <code>1.0 ATR</code> of DAVWAP, expanding initially at least <code>0.5 ATR</code>.</li>
+                    <li><strong>G2 (Continuation):</strong> Day 2 closes higher, and cumulative expansion from G1 origin exceeds <code>0.8 ATR</code>.</li>
+                    <li><strong>G3 (Completion):</strong> Day 3 closes higher still, pushing the cumulative expansion from G1 origin beyond <code>1.2 ATR</code>. The 5-Day Momentum Ledger slope must be actively rising. Additionally, the Money Capacity Score (MCS) must be tracking strictly positively, or greater than Day 0 (the day prior to G1 initiation).</li>
+                </ul>
+            </div>
+            <div class="guide-section">
+                <h4>Ghosting Mechanic</h4>
+                <p>The system gives you a live edge. If today acts like a strong Day 1, you will see a <strong>G1</strong> badge immediately. However, if this sequence fails to mature into a full 3-day Grind over the next few days, the isolated <strong>G1</strong> marker is retroactively "ghosted" (erased) to keep the historical chart pristine.</p>
             </div>
         `
     }
@@ -824,6 +882,15 @@ async function fetchStockData(sym) {
                     color: '#4dabf7', // Blue
                     shape: 'circle',
                     text: agg === 'daily' ? `${d.coil_score}` : ''
+                });
+            }
+            if (d.grind_level) {
+                markers.push({
+                    time: d.time,
+                    position: 'belowBar',
+                    color: '#fcc419', // Gold
+                    shape: 'arrowUp',
+                    text: agg === 'daily' ? `G${d.grind_level}` : ''
                 });
             }
         });

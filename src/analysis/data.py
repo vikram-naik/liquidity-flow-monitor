@@ -113,6 +113,18 @@ def get_stock_data(symbol: str, agg_period: str = "daily", lookback_days: int = 
     # 2. Rolling Averages & Slopes
     df['deliv_sma_10'] = df['delivery_qty'].rolling(10).mean()
     df['prev_high'] = df['price_high'].shift(1)
+    df['prev_close'] = df['price_close'].shift(1)
+    
+    # Calculate True Range and 50-period ATR (sniper scope)
+    df['tr'] = np.maximum(
+        df['price_high'] - df['price_low'],
+        np.maximum(
+            abs(df['price_high'] - df['prev_close']),
+            abs(df['price_low'] - df['prev_close'])
+        )
+    )
+    # min_periods=1 ensures we have an ATR value early in the chart
+    df['atr_50'] = df['tr'].rolling(window=50, min_periods=1).mean()
     
     # Calculate 5-day slope (rate of change) to confirm sustained rising trends
     # Gracefully degrade to cumulative slope for the first 4 days post-anchor to avoid NaNs disabling filters
@@ -146,92 +158,132 @@ def get_stock_data(symbol: str, agg_period: str = "daily", lookback_days: int = 
         df['mcs_slope_5'] = np.nan
         df['days_since_anchor'] = 0
 
-    # 3. Boolean Signal Rules
-    # Context Rule: Price holds above Delivery AVWAP
-    ctx_pass = df['price_close'] > df['davwap']
-
-    # Coil (Compression): Indecision candle, low delivery, neutral MCS, holding context, close to DAVWAP, and Ledger is NOT actively dumping
-    # Coil Strength Multi-Pillar Scoring (0-100 pts)
-    # Pillar 1: Geometry (30 pts) - Rewards tight bodies (Indecision)
-    # 1.0 = perfect doji, 0.7 = our 30% body limit.
+    # 3. Smart Money Signal Rules (ATR-Based Sniper Scope)
+    
+    # ---------------------------------------------------------
+    # COIL (Volatility Compression & Accumulation)
+    # ---------------------------------------------------------
     range_total = df['price_high'] - df['price_low']
     body_top = df[['price_open', 'price_close']].max(axis=1)
     body_bot = df[['price_open', 'price_close']].min(axis=1)
     body_size = body_top - body_bot
-    upper_wick = df['price_high'] - body_top
-    lower_wick = body_bot - df['price_low']
 
-    # Coil Strength Multi-Pillar Scoring (0-100 pts)
-    # Pillar 1: Ledger (30 pts) - Rewards rising institutional flow (Dominant)
-    # Rising (>10% SMA): 30, Stable (>-10% SMA): 15, Diving: 0
-    score_ledger = pd.Series(0.0, index=df.index, dtype=float)
-    score_ledger[df['dvl_slope_5'] > (df['deliv_sma_10'] * 0.1)] = 30
-    score_ledger[(df['dvl_slope_5'] <= (df['deliv_sma_10'] * 0.1)) & (df['dvl_slope_5'] > -(df['deliv_sma_10'] * 0.1))] = 15
+    # Hard Triggers (Sniper Scope) - Filter out noise before scoring
+    # 1. Total range must be < 0.8 * ATR
+    # 2. Body must be tight < 0.4 * ATR
+    # 3. Distance from DAVWAP must be <= 1.0 * ATR
+    dist_raw_davwap = df['price_close'] - df['davwap']
+    dist_atr_davwap = dist_raw_davwap.abs() / df['atr_50']
     
-    # Pillar 2: Momentum (20 pts) - Rewards rising MCS (Spark)
-    # Rising (>0.01): 20, Flat (>-0.01): 10, Falling: 0
-    score_momentum = pd.Series(0.0, index=df.index, dtype=float)
-    score_momentum[df['mcs_slope_5'] > 0.01] = 20
-    score_momentum[(df['mcs_slope_5'] <= 0.01) & (df['mcs_slope_5'] > -0.01)] = 10
+    coil_hard_trigger = (range_total < (0.8 * df['atr_50'])) & \
+                        (body_size < (0.4 * df['atr_50'])) & \
+                        (dist_atr_davwap <= 1.0)
     
-    # Pillar 3: Geometry (20 pts) - Rewards tight bodies (Indecision)
-    score_geometry = 20 * (1.0 - (body_size / range_total)).clip(0, 1)
+    # Coil Scoring Pillars (0-100 pts)
+    # Pillar 1: Geometry (30 pts) - Rewards extreme compression vs normal ATR
+    score_geom_coil = 30 * (1.0 - (range_total / df['atr_50'])).clip(0, 1)
     
-    # Pillar 4: Dryness (20 pts) - Rewards low delivery vs SMA 10
-    score_dryness = 20 * (1.0 - (df['delivery_qty'] / df['deliv_sma_10'])).clip(0, 1)
+    # Pillar 2: Dryness (30 pts) - Rewards extreme volume exhaustion
+    score_dry_coil = 30 * (1.0 - (df['delivery_qty'] / df['deliv_sma_10'])).clip(0, 1)
     
-    # Pillar 5: Proximity (10 pts) - Rewards proximity to DAVWAP (Symmetrical 3% limit)
-    dist_pct = ((df['price_close'] - df['davwap']) / df['davwap']).abs()
-    score_proximity = 10 * (1.0 - (dist_pct / 0.03)).clip(0, 1)
+    # Pillar 3: Ledger Divergence (20 pts) - Flow must be non-negative
+    score_ledger_coil = pd.Series(0.0, index=df.index, dtype=float)
+    score_ledger_coil[df['dvl_slope_5'] > 0] = 20
+    score_ledger_coil[(df['dvl_slope_5'] <= 0) & (df['dvl_slope_5'] > -(df['deliv_sma_10'] * 0.1))] = 10
     
-    df['coil_score'] = (score_geometry + score_dryness + score_ledger + score_momentum + score_proximity).round(0)
-    
-    # Filter: Indecisive wick geometry is still a fundamental requirement (must have 2-sided wicks)
-    wick_check = (range_total > 0) & \
-                 (upper_wick >= range_total * 0.1) & \
-                 (lower_wick >= range_total * 0.1)
+    # Pillar 4: Value Proximity (20 pts) - Rewards proximity to DAVWAP in ATR units
+    # Baseline 10 pts for being strictly inside the 1.0 ATR zone
+    score_prox_coil = 10 + 10 * (1.0 - dist_atr_davwap).clip(0, 1)
 
-    # Decision: Trigger Coil if Score >= 50 and it's a structural 'wicky' candle AND within 3% of DAVWAP.
-    # Note: ctx_pass removed to allow coils to trigger slightly below DAVWAP (Accumulation trap).
-    df['is_coil'] = wick_check & (df['coil_score'] >= 50) & (dist_pct <= 0.03)
+    df['coil_score'] = (score_geom_coil + score_dry_coil + score_ledger_coil + score_prox_coil).round(0)
+    df['is_coil'] = coil_hard_trigger & (df['coil_score'] >= 50)
     df['is_coil'] = df['is_coil'].fillna(False)
 
-    # Ignition Strength Multi-Pillar Scoring (0-100 pts)
-    # Pillar 1: Value Proximity (30 pts) - Symmetric 3%, tiered by direction
-    # Above: 30 pts, Below: 15 pts. Linear decay within 3% bracket.
-    dist_raw = (df['price_close'] - df['davwap']) / df['davwap']
-    score_prox_ign = pd.Series(0.0, index=df.index, dtype=float)
+    # ---------------------------------------------------------
+    # IGNITION (Markup Initiation / Expansion)
+    # ---------------------------------------------------------
+    # Hard Triggers (Sniper Scope)
+    # 1. Structural Expansion (strong up candle)
+    # 2. Body expansion >= 0.8 * ATR
+    # 3. Move originated near DAVWAP (origin within 1.0 ATR)
     
-    mask_above = dist_raw >= 0
-    mask_below = dist_raw < 0
+    is_up_candle = (df['price_close'] > df['price_open'])
+    origin_price = df[['price_open', 'prev_close']].min(axis=1)
+    dist_origin_davwap = (origin_price - df['davwap']) / df['atr_50']
     
-    score_prox_ign[mask_above] = 30 * (1.0 - (dist_raw[mask_above] / 0.03)).clip(0, 1)
-    score_prox_ign[mask_below] = 15 * (1.0 - (abs(dist_raw[mask_below]) / 0.03)).clip(0, 1)
-
-    # Pillar 2: Vol Conviction (25 pts) - Rewards delivery surge
-    # Scales from 1.0x SMA (0 pts) to 1.5x SMA (25 pts)
-    score_vol_ign = 25 * ((df['delivery_qty'] / df['deliv_sma_10']) - 1.0).clip(0, 0.5) / 0.5
+    ignition_expansion = df['price_close'] - origin_price
     
-    # Pillar 3: Ledger Intensity (20 pts) - Rewards 5-day DVL acceleration
-    # Scales from 0.2x SMA (0 pts) to 0.7x SMA (20 pts)
+    ignition_hard_trigger = is_up_candle & \
+                            (ignition_expansion >= (0.8 * df['atr_50'])) & \
+                            (dist_origin_davwap.abs() <= 1.0)
+                            
+    # Ignition Scoring Pillars (0-100 pts)
+    # Pillar 1: Expansion Geometry (30 pts)
+    body_expansion_atr = ignition_expansion / df['atr_50']
+    score_geom_ign = 30 * ((body_expansion_atr - 0.8).clip(0, 1.2) / 1.2)
+    
+    # Pillar 2: Volume Conviction (30 pts) - Uncapped massive surges
+    vol_ratio = df['delivery_qty'] / df['deliv_sma_10']
+    score_vol_ign = 30 * ((vol_ratio - 1.0).clip(0, 1.5) / 1.5)
+    
+    # Pillar 3: Value Origin Proximity (20 pts) - Reward moves starting right at value
+    score_prox_ign = 20 * (1.0 - dist_origin_davwap.abs()).clip(0, 1)
+    
+    # Pillar 4: Ledger Acceleration (20 pts) - Rewards 5-day DVL acceleration
     score_ledger_ign = 20 * ((df['dvl_slope_5'] / df['deliv_sma_10']) - 0.2).clip(0, 0.5) / 0.5
     
-    # Pillar 4: Momentum Velocity (15 pts) - Rewards sharp MCS acceleration
-    # Scales from 0.01 (0 pts) to 0.05 (15 pts)
-    score_mom_ign = 15 * (df['mcs_slope_5'] - 0.01).clip(0, 0.04) / 0.04
-    
-    # Pillar 5: Base Score (10 pts) -baseline for clearing the breakout candle check
+    # Pillar 5: Structural Baseline (10 pts) - Rewards passing the strict 0.8 ATR expansion filter
     score_base_ign = 10
     
-    df['ignition_score'] = (score_prox_ign + score_vol_ign + score_ledger_ign + score_mom_ign + score_base_ign).round(0)
-    
-    # Decision: Trigger Ignition if Score >= 50 and it passes hard breakout candle requirements AND within 3% of DAVWAP.
-    is_expansion_candle = (df['price_close'] > df['price_open']) & \
-                          (df['price_close'] > df['prev_high'])
-                          
-    df['is_ignition'] = is_expansion_candle & (df['ignition_score'] >= 50) & (abs(dist_raw) <= 0.03)
+    df['ignition_score'] = (score_geom_ign + score_vol_ign + score_prox_ign + score_ledger_ign + score_base_ign).round(0)
+    df['is_ignition'] = ignition_hard_trigger & (df['ignition_score'] >= 50)
     df['is_ignition'] = df['is_ignition'].fillna(False)
 
+    # ---------------------------------------------------------
+    # COMPOSITE GRIND MARKER (3-Day Progressive Buildup)
+    # ---------------------------------------------------------
+    # Day 1: Expansion >= 0.5 ATR, originating within 1.0 ATR
+    is_grind_day1 = (df['price_close'] - origin_price >= 0.5 * df['atr_50']) & (dist_origin_davwap.abs() <= 1.0)
+    
+    price_close_prev1 = df['price_close'].shift(1)
+    origin_prev1 = origin_price.shift(1)
+    atr_prev1 = df['atr_50'].shift(1)
+    
+    # Day 2: Close > Day 1, Cumulative Expansion >= 0.8 ATR
+    is_grind_day2 = is_grind_day1.shift(1).fillna(False) & \
+                    (df['price_close'] > price_close_prev1) & \
+                    (df['price_close'] - origin_prev1 >= 0.8 * atr_prev1)
+                    
+    origin_prev2 = origin_price.shift(2)
+    atr_prev2 = df['atr_50'].shift(2)
+    
+    # Day 3: Close > Day 2, Cumulative Expansion >= 1.2 ATR, Positive 5-day slope, MCS Confirmation
+    mcs_prev3 = df['mcs'].shift(3)
+    is_grind_day3 = is_grind_day2.shift(1).fillna(False) & \
+                    (df['price_close'] > price_close_prev1) & \
+                    (df['price_close'] - origin_prev2 >= 1.2 * atr_prev2) & \
+                    (df['dvl_slope_5'] > 0) & \
+                    (df['mcs'] > mcs_prev3)
+                    
+    df['grind_level'] = 0
+    
+    # Retroactive valid assignment
+    df.loc[is_grind_day3, 'grind_level'] = 3
+    df.loc[is_grind_day3.shift(-1).fillna(False), 'grind_level'] = 2
+    df.loc[is_grind_day3.shift(-2).fillna(False), 'grind_level'] = 1
+    
+    # Progressive (Ghosting) Handle Live Edge (last 2 rows max)
+    if len(df) > 0:
+        last_idx = df.index[-1]
+        
+        if is_grind_day2.at[last_idx] and df.at[last_idx, 'grind_level'] == 0:
+            df.at[last_idx, 'grind_level'] = 2
+            if len(df) > 1:
+                prev_idx = df.index[-2]
+                df.at[prev_idx, 'grind_level'] = 1
+                
+        elif is_grind_day1.at[last_idx] and df.at[last_idx, 'grind_level'] == 0:
+            df.at[last_idx, 'grind_level'] = 1
 
     # 4. Quiet Period Requirement
     # Per user request: Suppress all signals for the first 3 days after an anchor (Day 0 kickstart)
@@ -239,6 +291,7 @@ def get_stock_data(symbol: str, agg_period: str = "daily", lookback_days: int = 
     quiet_mask = df['days_since_anchor'] <= 3
     for col in ['is_coil', 'is_ignition']:
         df.loc[quiet_mask, col] = False
+    df.loc[quiet_mask, 'grind_level'] = 0
 
     # 5. Trend Intensity (0-90°) & Velocity Status
     # Ledger Intensity: Normalized vs GLS (Global Ledger Slope from Anchor)

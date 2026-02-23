@@ -479,6 +479,7 @@ def get_stock_analysis(
             "coil_score": _safe(r.get("coil_score", 0)),
             "is_ignition": bool(r.get("is_ignition", False)),
             "ignition_score": _safe(r.get("ignition_score", 0)),
+            "grind_level": _safe(r.get("grind_level", 0)),
         })
         
         # Color coding for volume bars based on MFM (as per PDF)

@@ -25,3 +25,4 @@ screener_run.log
 server.log
 liquidity_monitor.db-shm
 liquidity_monitor.db-wal
+src/analysis/champak.md
