@@ -6,6 +6,8 @@ services:
       - "8000:8000"
     volumes:
       - .:/app/data
+      - ./src:/app/src
+      - ./scripts:/app/scripts
     restart: always
     deploy:
       resources:

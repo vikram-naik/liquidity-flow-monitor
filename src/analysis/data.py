@@ -291,7 +291,6 @@ def get_stock_data(symbol: str, agg_period: str = "daily", lookback_days: int = 
     quiet_mask = df['days_since_anchor'] <= 3
     for col in ['is_coil', 'is_ignition']:
         df.loc[quiet_mask, col] = False
-    df.loc[quiet_mask, 'grind_level'] = 0
 
     # 5. Trend Intensity (0-90°) & Velocity Status
     # Ledger Intensity: Normalized vs GLS (Global Ledger Slope from Anchor)

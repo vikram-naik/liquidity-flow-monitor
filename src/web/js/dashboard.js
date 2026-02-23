@@ -85,12 +85,19 @@ priceChart.priceScale('right').applyOptions({
 
 // Number Abbreviation Helper
 function abbrev(val) {
+    if (val === undefined || val === null) return '';
     const abs = Math.abs(val);
     const sign = val < 0 ? '-' : '';
     if (abs >= 10000000) return sign + (abs / 10000000).toFixed(1) + 'Cr';
     if (abs >= 100000) return sign + (abs / 100000).toFixed(1) + 'L';
     if (abs >= 1000) return sign + (abs / 1000).toFixed(1) + 'K';
-    return val.toString();
+
+    // For small values (like Ledger/MCS), limit to 2 decimals and strip trailing zeros
+    let formatted = val.toFixed(2);
+    if (formatted.includes('.')) {
+        formatted = formatted.replace(/\.?0+$/, '');
+    }
+    return formatted;
 }
 
 const ledgerChart = createChart('ledger-chart', {
@@ -159,6 +166,7 @@ const ledgerSeries = ledgerChart.addLineSeries({
 // Pane 2: MCS Chart Setup
 const mcsChart = createChart('mcs-chart', {
     timeScale: { visible: true },
+    localization: { priceFormatter: abbrev }
 });
 mcsChart.priceScale('left').applyOptions({
     visible: false
@@ -768,6 +776,26 @@ const helpContent = {
             <div class="guide-section">
                 <h4>Ghosting Mechanic</h4>
                 <p>The system gives you a live edge. If today acts like a strong Day 1, you will see a <strong>G1</strong> badge immediately. However, if this sequence fails to mature into a full 3-day Grind over the next few days, the isolated <strong>G1</strong> marker is retroactively "ghosted" (erased) to keep the historical chart pristine.</p>
+            </div>
+        `
+    },
+    price: {
+        title: "Price & Delivery Volume",
+        body: `
+            <div class="guide-section">
+                <h4>Candlestick Chart</h4>
+                <p>Standard OHLC (Open, High, Low, Close) candles. White candles represent positive closes, while darker candles represent negative closes.</p>
+            </div>
+            <div class="guide-section">
+                <h4>Delivery Quantity (Vertical Bars)</h4>
+                <p>Unlike standard volume charts that show all trades, these bars represent the <strong>Delivery Quantity</strong>—stocks actually transferred between accounts. This is the "Conviction" volume that institutional players use for long-term positions.</p>
+            </div>
+            <div class="guide-section">
+                <h4>Color Coding</h4>
+                <ul>
+                    <li><strong style="color: #26a69a;">Green:</strong> Closing price is positive (Bullish intent).</li>
+                    <li><strong style="color: #ef5350;">Red:</strong> Closing price is negative (Bearish intent).</li>
+                </ul>
             </div>
         `
     }

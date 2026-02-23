@@ -273,6 +273,7 @@ NSE_INDICES = {
     "NIFTY METAL": "ind_niftymetallist.csv",
     "NIFTY REALTY": "ind_niftyrealtylist.csv",
     "NIFTY AUTO": "ind_niftyautolist.csv",
+    "NIFTY DEFENCE": "ind_niftyindiadefence_list.csv",
 }
 
 @app.get("/lfm/api/watchlists/supported-indices")
