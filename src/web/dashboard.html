@@ -22,27 +22,50 @@
             </div>
 
             <!-- Symbol Search -->
-            <div class="symbol-search">
-                <input type="text" id="symbol-input" placeholder="Search Symbol…" value="GESHIP">
-                <button onclick="loadSymbol()">Go</button>
+            <div style="position: relative;" id="symbol-search-wrapper">
+                <div class="symbol-search">
+                    <input type="text" id="symbol-input" placeholder="Search Symbol…" value="GESHIP" autocomplete="off"
+                        spellcheck="false">
+                    <button onclick="loadSymbol()">Go</button>
+                </div>
+                <!-- Autocomplete Dropdown is injected here by JS -->
             </div>
 
             <!-- Watchlist Section -->
             <div class="watchlist-section">
                 <div class="wl-header">
                     <span class="wl-title">WATCHLIST</span>
-                    <div class="dropdown">
-                        <button class="icon-btn" onclick="toggleWlMenu(event)">⋮</button>
-                        <div id="wl-menu" class="dropdown-content">
-                            <button onclick="watchlistManager.createList()">+ New List</button>
-                            <div class="menu-divider"></div>
-                            <div class="menu-label">Indices / Templates</div>
-                            <div id="wl-menu-indices" class="menu-scroll">
-                                <!-- Dynamic indices injected here -->
+                    <div style="display: flex; gap: 4px;">
+                        <div class="dropdown">
+                            <button class="icon-btn" onclick="toggleSortMenu(event)" title="Sort Watchlist">⇅</button>
+                            <div id="sort-menu" class="dropdown-content">
+                                <button class="sort-btn default"
+                                    onclick="watchlistManager.setSortOrder('default')">Default Order</button>
+                                <button class="sort-btn az" onclick="watchlistManager.setSortOrder('az')">Symbol
+                                    (A-Z)</button>
+                                <button class="sort-btn za" onclick="watchlistManager.setSortOrder('za')">Symbol
+                                    (Z-A)</button>
+                                <button class="sort-btn date-new"
+                                    onclick="watchlistManager.setSortOrder('date-new')">Date Added (Newest)</button>
+                                <button class="sort-btn date-old"
+                                    onclick="watchlistManager.setSortOrder('date-old')">Date Added (Oldest)</button>
                             </div>
-                            <div class="menu-divider"></div>
-                            <button onclick="watchlistManager.renameCurrent()">✎ Rename List</button>
-                            <button class="danger" onclick="watchlistManager.deleteCurrent()">🗑 Delete List</button>
+                        </div>
+                        <div class="dropdown">
+                            <button class="icon-btn" onclick="toggleWlMenu(event)">⋮</button>
+                            <div id="wl-menu" class="dropdown-content">
+                                <button onclick="watchlistManager.createList()">+ New List</button>
+                                <div class="menu-divider"></div>
+                                <div class="menu-label">Indices / Templates</div>
+                                <div id="wl-menu-indices" class="menu-scroll">
+                                    <!-- Dynamic indices injected here -->
+                                </div>
+                                <div class="menu-divider"></div>
+                                <button onclick="watchlistManager.renameCurrent()">✎ Rename List</button>
+                                <button onclick="watchlistManager.downloadCurrent()">⬇️ Download List</button>
+                                <button class="danger" onclick="watchlistManager.deleteCurrent()">🗑 Delete
+                                    List</button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -111,6 +134,11 @@
                                 <div class="dot"
                                     style="background:#fcc419; clip-path: polygon(50% 0%, 0% 100%, 100% 100%); border-radius: 0;">
                                 </div>Grind (IG)
+                            </div>
+                            <div class="legend-tag" style="margin: 0; cursor: pointer;" onclick="openHelp('spring')">
+                                <div class="dot"
+                                    style="background:#00e5ff; clip-path: polygon(50% 0%, 0% 100%, 100% 100%); border-radius: 0;">
+                                </div>Spring
                             </div>
                         </div>
                         <div class="metric" id="m-price">

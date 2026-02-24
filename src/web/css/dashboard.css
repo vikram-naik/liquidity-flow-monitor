@@ -411,6 +411,46 @@ body {
     opacity: .85;
 }
 
+/* Autocomplete Dropdown */
+.autocomplete-dropdown {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    width: 100%;
+    background-color: var(--bg-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: 0px 8px 16px 0px rgba(0, 0, 0, 0.5);
+    z-index: 100;
+    max-height: 250px;
+    overflow-y: auto;
+    display: none;
+}
+
+.autocomplete-dropdown.show {
+    display: block;
+}
+
+.autocomplete-item {
+    padding: 10px 14px;
+    cursor: pointer;
+    color: var(--text-0);
+    font-size: 13px;
+    transition: background 0.15s;
+    display: flex;
+    align-items: center;
+}
+
+.autocomplete-item:hover, .autocomplete-item.selected {
+    background-color: var(--bg-3);
+    color: var(--blue);
+}
+
+.autocomplete-match {
+    color: var(--blue);
+    font-weight: 700;
+}
+
 /* Guide Button */
 .btn-guide {
     background: rgba(255, 255, 255, 0.05);

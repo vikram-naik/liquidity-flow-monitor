@@ -10,16 +10,28 @@ logger = logging.getLogger(__name__)
 
 def calculate_mfm(df: pd.DataFrame) -> pd.Series:
     """
-    Calculate Money Flow Multiplier (MFM):
-    MFM = [(Close - Low) - (High - Close)] / (High - Low)
-    Range: -1 to +1
+    Calculate True Money Flow Multiplier (Gap-Adjusted MFM):
+    Anchors High and Low to the Previous Close to factor in overnight gaps.
+    True High = max(High, Prev_Close)
+    True Low = min(Low, Prev_Close)
+    True Range = True High - True Low
+    True MFM = [(Close - True Low) - (True High - Close)] / True Range
     """
-    range_series = df['price_high'] - df['price_low']
+    if 'prev_close' not in df.columns:
+        df['prev_close'] = df['price_close'].shift(1)
+        
+    # Fallback for the very first row
+    prev_close = df['prev_close'].fillna(df['price_open'])
+    
+    true_high = np.maximum(df['price_high'], prev_close)
+    true_low = np.minimum(df['price_low'], prev_close)
+    true_range = true_high - true_low
+    
     # Avoid division by zero for Doji-like bars with zero range
     mfm = np.where(
-        range_series == 0,
+        true_range == 0,
         0,
-        ((df['price_close'] - df['price_low']) - (df['price_high'] - df['price_close'])) / range_series
+        ((df['price_close'] - true_low) - (true_high - df['price_close'])) / true_range
     )
     return pd.Series(mfm, index=df.index)
 

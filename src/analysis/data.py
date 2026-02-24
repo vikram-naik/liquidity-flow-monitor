@@ -240,17 +240,35 @@ def get_stock_data(symbol: str, agg_period: str = "daily", lookback_days: int = 
     df['is_ignition'] = df['is_ignition'].fillna(False)
 
     # ---------------------------------------------------------
+    # SPRING MARKER (Deep Washout & Reversal)
+    # ---------------------------------------------------------
+    # 1. Deep Discount: Origin >= 1.5 ATR below DAVWAP
+    deep_discount = (df['davwap'] - origin_price) / df['atr_50'] >= 1.5
+    
+    # 2. Strong Reversal: Expansion >= 0.8 ATR AND MFM > 0
+    strong_reversal = (ignition_expansion / df['atr_50'] >= 0.8) & (df['mfm'] > 0)
+    
+    # 3. Flow Rotation: Ledger Slope is strictly positive OR mathematically improving
+    ledger_improving = (df['dvl_slope_5'] > df['dvl_slope_5'].shift(1)) | (df['dvl_slope_5'] > 0)
+    
+    df['is_spring'] = deep_discount & strong_reversal & ledger_improving
+    df['is_spring'] = df['is_spring'].fillna(False)
+
+
+    # ---------------------------------------------------------
     # COMPOSITE GRIND MARKER (3-Day Progressive Buildup)
     # ---------------------------------------------------------
-    # Day 1: Expansion >= 0.5 ATR, originating within 1.0 ATR
-    is_grind_day1 = (df['price_close'] - origin_price >= 0.5 * df['atr_50']) & (dist_origin_davwap.abs() <= 1.0)
+    # Day 1: Expansion >= 0.5 ATR, originating within 1.0 ATR, Positive MFM (Close in upper half)
+    is_grind_day1 = (df['price_close'] - origin_price >= 0.5 * df['atr_50']) & \
+                    (dist_origin_davwap.abs() <= 1.0) & \
+                    (df['mfm'] > 0)
     
     price_close_prev1 = df['price_close'].shift(1)
     origin_prev1 = origin_price.shift(1)
     atr_prev1 = df['atr_50'].shift(1)
     
     # Day 2: Close > Day 1, Cumulative Expansion >= 0.8 ATR
-    is_grind_day2 = is_grind_day1.shift(1).fillna(False) & \
+    is_grind_day2 = is_grind_day1.shift(1, fill_value=False) & \
                     (df['price_close'] > price_close_prev1) & \
                     (df['price_close'] - origin_prev1 >= 0.8 * atr_prev1)
                     
@@ -259,7 +277,7 @@ def get_stock_data(symbol: str, agg_period: str = "daily", lookback_days: int = 
     
     # Day 3: Close > Day 2, Cumulative Expansion >= 1.2 ATR, Positive 5-day slope, MCS Confirmation
     mcs_prev3 = df['mcs'].shift(3)
-    is_grind_day3 = is_grind_day2.shift(1).fillna(False) & \
+    is_grind_day3 = is_grind_day2.shift(1, fill_value=False) & \
                     (df['price_close'] > price_close_prev1) & \
                     (df['price_close'] - origin_prev2 >= 1.2 * atr_prev2) & \
                     (df['dvl_slope_5'] > 0) & \
@@ -269,8 +287,8 @@ def get_stock_data(symbol: str, agg_period: str = "daily", lookback_days: int = 
     
     # Retroactive valid assignment
     df.loc[is_grind_day3, 'grind_level'] = 3
-    df.loc[is_grind_day3.shift(-1).fillna(False), 'grind_level'] = 2
-    df.loc[is_grind_day3.shift(-2).fillna(False), 'grind_level'] = 1
+    df.loc[is_grind_day3.shift(-1, fill_value=False), 'grind_level'] = 2
+    df.loc[is_grind_day3.shift(-2, fill_value=False), 'grind_level'] = 1
     
     # Progressive (Ghosting) Handle Live Edge (last 2 rows max)
     if len(df) > 0:
@@ -289,7 +307,7 @@ def get_stock_data(symbol: str, agg_period: str = "daily", lookback_days: int = 
     # Per user request: Suppress all signals for the first 3 days after an anchor (Day 0 kickstart)
     # This ensure slopes have enough history (min 3 dots) to reflect meaningful conviction.
     quiet_mask = df['days_since_anchor'] <= 3
-    for col in ['is_coil', 'is_ignition']:
+    for col in ['is_coil', 'is_ignition', 'is_spring']:
         df.loc[quiet_mask, col] = False
 
     # 5. Trend Intensity (0-90°) & Velocity Status

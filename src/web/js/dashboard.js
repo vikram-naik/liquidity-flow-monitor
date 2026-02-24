@@ -264,6 +264,8 @@ class WatchlistManager {
     constructor() {
         this.lists = [];
         this.activeListId = null;
+        this.currentItems = [];
+        this.sortOrder = 'default';
         this.init();
     }
 
@@ -357,26 +359,72 @@ class WatchlistManager {
         await this.fetchItems(id);
     }
 
+    setSortOrder(order) {
+        this.sortOrder = order;
+
+        // Update styling
+        document.querySelectorAll('.sort-btn').forEach(btn => btn.style.fontWeight = 'normal');
+        document.querySelectorAll('.sort-btn').forEach(btn => btn.style.color = 'var(--text-0)');
+        const btn = document.querySelector(`.sort-btn.${order}`);
+        if (btn) {
+            btn.style.fontWeight = 'bold';
+            btn.style.color = 'var(--blue)';
+        }
+
+        const menu = document.getElementById('sort-menu');
+        if (menu) menu.classList.remove('show');
+
+        this.renderItems();
+    }
+
+    renderItems() {
+        const container = document.getElementById('wl-items');
+        if (!this.currentItems || this.currentItems.length === 0) {
+            container.innerHTML = '<div class="wl-empty">List is empty</div>';
+            return;
+        }
+
+        let sortedItems = [...this.currentItems];
+
+        if (this.sortOrder === 'az') {
+            sortedItems.sort((a, b) => a.symbol.localeCompare(b.symbol));
+        } else if (this.sortOrder === 'za') {
+            sortedItems.sort((a, b) => b.symbol.localeCompare(a.symbol));
+        } else if (this.sortOrder === 'date-new') {
+            sortedItems.sort((a, b) => new Date((b.added_at || '').replace(' ', 'T') + 'Z') - new Date((a.added_at || '').replace(' ', 'T') + 'Z'));
+        } else if (this.sortOrder === 'date-old') {
+            sortedItems.sort((a, b) => new Date((a.added_at || '').replace(' ', 'T') + 'Z') - new Date((b.added_at || '').replace(' ', 'T') + 'Z'));
+        }
+
+        container.innerHTML = sortedItems.map(item => {
+            let dateStr = '';
+            if (item.added_at) {
+                const d = new Date(item.added_at.replace(' ', 'T') + 'Z');
+                if (!isNaN(d)) {
+                    dateStr = d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+                }
+            }
+            return `
+            <div class="wl-item ${item.symbol === document.getElementById('symbol-input').value ? 'active' : ''}" 
+                 onclick="loadSymbol('${item.symbol}')">
+                <div style="display:flex; flex-direction:column; align-items:flex-start; line-height: 1.2;">
+                    <span>${item.symbol}</span>
+                    ${dateStr ? `<span style="font-size: 10px; color: var(--text-2); font-weight: 400;">${dateStr}</span>` : ''}
+                </div>
+                <span class="del-btn" onclick="event.stopPropagation(); watchlistManager.removeItem('${item.symbol}')">×</span>
+            </div>
+            `;
+        }).join('');
+    }
+
     async fetchItems(id) {
         const container = document.getElementById('wl-items');
         container.innerHTML = '<div class="wl-empty">Loading...</div>';
 
         try {
             const res = await fetch(`/lfm/api/watchlists/${id}/items`);
-            const items = await res.json();
-
-            if (items.length === 0) {
-                container.innerHTML = '<div class="wl-empty">List is empty</div>';
-                return;
-            }
-
-            container.innerHTML = items.map(item => `
-                <div class="wl-item ${item.symbol === document.getElementById('symbol-input').value ? 'active' : ''}" 
-                     onclick="loadSymbol('${item.symbol}')">
-                    <span>${item.symbol}</span>
-                    <span class="del-btn" onclick="event.stopPropagation(); watchlistManager.removeItem('${item.symbol}')">×</span>
-                </div>
-            `).join('');
+            this.currentItems = await res.json();
+            this.renderItems();
         } catch (e) {
             container.innerHTML = '<div class="wl-empty">Error loading items</div>';
         }
@@ -432,6 +480,42 @@ class WatchlistManager {
             else document.getElementById('wl-items').innerHTML = '<div class="wl-empty">No watchlists</div>';
             this.showToast("Watchlist deleted");
         } catch (e) { alert(e.message); }
+    }
+
+    async downloadCurrent() {
+        if (!this.activeListId) return this.showToast("No active watchlist to download");
+        const current = this.lists.find(l => l.id == this.activeListId);
+        if (!current) return;
+
+        try {
+            const res = await fetch(`/lfm/api/watchlists/${this.activeListId}/items`);
+            if (!res.ok) throw new Error("Failed to fetch watchlist items");
+            const items = await res.json();
+
+            if (items.length === 0) return this.showToast("Watchlist is empty");
+
+            // Create content: Header + symbols
+            const lines = [current.name];
+            items.forEach(item => lines.push(item.symbol));
+            const content = lines.join('\n');
+
+            // Trigger download
+            const blob = new Blob([content], { type: 'text/plain' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = url;
+            a.download = `${current.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_symbols.txt`;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+
+            this.showToast("Watchlist downloaded");
+        } catch (e) {
+            console.error("Download failed", e);
+            alert("Download failed: " + e.message);
+        }
     }
 
     async addToCurrent(symbol) {
@@ -502,9 +586,23 @@ function toggleSidebar() {
 
 function toggleWlMenu(event) {
     if (event) event.stopPropagation();
+
+    const sortMenu = document.getElementById('sort-menu');
+    if (sortMenu) sortMenu.classList.remove('show');
+
     const menu = document.getElementById('wl-menu');
     menu.classList.toggle('show');
 }
+
+window.toggleSortMenu = function (event) {
+    if (event) event.stopPropagation();
+
+    const wlMenu = document.getElementById('wl-menu');
+    if (wlMenu) wlMenu.classList.remove('show');
+
+    const menu = document.getElementById('sort-menu');
+    if (menu) menu.classList.toggle('show');
+};
 
 window.toggleCopyToMenu = function (event) {
     if (event) event.stopPropagation();
@@ -717,8 +815,11 @@ const helpContent = {
             </div>
             <div class="guide-section">
                 <h4>Calculation</h4>
-                <p><code>DVL = Cumulative Sum of (MFM * Delivery Volume)</code></p>
-                <p><strong>MFM (Money Flow Multiplier):</strong> Determined by the close's position within the high-low range. Ranges from -1 (selling at lows) to +1 (buying into highs).</p>
+                <p><code>DVL = Cumulative Sum of (True MFM * Delivery Volume)</code></p>
+                <p><strong>True MFM (Money Flow Multiplier):</strong> Determines buying/selling conviction by measuring where the stock closed relative to its <strong>True Range</strong>. It mathematically accounts for overnight gaps by anchoring to the Previous Close.</p>
+                <ul>
+                    <li>If a stock gaps up $10 overnight and trades sideways, the True MFM registers as strong accumulation (+1.0) because it rewards the price being held significantly higher than yesterday's close.</li>
+                </ul>
             </div>
             <div class="guide-section">
                 <h4>Interpretation</h4>
@@ -855,6 +956,23 @@ const helpContent = {
                 <p>The MFM measures intraday control. If a stock gaps down and drops hard, but buyers step in aggressively to push the price back up so it closes in the upper half of its daily range, the MFM is positive. This prints a green volume bar, indicating active <strong>Absorption/Accumulation</strong> despite the red price candle.</p>
             </div>
         `
+    },
+    spring: {
+        title: "Spring Marker (Deep Washout & Reversal)",
+        body: `
+            <div class="guide-section">
+                <h4>What it is</h4>
+                <p>The Spring marker identifies high Risk-to-Reward (RRR) reversal setups where price is deeply discounted, but institutional accumulation (smart money) is beginning to rotate upward. It is represented by a <strong>Cyan Up-Arrow (S)</strong> beneath the candle.</p>
+            </div>
+            <div class="guide-section">
+                <h4>Triggers</h4>
+                <ul>
+                    <li><strong>Deep Discount:</strong> The origin of the move must be heavily discounted, strictly <code>>= 1.5 ATR</code> below the Delivery Anchored VWAP.</li>
+                    <li><strong>Strong Reversal:</strong> The day's expansion off the lows must be <code>>= 0.8 ATR</code> AND the candle must close in the upper half of its range (Positive MFM).</li>
+                    <li><strong>Momentum Rotation:</strong> Despite the markdown, the underlying 5-Day Cumulative Volume Ledger must be actively curling upward or strictly positive.</li>
+                </ul>
+            </div>
+        `
     }
 };
 
@@ -978,6 +1096,15 @@ async function fetchStockData(sym) {
                     text: agg === 'daily' ? `G${d.grind_level}` : ''
                 });
             }
+            if (d.is_spring) {
+                markers.push({
+                    time: d.time,
+                    position: 'belowBar',
+                    color: '#00e5ff', // Cyan
+                    shape: 'arrowUp',
+                    text: 'S'
+                });
+            }
         });
 
         candleSeries.setMarkers(markers);
@@ -1042,6 +1169,9 @@ async function fetchStockData(sym) {
 
 document.getElementById('symbol-input').addEventListener('keydown', e => {
     if (e.key === 'Enter') {
+        if (window.symbolAutocomplete && window.symbolAutocomplete.isOpen && window.symbolAutocomplete.selectedIndex >= 0) {
+            return; // Managed by autocomplete dropdown
+        }
         loadSymbol();
     }
 });
@@ -1150,6 +1280,171 @@ priceChart.subscribeClick(param => {
 
 // Update visibility based on Aggregation
 
+
+// ─── Symbol Autocomplete ─────────────────────────────────────
+class SymbolAutocomplete {
+    constructor() {
+        this.input = document.getElementById('symbol-input');
+        this.wrapper = document.getElementById('symbol-search-wrapper');
+        this.symbols = [];
+        this.dropdown = null;
+        this.selectedIndex = -1;
+        this.matches = [];
+
+        if (this.input && this.wrapper) {
+            this.init();
+        }
+    }
+
+    get isOpen() {
+        return this.dropdown && this.dropdown.classList.contains('show');
+    }
+
+    async init() {
+        // Create dropdown container
+        this.dropdown = document.createElement('div');
+        this.dropdown.className = 'autocomplete-dropdown';
+        this.wrapper.appendChild(this.dropdown);
+
+        // Fetch symbols
+        try {
+            const res = await fetch('/lfm/api/analysis/stocks');
+            if (res.ok) {
+                const data = await res.json();
+                this.symbols = data.symbols || [];
+            }
+        } catch (e) {
+            console.error("Failed to load symbols for autocomplete", e);
+        }
+
+        // Event Listeners
+        this.input.addEventListener('input', () => this.onInput());
+        this.input.addEventListener('keydown', (e) => this.onKeyDown(e));
+        this.input.addEventListener('focus', () => this.onInput());
+
+        // Hide on click outside
+        document.addEventListener('click', (e) => {
+            if (!this.wrapper.contains(e.target)) {
+                this.hide();
+            }
+        });
+    }
+
+    onInput() {
+        const query = this.input.value.trim().toUpperCase();
+        if (!query) {
+            this.hide();
+            return;
+        }
+
+        // Match symbols (starts with priority, then includes)
+        const startsWith = [];
+        const includes = [];
+
+        for (const sym of this.symbols) {
+            if (sym.startsWith(query)) {
+                startsWith.push(sym);
+            } else if (sym.includes(query)) {
+                includes.push(sym);
+            }
+            if (startsWith.length + includes.length > 50) break; // Limit suggestions
+        }
+
+        this.matches = [...startsWith, ...includes].slice(0, 50);
+
+        if (this.matches.length > 0) {
+            this.render();
+            this.show();
+        } else {
+            this.hide();
+        }
+    }
+
+    render() {
+        const query = this.input.value.trim().toUpperCase();
+        this.dropdown.innerHTML = '';
+        this.selectedIndex = -1;
+
+        this.matches.forEach((sym, index) => {
+            const item = document.createElement('div');
+            item.className = 'autocomplete-item';
+
+            // Highlight match
+            const matchIndex = sym.indexOf(query);
+            if (matchIndex >= 0) {
+                const before = sym.substring(0, matchIndex);
+                const match = sym.substring(matchIndex, matchIndex + query.length);
+                const after = sym.substring(matchIndex + query.length);
+                item.innerHTML = `${before}<span class="autocomplete-match">${match}</span>${after}`;
+            } else {
+                item.textContent = sym;
+            }
+
+            item.addEventListener('click', () => {
+                this.input.value = sym;
+                this.hide();
+                if (typeof window.loadSymbol === 'function') {
+                    window.loadSymbol(sym);
+                }
+            });
+
+            this.dropdown.appendChild(item);
+        });
+    }
+
+    onKeyDown(e) {
+        if (!this.isOpen || this.matches.length === 0) {
+            return;
+        }
+
+        const items = this.dropdown.querySelectorAll('.autocomplete-item');
+
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            this.selectedIndex = Math.min(this.selectedIndex + 1, this.matches.length - 1);
+            this.updateSelection(items);
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            this.selectedIndex = Math.max(this.selectedIndex - 1, -1);
+            this.updateSelection(items);
+        } else if (e.key === 'Enter') {
+            if (this.selectedIndex >= 0 && this.selectedIndex < this.matches.length) {
+                e.preventDefault();
+                this.input.value = this.matches[this.selectedIndex];
+                this.hide();
+                if (typeof window.loadSymbol === 'function') {
+                    window.loadSymbol(this.input.value);
+                }
+            } else {
+                this.hide();
+            }
+        } else if (e.key === 'Escape') {
+            this.hide();
+        }
+    }
+
+    updateSelection(items) {
+        items.forEach((item, index) => {
+            if (index === this.selectedIndex) {
+                item.classList.add('selected');
+                item.scrollIntoView({ block: 'nearest' });
+            } else {
+                item.classList.remove('selected');
+            }
+        });
+    }
+
+    show() {
+        this.dropdown.classList.add('show');
+    }
+
+    hide() {
+        this.dropdown.classList.remove('show');
+        this.selectedIndex = -1;
+    }
+}
+
+window.symbolAutocomplete = new SymbolAutocomplete();
 
 // ─── Initial Load ─────────────────────────────────────────────
 (function initLoad() {

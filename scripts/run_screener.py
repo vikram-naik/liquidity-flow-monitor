@@ -18,7 +18,9 @@ def init_screener_watchlists(cursor: sqlite3.Cursor) -> Dict[str, int]:
     """
     screener_names = [
         "SCR: Ignition",
-        "SCR: Coil"
+        "SCR: Coil",
+        "SCR: Spring",
+        "SCR: Grind"
     ]
     
     watchlist_ids = {}
@@ -109,17 +111,6 @@ def run_screener():
                     )
                     sys.stdout.write(" [IGNITION]\n")
                     assigned = True
-                # Priority markers
-                assigned = False
-                if latest.get('is_ignition') == True:
-                    w_id = watchlist_map["SCR: Ignition"]
-                    results_counts["SCR: Ignition"] += 1
-                    cursor.execute(
-                        "INSERT OR IGNORE INTO watchlist_items (watchlist_id, symbol, display_order) VALUES (?, ?, ?)",
-                        (w_id, symbol, results_counts["SCR: Ignition"])
-                    )
-                    sys.stdout.write(" [IGNITION]\n")
-                    assigned = True
                 elif latest.get('is_coil') == True:
                     w_id = watchlist_map["SCR: Coil"]
                     results_counts["SCR: Coil"] += 1
@@ -128,6 +119,24 @@ def run_screener():
                         (w_id, symbol, results_counts["SCR: Coil"])
                     )
                     sys.stdout.write(" [COIL]\n")
+                    assigned = True
+                elif latest.get('is_spring') == True:
+                    w_id = watchlist_map["SCR: Spring"]
+                    results_counts["SCR: Spring"] += 1
+                    cursor.execute(
+                        "INSERT OR IGNORE INTO watchlist_items (watchlist_id, symbol, display_order) VALUES (?, ?, ?)",
+                        (w_id, symbol, results_counts["SCR: Spring"])
+                    )
+                    sys.stdout.write(" [SPRING]\n")
+                    assigned = True
+                elif latest.get('grind_level', 0) > 0:
+                    w_id = watchlist_map["SCR: Grind"]
+                    results_counts["SCR: Grind"] += 1
+                    cursor.execute(
+                        "INSERT OR IGNORE INTO watchlist_items (watchlist_id, symbol, display_order) VALUES (?, ?, ?)",
+                        (w_id, symbol, results_counts["SCR: Grind"])
+                    )
+                    sys.stdout.write(f" [GRIND G{int(latest.get('grind_level'))}]\n")
                     assigned = True
                 
                 if not assigned:
