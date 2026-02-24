@@ -20,7 +20,9 @@ def init_screener_watchlists(cursor: sqlite3.Cursor) -> Dict[str, int]:
         "SCR: Ignition",
         "SCR: Coil",
         "SCR: Spring",
-        "SCR: Grind"
+        "SCR: Grind",
+        "SCR: CO-U",
+        "SCR: CO-D"
     ]
     
     watchlist_ids = {}
@@ -101,7 +103,8 @@ def run_screener():
                 latest = df.iloc[-1]
                 
                 # Priority markers
-                assigned = False
+                assigned = []
+                
                 if latest.get('is_ignition') == True:
                     w_id = watchlist_map["SCR: Ignition"]
                     results_counts["SCR: Ignition"] += 1
@@ -109,39 +112,65 @@ def run_screener():
                         "INSERT OR IGNORE INTO watchlist_items (watchlist_id, symbol, display_order) VALUES (?, ?, ?)",
                         (w_id, symbol, results_counts["SCR: Ignition"])
                     )
-                    sys.stdout.write(" [IGNITION]\n")
-                    assigned = True
-                elif latest.get('is_coil') == True:
+                    assigned.append("IGNITION")
+                
+                if latest.get('is_coil') == True:
                     w_id = watchlist_map["SCR: Coil"]
                     results_counts["SCR: Coil"] += 1
                     cursor.execute(
                         "INSERT OR IGNORE INTO watchlist_items (watchlist_id, symbol, display_order) VALUES (?, ?, ?)",
                         (w_id, symbol, results_counts["SCR: Coil"])
                     )
-                    sys.stdout.write(" [COIL]\n")
-                    assigned = True
-                elif latest.get('is_spring') == True:
+                    assigned.append("COIL")
+                
+                if latest.get('is_spring') == True:
                     w_id = watchlist_map["SCR: Spring"]
                     results_counts["SCR: Spring"] += 1
                     cursor.execute(
                         "INSERT OR IGNORE INTO watchlist_items (watchlist_id, symbol, display_order) VALUES (?, ?, ?)",
                         (w_id, symbol, results_counts["SCR: Spring"])
                     )
-                    sys.stdout.write(" [SPRING]\n")
-                    assigned = True
-                elif latest.get('grind_level', 0) > 0:
+                    assigned.append("SPRING")
+                
+                if latest.get('grind_level', 0) > 0:
                     w_id = watchlist_map["SCR: Grind"]
                     results_counts["SCR: Grind"] += 1
                     cursor.execute(
                         "INSERT OR IGNORE INTO watchlist_items (watchlist_id, symbol, display_order) VALUES (?, ?, ?)",
                         (w_id, symbol, results_counts["SCR: Grind"])
                     )
-                    sys.stdout.write(f" [GRIND G{int(latest.get('grind_level'))}]\n")
-                    assigned = True
+                    assigned.append(f"GRIND G{int(latest.get('grind_level'))}")
+                    
+                # Crossover Logic
+                if len(df) >= 2:
+                    prev = df.iloc[-2]
+                    
+                    # Crossover Up: Prev Close < Prev DAVWAP AND Latest Close > Latest DAVWAP
+                    if (prev.get('price_close', 0) < prev.get('davwap', float('inf'))) and \
+                       (latest.get('price_close', 0) > latest.get('davwap', float('inf'))):
+                        w_id = watchlist_map["SCR: CO-U"]
+                        results_counts["SCR: CO-U"] += 1
+                        cursor.execute(
+                            "INSERT OR IGNORE INTO watchlist_items (watchlist_id, symbol, display_order) VALUES (?, ?, ?)",
+                            (w_id, symbol, results_counts["SCR: CO-U"])
+                        )
+                        assigned.append("CO-U")
+                        
+                    # Crossover Down: Prev Close > Prev DAVWAP AND Latest Close < Latest DAVWAP
+                    if (prev.get('price_close', 0) > prev.get('davwap', float('-inf'))) and \
+                       (latest.get('price_close', 0) < latest.get('davwap', float('-inf'))):
+                        w_id = watchlist_map["SCR: CO-D"]
+                        results_counts["SCR: CO-D"] += 1
+                        cursor.execute(
+                            "INSERT OR IGNORE INTO watchlist_items (watchlist_id, symbol, display_order) VALUES (?, ?, ?)",
+                            (w_id, symbol, results_counts["SCR: CO-D"])
+                        )
+                        assigned.append("CO-D")
                 
                 if not assigned:
                     sys.stdout.write(" [SKIP]\n")
                 else:
+                    sys.stdout.write(f" [{', '.join(assigned)}]\n")
                     conn.commit() # Commit each insertion to keep transaction short
                     
             except Exception as e:

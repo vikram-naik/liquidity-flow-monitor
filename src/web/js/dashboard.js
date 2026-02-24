@@ -285,7 +285,18 @@ class WatchlistManager {
     async fetchLists() {
         try {
             const res = await fetch('/lfm/api/watchlists');
-            this.lists = await res.json();
+            const data = await res.json();
+
+            // Sort: "SCR:" prefixed lists first, then alphabetical
+            this.lists = data.sort((a, b) => {
+                const aIsScr = a.name.toUpperCase().startsWith("SCR:");
+                const bIsScr = b.name.toUpperCase().startsWith("SCR:");
+
+                if (aIsScr && !bIsScr) return -1;
+                if (!aIsScr && bIsScr) return 1;
+                return a.name.localeCompare(b.name);
+            });
+
             this.renderSelector();
         } catch (e) { console.error("Failed to fetch watchlists", e); }
     }
