@@ -22,7 +22,8 @@ def init_screener_watchlists(cursor: sqlite3.Cursor) -> Dict[str, int]:
         "SCR: Spring",
         "SCR: Grind",
         "SCR: CO-U",
-        "SCR: CO-D"
+        "SCR: CO-D",
+        "SCR: 90UP"
     ]
     
     watchlist_ids = {}
@@ -166,6 +167,16 @@ def run_screener():
                             (w_id, symbol, results_counts["SCR: CO-D"])
                         )
                         assigned.append("CO-D")
+                
+                # 90UP Logic: Ignition Score or Coil Score > 90
+                if latest.get('ignition_score', 0) > 90 or latest.get('coil_score', 0) > 90:
+                    w_id = watchlist_map["SCR: 90UP"]
+                    results_counts["SCR: 90UP"] += 1
+                    cursor.execute(
+                        "INSERT OR IGNORE INTO watchlist_items (watchlist_id, symbol, display_order) VALUES (?, ?, ?)",
+                        (w_id, symbol, results_counts["SCR: 90UP"])
+                    )
+                    assigned.append("90UP")
                 
                 if not assigned:
                     sys.stdout.write(" [SKIP]\n")
