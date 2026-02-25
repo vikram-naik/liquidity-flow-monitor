@@ -72,6 +72,42 @@ class IgnitionMarker(MarkerInterface):
 
         return df
 
+    def debug_info(self, df: pd.DataFrame, row_idx: int) -> list[dict]:
+        r = df.iloc[row_idx]
+        atr = r['atr_50']
+        is_up = r['price_close'] > r['price_open']
+        origin = min(r['price_open'], r.get('prev_close', r['price_open']))
+        expansion = r['price_close'] - origin
+        dist_origin = abs(origin - r['davwap']) / atr if atr else 0
+        deliv = r['delivery_qty']
+        deliv_sma = r['deliv_sma_10'] if r['deliv_sma_10'] > 0 else 1
+        dvl_slope = r.get('dvl_slope_5', 0)
+
+        req_exp = 0.8 * atr
+        exp_atr = expansion / atr if atr else 0
+        vol_ratio = deliv / deliv_sma
+
+        # Scoring (mirrors evaluate)
+        s_geom = round(30 * max(0, min(1.2, exp_atr - 0.8)) / 1.2, 1)
+        s_vol  = round(30 * max(0, min(1.5, vol_ratio - 1.0)) / 1.5, 1)
+        s_prox = round(20 * max(0, min(1, 1.0 - abs(dist_origin))), 1)
+        ledger_norm = (dvl_slope / deliv_sma - 0.2) if deliv_sma else 0
+        s_ledger = round(20 * max(0, min(0.5, ledger_norm)) / 0.5, 1)
+        s_base = 10
+        total = s_geom + s_vol + s_prox + s_ledger + s_base
+
+        return [
+            {'label': 'Up Candle',           'value': str(is_up),        'threshold': 'True',            'passed': is_up,                    'detail': f'O={r["price_open"]:.1f} C={r["price_close"]:.1f}'},
+            {'label': 'Expansion ≥ 0.8×ATR', 'value': f'{expansion:.1f}','threshold': f'≥ {req_exp:.1f}','passed': expansion >= req_exp,     'detail': f'origin={origin:.1f}'},
+            {'label': 'Origin Prox ≤ 1 ATR', 'value': f'{dist_origin:.2f}','threshold':'≤ 1.0',         'passed': abs(dist_origin) <= 1.0,  'detail': f'DAVWAP={r["davwap"]:.1f}'},
+            {'label': 'Expansion (30)',      'value': f'{s_geom}',       'threshold': '',                'passed': True,                     'detail': f'exp/ATR={exp_atr:.2f}'},
+            {'label': 'Volume   (30)',       'value': f'{s_vol}',        'threshold': '',                'passed': True,                     'detail': f'vol_ratio={vol_ratio:.2f}'},
+            {'label': 'Proximity(20)',       'value': f'{s_prox}',       'threshold': '',                'passed': True,                     'detail': ''},
+            {'label': 'Ledger   (20)',       'value': f'{s_ledger}',     'threshold': '',                'passed': True,                     'detail': f'slope={dvl_slope:.1E}'},
+            {'label': 'Baseline (10)',       'value': f'{s_base}',       'threshold': '',                'passed': True,                     'detail': 'fixed'},
+            {'label': 'Total Score',         'value': f'{total:.0f}',    'threshold': '≥ 50',            'passed': total >= 50,              'detail': f'is_ignition={r.get("is_ignition", False)}'},
+        ]
+
     def screen(self, df: pd.DataFrame, latest: pd.Series, prev=None) -> bool:
         return bool(latest.get('is_ignition', False))
 

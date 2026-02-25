@@ -84,6 +84,28 @@ class MarkerInterface(ABC):
         help_title, help_html, legend_dot_style, text_format.
         """
 
+    # --- debug / introspection ----------------------------------------------
+
+    def debug_info(self, df: pd.DataFrame, row_idx: int) -> list[dict]:
+        """
+        Return a list of check dicts explaining why the marker was or was
+        not triggered on the row at *row_idx*.
+
+        Each dict should contain::
+
+            {
+                'label':     str,   # human-readable check name
+                'value':     str,   # computed value (formatted)
+                'threshold': str,   # threshold it's compared against
+                'passed':    bool,  # did this check pass?
+                'detail':    str,   # optional extra context
+            }
+
+        Default implementation returns an empty list.  Marker subclasses
+        override this to expose their internal reasoning.
+        """
+        return []
+
     # --- aggregation --------------------------------------------------------
 
     def agg_rules(self) -> dict:

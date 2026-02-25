@@ -24,7 +24,7 @@ class TestMarkerRegistry:
         assert 'crossover_up' in names
         assert 'crossover_down' in names
         assert 'high_score' in names
-        assert len(markers) == 8
+        assert len(markers) == 12
 
     def test_unique_names(self):
         markers = self.registry.get_all()
@@ -33,7 +33,7 @@ class TestMarkerRegistry:
 
     def test_metadata_returns_all(self):
         metas = self.registry.get_metadata()
-        assert len(metas) == 8
+        assert len(metas) == 12
         for meta in metas:
             assert 'id' in meta
             assert 'label' in meta

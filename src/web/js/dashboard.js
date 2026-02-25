@@ -11,6 +11,12 @@ window.switchTbtn = function (btn) {
     if (typeof loadSymbol === 'function') loadSymbol();
 };
 
+let strictMode = true;
+window.toggleStrictMode = function () {
+    const cb = document.getElementById('toggle-strict');
+    if (cb) strictMode = cb.checked;
+    if (typeof loadSymbol === 'function') loadSymbol(); // reload chart
+};
 
 // ─── Chart Theme ──────────────────────────────────────────────
 const theme = {
@@ -707,7 +713,9 @@ window.loadSymbol = function (sym) {
     } else {
         if (btnSet) btnSet.style.display = 'none';
         if (btnAuto) btnAuto.style.display = 'none';
-        if (typeof isSelectingAnchor !== 'undefined' && isSelectingAnchor) toggleAnchorMode();
+        if (typeof isSelectingAnchor !== 'undefined' && isSelectingAnchor) {
+            toggleAnchorMode();
+        }
     }
 };
 
@@ -1060,12 +1068,27 @@ async function fetchStockData(sym) {
 
         // Build and Set Chart Markers (dynamic from marker metadata)
         let markers = [];
+        let currentStructurePhase = 'bull'; // Defaults to bull unless proven otherwise
 
         data.candles.forEach(d => {
+            // Update structural phase before evaluating markers for this candle
+            if (d.is_confirm_bear || d.is_div_bear) {
+                currentStructurePhase = 'bear';
+            } else if (d.is_confirm_bull || d.is_div_bull) {
+                currentStructurePhase = 'bull';
+            }
+
             // Dynamically iterate registered chart markers
             markerMeta.forEach(m => {
                 const flagKey = m.flag_key;
                 if (!flagKey) return;
+
+                // Strict Mode Filter: Drop tactical setups during a confirmed bearish structure
+                if (strictMode && currentStructurePhase === 'bear') {
+                    if (['is_coil', 'is_spring', 'grind_level'].includes(flagKey)) {
+                        return;
+                    }
+                }
 
                 const flagVal = d[flagKey];
                 // Determine if this marker is active on this candle
@@ -1194,7 +1217,10 @@ window.toggleAnchorMode = function () {
 };
 
 async function setManualAnchor(dateInput) {
-    const symbol = document.getElementById('symbol-input').value.trim().toUpperCase();
+    const symbolEl = document.getElementById('symbol-input');
+    const symbol = symbolEl?.value.trim().toUpperCase();
+
+    if (!symbol) return;
 
     // Handle LightweightCharts date object {year, month, day}
     let dateStr = dateInput;
@@ -1205,9 +1231,15 @@ async function setManualAnchor(dateInput) {
             const d = String(dateInput.day).padStart(2, '0');
             dateStr = `${y}-${m}-${d}`;
         }
+    } else if (typeof dateInput === 'number') {
+        const dt = new Date(dateInput * 1000); // LightweightCharts uses seconds
+        const y = dt.getUTCFullYear();
+        const m = String(dt.getUTCMonth() + 1).padStart(2, '0');
+        const d = String(dt.getUTCDate()).padStart(2, '0');
+        dateStr = `${y}-${m}-${d}`;
     }
 
-    if (!confirm(`Set Day Zero anchor to ${dateStr}?`)) {
+    if (!(await customConfirm(`Set Day Zero anchor to ${dateStr}?`))) {
         toggleAnchorMode(); // Cancel
         return;
     }
@@ -1215,11 +1247,13 @@ async function setManualAnchor(dateInput) {
     try {
         toast(`⚓ Setting anchor for ${symbol}...`);
 
-        const res = await fetch(`/lfm/api/analysis/stock/${symbol}/anchor/manual`, {
+        const url = `/lfm/api/analysis/stock/${symbol}/anchor/manual`;
+        const res = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ date: String(dateStr) })
         });
+        console.log("POST response status:", res.status);
 
         if (!res.ok) {
             const err = await res.json().catch(() => ({ detail: "Update failed" }));
@@ -1239,7 +1273,7 @@ async function setManualAnchor(dateInput) {
 async function setAutoAnchor() {
     const symbol = document.getElementById('symbol-input').value.trim().toUpperCase();
 
-    if (!confirm(`Force a recalculation of the Auto-Anchor for ${symbol}?\nThis will clear any manual overrides.`)) {
+    if (!(await customConfirm(`Force a recalculation of the Auto-Anchor for ${symbol}?\nThis will clear any manual overrides.`))) {
         return;
     }
 
@@ -1266,6 +1300,8 @@ async function setAutoAnchor() {
 
 // Click Listener for Anchor Selection
 priceChart.subscribeClick(param => {
+    console.log("Chart clicked:", param);
+    console.log("isSelectingAnchor:", isSelectingAnchor, "param.time:", param.time);
     if (!isSelectingAnchor || !param.time) return;
     // param.time is YYYY-MM-DD string
     setManualAnchor(param.time);
@@ -1438,6 +1474,22 @@ class SymbolAutocomplete {
 }
 
 window.symbolAutocomplete = new SymbolAutocomplete();
+
+// Custom Confirm Implementation
+let confirmResolver = null;
+window.customConfirm = function (msg) {
+    document.getElementById('confirm-msg').textContent = msg;
+    document.getElementById('confirm-modal').style.display = 'flex';
+    return new Promise(resolve => {
+        confirmResolver = resolve;
+    });
+};
+
+window.resolveConfirm = function (val) {
+    document.getElementById('confirm-modal').style.display = 'none';
+    if (confirmResolver) confirmResolver(val);
+    confirmResolver = null;
+};
 
 // ─── Initial Load ─────────────────────────────────────────────
 (function initLoad() {

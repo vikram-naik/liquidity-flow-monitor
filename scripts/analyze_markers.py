@@ -1,127 +1,162 @@
 #!/usr/bin/env python3
+"""
+Marker Debug Analyzer — introspects why markers fired (or didn't) for a
+given symbol and date range.
+
+Uses the MarkerRegistry and each marker's ``debug_info()`` method so that
+**zero** marker-specific logic lives in this script.
+
+Usage:
+    python3 scripts/analyze_markers.py SYMBOL START_DATE [END_DATE] [--marker NAME]
+
+Examples:
+    python3 scripts/analyze_markers.py GESHIP 2025-12-20 2026-01-15
+    python3 scripts/analyze_markers.py GESHIP 2026-01-12 --marker confirm_bear
+"""
+
 import sys
 import os
+import argparse
 import pandas as pd
 from tabulate import tabulate
 
-# Add the project root to the python path
+# Add project root to path
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
 from src.analysis.data import get_stock_data
+from src.analysis.markers import MarkerRegistry
 
-def analyze_stock(symbol, start_date, end_date=None):
-    print(f"Fetching data for {symbol}...")
-    df, _, _ = get_stock_data(symbol, lookback_days=300)
-    
+
+def main():
+    parser = argparse.ArgumentParser(
+        description='Analyze marker triggers for a symbol in a date range.'
+    )
+    parser.add_argument('symbol', type=str, help='Stock symbol (e.g. GESHIP)')
+    parser.add_argument('start_date', type=str, help='Start date YYYY-MM-DD')
+    parser.add_argument('end_date', type=str, nargs='?', default=None,
+                        help='End date YYYY-MM-DD (optional, defaults to start_date)')
+    parser.add_argument('--marker', '-m', type=str, default=None,
+                        help='Filter to a specific marker by name (e.g. coil, confirm_bear)')
+    args = parser.parse_args()
+
+    symbol = args.symbol.upper()
+    start = args.start_date
+    end = args.end_date or start
+
+    # ── Fetch data ──────────────────────────────────────────────────────
+    print(f'Fetching data for {symbol}...')
+    df, anchor, _ = get_stock_data(symbol, lookback_days=500)
+
     if df.empty:
-        print(f"No data found for {symbol}")
-        return
-        
-    df = df.set_index('record_date')
-    
-    # Apply date filters
-    if end_date:
-        mask = (df.index >= start_date) & (df.index <= end_date)
-    else:
-        mask = (df.index >= start_date)
-    
-    sub_df = df[mask]
-    
-    if sub_df.empty:
-        print(f"No data found for {symbol} in the specified date range.")
-        return
-        
-    print(f"\n{'='*80}")
-    print(f"--- GENERAL DATA: {symbol} ---")
-    print(f"{'='*80}")
-    cols = ['price_open', 'price_high', 'price_low', 'price_close', 'volume_total', 'delivery_qty', 'deliv_sma_10', 'davwap', 'atr_50']
-    
-    # Using tabulate for general data
-    gen_data = sub_df[cols].reset_index()
-    gen_data['record_date'] = gen_data['record_date'].dt.strftime('%Y-%m-%d')
-    print(tabulate(gen_data, headers='keys', tablefmt='psql', showindex=False))
-
-    print(f"\n{'='*80}")
-    print(f"--- COIL ANALYSIS ---")
-    print(f"{'='*80}")
-    
-    coil_table = []
-    for date, row in sub_df.iterrows():
-        range_total = row['price_high'] - row['price_low']
-        body_size = abs(row['price_open'] - row['price_close'])
-        dist_atr = abs(row['price_close'] - row['davwap']) / row['atr_50']
-        dvl_slope = df.loc[date]['dvl_slope_5']
-        
-        req_rng = 0.8 * row['atr_50']
-        req_bdy = 0.4 * row['atr_50']
-        
-        coil_range_pass = range_total < req_rng
-        coil_body_pass = body_size < req_bdy
-        coil_prox_pass = dist_atr <= 1.0
-        
-        score = row.get('coil_score', 0)
-        is_coil = row.get('is_coil', False)
-        
-        coil_table.append([
-            date.strftime('%Y-%m-%d'),
-            f"{range_total:.1f} (< {req_rng:.1f}: {coil_range_pass})",
-            f"{body_size:.1f} (< {req_bdy:.1f}: {coil_body_pass})",
-            f"{dist_atr:.1f} (<= 1.0: {coil_prox_pass})",
-            f"{dvl_slope:.1E}",
-            score,
-            is_coil
-        ])
-        
-    headers = ["Date", "Range", "Body", "ProxATR", "DSlope", "Score", "COIL"]
-    print(tabulate(coil_table, headers=headers, tablefmt='psql'))
-
-
-    print(f"\n{'='*80}")
-    print(f"--- IGNITION ANALYSIS ---")
-    print(f"{'='*80}")
-    
-    ign_table = []
-    for date, row in sub_df.iterrows():
-        prev_close = df.loc[:date]['price_close'].shift(1).get(date, row['price_open'])
-        
-        is_up = (row['price_close'] > row['price_open'])
-        origin = min(row['price_open'], prev_close)
-        ignition_expansion = row['price_close'] - origin
-        dist_origin = abs(origin - row['davwap']) / row['atr_50']
-        
-        req_exp = 0.8 * row['atr_50']
-        ign_up_pass = is_up
-        ign_exp_pass = ignition_expansion >= req_exp
-        ign_prox_pass = dist_origin <= 1.0
-        
-        score = row.get('ignition_score', 0)
-        is_ign = row.get('is_ignition', False)
-        grind = row.get('grind_level', 0)
-        mcs = row.get('mcs', 0)
-        
-        ign_table.append([
-            date.strftime('%Y-%m-%d'),
-            ign_up_pass,
-            f"{ignition_expansion:.1f} (>= {req_exp:.1f}: {ign_exp_pass})",
-            f"{dist_origin:.1f} (<= 1.0: {ign_prox_pass})",
-            score,
-            is_ign,
-            grind,
-            f"{mcs:.2f}" if pd.notna(mcs) else "---"
-        ])
-        
-    headers = ["Date", "Up?", "Expansion", "ProxOrigATR", "Score", "IGN", "Grind", "MCS"]
-    print(tabulate(ign_table, headers=headers, tablefmt='psql'))
-
-if __name__ == "__main__":
-    if len(sys.argv) < 3:
-        print("Usage: python3 analyze_markers.py <SYMBOL> <START_DATE_YYYY-MM-DD> [END_DATE_YYYY-MM-DD]")
+        print(f'No data found for {symbol}')
         sys.exit(1)
-        
-    symbol = sys.argv[1].upper()
-    start_date = sys.argv[2]
-    end_date = sys.argv[3] if len(sys.argv) > 3 else None
-    
-    analyze_stock(symbol, start_date, end_date)
+
+    df = df.set_index('record_date')
+
+    # ── Slice date range ────────────────────────────────────────────────
+    mask = (df.index >= start) & (df.index <= end)
+    sub = df[mask]
+
+    if sub.empty:
+        print(f'No data for {symbol} between {start} and {end}')
+        sys.exit(1)
+
+    # ── General info ────────────────────────────────────────────────────
+    print(f'\n{"="*90}')
+    print(f'  {symbol}  |  Anchor: {anchor.get("anchor_date", "?")} ({anchor.get("anchor_type", "?")})')
+    print(f'  Date range: {start} → {end}  ({len(sub)} trading days)')
+    print(f'{"="*90}')
+
+    gen_cols = ['price_open', 'price_high', 'price_low', 'price_close',
+                'volume_total', 'delivery_qty', 'dvl', 'davwap', 'atr_50']
+    gen_cols = [c for c in gen_cols if c in sub.columns]
+    gen = sub[gen_cols].copy()
+    gen.index = gen.index.strftime('%Y-%m-%d')
+    # Round numeric columns for readability
+    for c in gen.columns:
+        if gen[c].dtype in ('float64', 'float32'):
+            gen[c] = gen[c].round(2)
+    print(tabulate(gen, headers='keys', tablefmt='psql', showindex=True))
+
+    # ── Marker debug ────────────────────────────────────────────────────
+    registry = MarkerRegistry()
+    markers = registry.get_all()
+
+    if args.marker:
+        markers = [m for m in markers if m.name() == args.marker]
+        if not markers:
+            print(f'\n⚠  No marker found with name "{args.marker}". Available:')
+            for m in registry.get_all():
+                meta = m.metadata()
+                label = meta.get('label', m.name())
+                print(f'  - {m.name():20s}  ({label})')
+            sys.exit(1)
+
+    # Only show chart markers + the filtered marker (skip screener-only by default)
+    if not args.marker:
+        markers = [m for m in markers if m.metadata().get('is_chart_marker', False)]
+
+    for marker in markers:
+        meta = marker.metadata()
+        label = meta.get('label', marker.name())
+        flag_key = meta.get('flag_key', '')
+
+        # Check if this marker is active on any row in the range
+        active_dates = []
+        if flag_key and flag_key in sub.columns:
+            for date, row in sub.iterrows():
+                val = row.get(flag_key, False)
+                if (isinstance(val, bool) and val) or (isinstance(val, (int, float)) and val > 0):
+                    active_dates.append(date.strftime('%Y-%m-%d'))
+
+        header = f'  {label} ({marker.name()})'
+        if active_dates:
+            header += f'  ✓ Active: {", ".join(active_dates)}'
+        else:
+            header += '  ✗ Not triggered'
+
+        print(f'\n{"─"*90}')
+        print(header)
+        print(f'{"─"*90}')
+
+        # Get debug_info for each row
+        for date in sub.index:
+            # Find the position in the original df (not sub)
+            row_idx = df.index.get_loc(date)
+            checks = marker.debug_info(df, row_idx)
+
+            if not checks:
+                continue  # marker doesn't implement debug_info
+
+            date_str = date.strftime('%Y-%m-%d')
+
+            # Determine if this row has the marker active
+            row = df.iloc[row_idx]
+            is_active = False
+            if flag_key and flag_key in df.columns:
+                val = row.get(flag_key, False)
+                is_active = (isinstance(val, bool) and val) or (isinstance(val, (int, float)) and val > 0)
+
+            status = '✓' if is_active else '·'
+            print(f'\n  {status} {date_str}  (close={row["price_close"]:.2f})')
+
+            table = []
+            for c in checks:
+                passed_icon = '✓' if c['passed'] else '✗'
+                table.append([
+                    f'  {passed_icon}',
+                    c['label'],
+                    str(c['value']),
+                    str(c['threshold']),
+                    str(c['detail']),
+                ])
+
+            print(tabulate(table, headers=['', 'Check', 'Value', 'Threshold', 'Detail'],
+                           tablefmt='simple', stralign='left', numalign='left',
+                           disable_numparse=True))
+
+
+if __name__ == '__main__':
+    main()

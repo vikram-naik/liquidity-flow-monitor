@@ -305,3 +305,175 @@ class TestHighScoreMarker:
         m = HighScoreMarker()
         latest = pd.Series({'ignition_score': 60, 'coil_score': 70})
         assert m.screen(pd.DataFrame(), latest) == False
+
+
+# ============================================================
+# Divergence Markers
+# ============================================================
+
+from src.analysis.markers.divergence import (
+    BullDivergenceMarker, BearDivergenceMarker,
+    BullConfirmationMarker, BearConfirmationMarker,
+)
+
+
+def _divergence_df():
+    """
+    Create a 40-bar DataFrame with deliberate swings for divergence testing.
+
+    Bars 0-9:  flat
+    Bar  10:   Swing Low #1 (price_low=90,   DVL=1000)
+    Bars 11-24: rising
+    Bar  25:   Swing Low #2 (price_low=85 < 90 → LL,  DVL=1500 > 1000 → HL)
+    → Expected: Bullish Divergence at bar 25
+
+    Bar 12:    Swing High #1 (price_high=115, DVL=2000)
+    Bar 28:    Swing High #2 (price_high=120 > 115 → HH, DVL=1800 < 2000 → LH)
+    → Expected: Bearish Divergence at bar 28
+    """
+    n = 40
+    dates = pd.date_range('2024-01-01', periods=n, freq='B')
+
+    # Construct smooth price series with controlled swings
+    close = np.full(n, 100.0)
+    highs = np.full(n, 102.0)
+    lows = np.full(n, 98.0)
+
+    # Swing Low #1 at bar 10
+    lows[10] = 90.0
+    close[10] = 92.0
+    for i in range(5, 10):
+        lows[i] = 91 + (10 - i) * 1.5  # descending: 98.5, 97, 95.5, 94, 92.5
+    for i in range(11, 16):
+        lows[i] = 91 + (i - 10) * 1.5  # ascending: 92.5, 94, 95.5, 97, 98.5
+
+    # Swing Low #2 at bar 25 — Lower Low than bar 10
+    lows[25] = 85.0
+    close[25] = 87.0
+    for i in range(20, 25):
+        lows[i] = 85 + (25 - i) * 2.0  # descending into the low
+    for i in range(26, 31):
+        lows[i] = 85 + (i - 25) * 2.0  # ascending from the low
+
+    # Swing High #1 at bar 12
+    highs[12] = 115.0
+    close[12] = 113.0
+    for i in range(7, 12):
+        highs[i] = 102 + (i - 7) * 2.6
+    for i in range(13, 18):
+        highs[i] = 115 - (i - 12) * 2.6
+
+    # Swing High #2 at bar 28 — Higher High
+    highs[28] = 120.0
+    close[28] = 118.0
+    for i in range(23, 28):
+        highs[i] = 102 + (i - 23) * 3.6
+    for i in range(29, 34):
+        highs[i] = 120 - (i - 28) * 3.6
+
+    # DVL: bullish div on lows (HL), bearish div on highs (LH)
+    dvl = np.full(n, 1500.0)
+    dvl[10] = 1000.0  # Low swing #1 DVL
+    dvl[25] = 1500.0  # Low swing #2 DVL — Higher Low (1500 > 1000) → Bull Div
+    dvl[12] = 2000.0  # High swing #1 DVL
+    dvl[28] = 1800.0  # High swing #2 DVL — Lower High (1800 < 2000) → Bear Div
+
+    df = pd.DataFrame({
+        'price_open': close,
+        'price_high': highs,
+        'price_low': lows,
+        'price_close': close,
+        'dvl': dvl,
+        'atr_50': np.full(n, 3.0),  # ATR=3 so swings of 5+ easily pass 0.5*ATR
+    }, index=dates)
+
+    return df
+
+
+class TestBullDivergenceMarker:
+    def test_detects_bull_divergence(self):
+        """Price LL + DVL HL → bullish divergence at bar 25."""
+        m = BullDivergenceMarker()
+        df = _divergence_df()
+        df = m.evaluate(df)
+
+        # Bar 25 should have is_div_bull=True
+        assert df.iloc[25]['is_div_bull'] == True
+
+    def test_no_false_positives_on_flat(self):
+        """Flat series should produce no divergences."""
+        m = BullDivergenceMarker()
+        df = _base_df(30)
+        # Make DVL flat and positive
+        df['dvl'] = 1000.0
+        df = m.evaluate(df)
+        assert df['is_div_bull'].sum() == 0
+
+    def test_metadata(self):
+        m = BullDivergenceMarker()
+        meta = m.metadata()
+        assert meta['id'] == 'div_bull'
+        assert meta['color'] == '#26a69a'
+        assert meta['shape'] == 'diamond'
+        assert meta['position'] == 'belowBar'
+        assert meta['screener_name'] == 'SCR: Div-Bull'
+
+    def test_screen(self):
+        m = BullDivergenceMarker()
+        assert m.screen(pd.DataFrame(), pd.Series({'is_div_bull': True})) == True
+        assert m.screen(pd.DataFrame(), pd.Series({'is_div_bull': False})) == False
+
+    def test_agg_rules(self):
+        m = BullDivergenceMarker()
+        assert m.agg_rules() == {'is_div_bull': 'any'}
+
+
+class TestBearDivergenceMarker:
+    def test_detects_bear_divergence(self):
+        """Price HH + DVL LH → bearish divergence at bar 28."""
+        m = BearDivergenceMarker()
+        df = _divergence_df()
+        df = m.evaluate(df)
+
+        # Bar 28 should have is_div_bear=True
+        assert df.iloc[28]['is_div_bear'] == True
+
+    def test_metadata(self):
+        m = BearDivergenceMarker()
+        meta = m.metadata()
+        assert meta['id'] == 'div_bear'
+        assert meta['color'] == '#ef5350'
+        assert meta['position'] == 'aboveBar'
+        assert meta['screener_name'] == 'SCR: Div-Bear'
+
+    def test_screen(self):
+        m = BearDivergenceMarker()
+        assert m.screen(pd.DataFrame(), pd.Series({'is_div_bear': True})) == True
+        assert m.screen(pd.DataFrame(), pd.Series({'is_div_bear': False})) == False
+
+
+class TestBullConfirmationMarker:
+    def test_metadata(self):
+        m = BullConfirmationMarker()
+        meta = m.metadata()
+        assert meta['id'] == 'confirm_bull'
+        assert meta['color'] == '#66bb6a'
+        assert meta['screener_name'] == 'SCR: Confirm-Bull'
+
+    def test_screen(self):
+        m = BullConfirmationMarker()
+        assert m.screen(pd.DataFrame(), pd.Series({'is_confirm_bull': True})) == True
+
+
+class TestBearConfirmationMarker:
+    def test_metadata(self):
+        m = BearConfirmationMarker()
+        meta = m.metadata()
+        assert meta['id'] == 'confirm_bear'
+        assert meta['color'] == '#ef9a9a'
+        assert meta['screener_name'] == 'SCR: Confirm-Bear'
+
+    def test_screen(self):
+        m = BearConfirmationMarker()
+        assert m.screen(pd.DataFrame(), pd.Series({'is_confirm_bear': True})) == True
+

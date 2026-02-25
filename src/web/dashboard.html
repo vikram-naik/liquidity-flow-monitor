@@ -6,8 +6,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Smart Money Dashboard</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/lfm/static/css/dashboard.css?v=02251925">
     <script src="https://unpkg.com/lightweight-charts@4.2.2/dist/lightweight-charts.standalone.production.js"></script>
-    <link rel="stylesheet" href="/lfm/static/css/dashboard.css?v=6">
 </head>
 
 <body>
@@ -145,6 +145,17 @@
                             </div>
                             <span class="value" id="m-price-val">—</span>
                             <span class="sub" id="m-price-sub"></span>
+                        </div>
+                        <div class="metric" id="m-strict">
+                            <span class="label">Strict Mode <span class="help-icon"
+                                    title="Hides tactical setups (Coils, Springs) when the structure is in a confirmed downtrend."
+                                    onclick="openHelp('strict')">?</span></span>
+                            <div style="display:flex; align-items:center; margin-top:4px;">
+                                <label class="switch" title="Toggle Strict Mode">
+                                    <input type="checkbox" id="toggle-strict" onchange="toggleStrictMode()" checked>
+                                    <span class="slider round"></span>
+                                </label>
+                            </div>
                         </div>
                         <div class="metric" id="m-anchor">
                             <span class="label">Anchor <span class="help-icon"
@@ -328,7 +339,34 @@
                             risk-management gates, ensuring the system prefers missing a marginal setup over presenting
                             a false
                             positive.
+                    </ul>
+
+                    <h2>6. Structural Divergence & Confirmation</h2>
+                    <p>The Divergence Engine (D↑, D↓, C↑, C↓ markers) acts as an "X-ray" of the market structure,
+                        providing the environmental context for the tactical markers (Coils, Springs, Grinds).</p>
+                    <ul>
+                        <li><strong>Mechanism:</strong> It compares structural Swing Highs and Swing Lows in price
+                            against the corresponding peaks and troughs in the Cumulative DVL (Anchored Liquidity).</li>
+                        <li><strong>The 8-Day Confirmation Lag:</strong> Structural swings are only confirmed
+                            <em>retroactively</em>. A peak is only declared a "Swing High" if the price remains below it
+                            for 8 consecutive trading days. Because of this built-in lag, these markers will never
+                            appear on the exact day of the pivot. Instead, they appear 8 days later, retroactively
+                            anchored to the correct date.
                         </li>
+                        <li><strong>Application (The Cooldown Playbook):</strong> By the time a <strong>C↑ (Confirm
+                                Bull)</strong> appears, the market is already 8+ days into a pullback. But the marker
+                            tells you that the prior peak was structurally sound (Higher Price + Higher Volume).
+                            Therefore, the current pullback is a high-probability "cooldown". This is the prime
+                            environment to look for tactical accumulation markers (Coils, Springs) to re-enter the
+                            trend.</li>
+                        <li><strong>Application (The Broken Structure Playbook):</strong> Conversely, if a <strong>D↓
+                                (Bearish Divergence)</strong> or <strong>C↓ (Confirm Bear)</strong> appears, the
+                            structure is broken. Any accumulation markers that appear during this phase should be
+                            treated as low-quality (potential traps) until a <strong>D↑ (Bullish Divergence)</strong>
+                            repairs the structural damage.</li>
+                        <li><strong>Anchor Dependency:</strong> Because Divergence relies on the Cumulative DVL, it
+                            strictly respects your chosen "Day Zero" anchor. Resetting the anchor changes the baseline
+                            of accumulated flow, which will completely recalculate the structural story.</li>
                     </ul>
 
                 </div>
@@ -427,7 +465,24 @@
         </div>
     </div>
 
-    <script src="/lfm/static/js/dashboard.js"></script>
+    <!-- Custom Confirmation Modal -->
+    <div id="confirm-modal" class="modal-overlay">
+        <div class="modal-content" style="max-width: 400px;">
+            <div class="modal-header">
+                <h3>Confirm Action</h3>
+            </div>
+            <div class="modal-body">
+                <p id="confirm-msg" style="font-size: 15px; margin: 0;"></p>
+                <div style="margin-top: 24px; display: flex; gap: 12px; justify-content: flex-end;">
+                    <button class="btn-guide" onclick="resolveConfirm(false)" style="margin:0;">Cancel</button>
+                    <button class="btn-guide" onclick="resolveConfirm(true)"
+                        style="margin:0; background:linear-gradient(135deg, var(--blue), var(--purple)); color:white; border:none;">Confirm</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/lfm/static/js/dashboard.js?v=02251840"></script>
 </body>
 
 </html>

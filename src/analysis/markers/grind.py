@@ -84,13 +84,63 @@ class GrindMarker(MarkerInterface):
 
         return df
 
+    def debug_info(self, df: pd.DataFrame, row_idx: int) -> list[dict]:
+        r = df.iloc[row_idx]
+        atr = r['atr_50']
+        level = int(r.get('grind_level', 0))
+        origin = min(r['price_open'], r.get('prev_close', r['price_open']))
+        dist_origin = abs(origin - r['davwap']) / atr if atr else 0
+        expansion = r['price_close'] - origin
+        mfm = r.get('mfm', 0)
+
+        checks = [
+            {'label': 'Grind Level', 'value': f'G{level}' if level > 0 else '0', 'threshold': '', 'passed': level > 0, 'detail': ''},
+        ]
+
+        # G1 checks
+        g1_exp = expansion >= 0.5 * atr
+        g1_prox = dist_origin <= 1.0
+        g1_mfm = mfm > 0
+        checks.extend([
+            {'label': 'G1: Exp ≥ 0.5×ATR',  'value': f'{expansion:.1f}',   'threshold': f'≥ {0.5*atr:.1f}', 'passed': g1_exp,  'detail': f'origin={origin:.1f}'},
+            {'label': 'G1: Prox ≤ 1.0 ATR', 'value': f'{dist_origin:.2f}', 'threshold': '≤ 1.0',            'passed': g1_prox, 'detail': f'DAVWAP={r["davwap"]:.1f}'},
+            {'label': 'G1: MFM > 0',        'value': f'{mfm:.4f}',         'threshold': '> 0',              'passed': g1_mfm,  'detail': ''},
+        ])
+
+        # G2/G3 require prior row context
+        if row_idx >= 1:
+            prev = df.iloc[row_idx - 1]
+            prev_origin = min(prev['price_open'], prev.get('prev_close', prev['price_open']))
+            cum_exp_2 = r['price_close'] - prev_origin
+            g2_higher = r['price_close'] > prev['price_close']
+            g2_cum = cum_exp_2 >= 0.8 * prev['atr_50']
+            checks.extend([
+                {'label': 'G2: Close > Prev', 'value': f'{r["price_close"]:.1f}',  'threshold': f'> {prev["price_close"]:.1f}', 'passed': g2_higher, 'detail': ''},
+                {'label': 'G2: CumExp ≥ 0.8×ATR', 'value': f'{cum_exp_2:.1f}',      'threshold': f'≥ {0.8*prev["atr_50"]:.1f}', 'passed': g2_cum,    'detail': ''},
+            ])
+
+        if row_idx >= 2:
+            prev2 = df.iloc[row_idx - 2]
+            prev2_origin = min(prev2['price_open'], prev2.get('prev_close', prev2['price_open']))
+            cum_exp_3 = r['price_close'] - prev2_origin
+            g3_dvl = r.get('dvl_slope_5', 0) > 0
+            mcs_prev3 = df.iloc[row_idx - 3]['mcs'] if row_idx >= 3 else 0
+            g3_mcs = r['mcs'] > mcs_prev3
+            checks.extend([
+                {'label': 'G3: CumExp ≥ 1.2×ATR', 'value': f'{cum_exp_3:.1f}',   'threshold': f'≥ {1.2*prev2["atr_50"]:.1f}', 'passed': cum_exp_3 >= 1.2 * prev2['atr_50'], 'detail': ''},
+                {'label': 'G3: DVL Slope > 0',    'value': f'{r.get("dvl_slope_5",0):.1E}', 'threshold': '> 0',            'passed': g3_dvl,  'detail': ''},
+                {'label': 'G3: MCS Improving',    'value': f'{r["mcs"]:.2f}',      'threshold': f'> {mcs_prev3:.2f}',      'passed': g3_mcs,  'detail': ''},
+            ])
+
+        return checks
+
     def screen(self, df: pd.DataFrame, latest: pd.Series, prev=None) -> bool:
         return int(latest.get('grind_level', 0)) > 0
 
     def metadata(self) -> dict:
         return {
             'id': 'grind',
-            'label': 'Grind (IG)',
+            'label': 'Grind (G)',
             'is_chart_marker': True,
             'color': '#fcc419',
             'shape': 'arrowUp',
