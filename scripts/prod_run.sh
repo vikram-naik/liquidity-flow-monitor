@@ -29,6 +29,16 @@ else
     exit 1
 fi
 
+# 1.5 Run NSE Indices Sync
+echo "[$(date)] Step 1.5: Syncing NSE Indices Data..." >> "$LOG_FILE"
+docker exec scripts-lfm-api-1 python3 src/agents/nse_indices_agent.py --sync >> "$LOG_FILE" 2>&1
+
+if [ $? -eq 0 ]; then
+    echo "[$(date)] NSE Indices Sync successful." >> "$LOG_FILE"
+else
+    echo "[$(date)] NSE Indices Sync FAILED, but continuing to Screener." >> "$LOG_FILE"
+fi
+
 # 2. Run Screener
 echo "[$(date)] Step 2: Running Screener..." >> "$LOG_FILE"
 docker exec scripts-lfm-api-1 python3 scripts/run_screener.py >> "$LOG_FILE" 2>&1

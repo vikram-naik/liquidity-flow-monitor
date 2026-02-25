@@ -41,6 +41,10 @@ def init_db():
         price_change_pct REAL,
         volume_change_pct REAL,
         delivery_change_pct REAL,
+        pe_ratio REAL,
+        pb_ratio REAL,
+        dividend_yield REAL,
+        turnover_crs REAL,
         PRIMARY KEY (record_date, symbol)
     );
     """)
@@ -61,6 +65,15 @@ def init_db():
         cursor.execute("ALTER TABLE nse_delivery_log ADD COLUMN price_high REAL")
         cursor.execute("ALTER TABLE nse_delivery_log ADD COLUMN price_low REAL")
 
+    # Migration: Add index functional columns if they don't exist
+    try:
+        cursor.execute("SELECT pe_ratio FROM nse_delivery_log LIMIT 1")
+    except sqlite3.OperationalError:
+        print("Migrating: Adding fundamental columns to nse_delivery_log...")
+        cursor.execute("ALTER TABLE nse_delivery_log ADD COLUMN pe_ratio REAL")
+        cursor.execute("ALTER TABLE nse_delivery_log ADD COLUMN pb_ratio REAL")
+        cursor.execute("ALTER TABLE nse_delivery_log ADD COLUMN dividend_yield REAL")
+        cursor.execute("ALTER TABLE nse_delivery_log ADD COLUMN turnover_crs REAL")
 
     
     # Table: watchlists
