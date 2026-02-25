@@ -18,9 +18,11 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../'
 from src.database import DB_PATH, init_db
 from src.analysis.data import get_stock_data, load_stock_list
 from src.analysis.ledger import get_or_create_anchor
+from src.analysis.markers import MarkerRegistry
 from src.cache import get_cache
 
 cache = get_cache()
+_registry = MarkerRegistry()
 
 
 app = FastAPI(title="LFM Data Ingestion API", docs_url="/lfm/api/docs", openapi_url="/lfm/api/openapi.json")
@@ -96,7 +98,7 @@ class ManualAnchorRequest(BaseModel):
 def get_db():
     # Use environment variable if provided (for Docker)
     db_path = os.getenv("DB_PATH", DB_PATH)
-    conn = sqlite3.connect(db_path)
+    conn = sqlite3.connect(db_path, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     try:
         yield conn
@@ -110,6 +112,16 @@ def get_db():
 @app.get("/lfm/api/health")
 def health_check():
     return {"status": "healthy", "service": "lfm-api"}
+
+
+@app.get('/lfm/api/markers')
+def get_markers():
+    """Return metadata for all registered signal markers.
+
+    Powers dynamic frontend legend rendering, help modals, and chart
+    marker configuration without any hardcoded marker knowledge.
+    """
+    return _registry.get_metadata()
 
 
 
@@ -476,12 +488,20 @@ def get_stock_analysis(
             "high": _safe(r["price_high"]),
             "low": _safe(r["price_low"]),
             "close": _safe(r["price_close"]),
-            "is_coil": bool(r.get("is_coil", False)),
-            "coil_score": _safe(r.get("coil_score", 0)),
-            "is_ignition": bool(r.get("is_ignition", False)),
-            "ignition_score": _safe(r.get("ignition_score", 0)),
-            "grind_level": _safe(r.get("grind_level", 0)),
-            "is_spring": bool(r.get("is_spring", False)),
+            **{
+                meta['flag_key']: (
+                    _safe(r.get(meta['flag_key'], 0))
+                    if meta['flag_key'] == 'grind_level'
+                    else bool(r.get(meta['flag_key'], False))
+                )
+                for meta in _registry.get_metadata()
+                if meta.get('is_chart_marker') and meta.get('flag_key')
+            },
+            **{
+                meta['score_key']: _safe(r.get(meta['score_key'], 0))
+                for meta in _registry.get_metadata()
+                if meta.get('is_chart_marker') and meta.get('score_key')
+            },
         })
         
         # Color coding for volume bars based on MFM (as per PDF)

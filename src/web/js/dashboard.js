@@ -803,6 +803,7 @@ function openIntensityGuide() {
 }
 
 // ─── Help Guide Modal ────────────────────────────
+// Static help content for non-marker indicators
 const helpContent = {
     davwap: {
         title: "DAVWAP (Delivery Anchored VWAP)",
@@ -884,65 +885,6 @@ const helpContent = {
             </div>
         `
     },
-    ignition: {
-        title: "Ignition Marker (Breakout)",
-        body: `
-            <div class="guide-section">
-                <h4>What it is</h4>
-                <p>The Ignition marker isolates a single day of explosive, structurally significant markup initiated near value. It is represented by a <strong>Purple Up-Arrow</strong> over the candle.</p>
-            </div>
-            <div class="guide-section">
-                <h4>Triggers & Scoring (0-100)</h4>
-                <ul>
-                    <li><strong>Expansion (30 pts):</strong> The candle's net expansion must inherently be huge (<code>>= 0.8 * Average True Range</code>).</li>
-                    <li><strong>Volume (30 pts):</strong> Delivery volume must significantly exceed the 10-day moving average.</li>
-                    <li><strong>Proximity (20 pts):</strong> The move must have <strong>originated</strong> strictly within <code>1.0 ATR</code> of the DAVWAP.</li>
-                    <li><strong>Ledger (20 pts):</strong> The 5-day Momentum Ledger slope must be strongly accelerating.</li>
-                </ul>
-                <p>A score >= 50 triggers the marker.</p>
-            </div>
-        `
-    },
-    coil: {
-        title: "Coil Marker (Compression)",
-        body: `
-            <div class="guide-section">
-                <h4>What it is</h4>
-                <p>The Coil marker highlights extreme volatility compression near value, often preceding an explosive move. It is represented by a <strong>Blue Circle</strong> beneath the candle.</p>
-            </div>
-            <div class="guide-section">
-                <h4>Triggers & Scoring (0-100)</h4>
-                <ul>
-                    <li><strong>Geometry (30 pts):</strong> The candle's Total Range and Body size must be drastically smaller than the 50-day ATR (<code>Range < 0.8 ATR</code> and <code>Body < 0.4 ATR</code>).</li>
-                    <li><strong>Dryness (30 pts):</strong> Institutional volume is drying up (well below average), indicating supply exhaustion.</li>
-                    <li><strong>Proximity (20 pts):</strong> The candle is occurring very close to the DAVWAP (within <code>1.0 ATR</code>).</li>
-                    <li><strong>Ledger (20 pts):</strong> Despite the dryness, the underlying Momentum Ledger remains positive or stable.</li>
-                </ul>
-                <p>A score >= 50 triggers the marker.</p>
-            </div>
-        `
-    },
-    grind: {
-        title: "Grind Marker (Hidden Accumulation)",
-        body: `
-            <div class="guide-section">
-                <h4>What it is</h4>
-                <p>The Grind marker, or "Composite Ignition", isolates a 3-day sequence of "slow grind" upward breakouts that fail standard single-day Ignition criteria, but mathematically achieve a commanding structural breakaway collectively.</p>
-            </div>
-            <div class="guide-section">
-                <h4>Progressive Triggers (G1 &rarr; G2 &rarr; G3)</h4>
-                <ul>
-                    <li><strong>G1 (Initiation):</strong> Day 1 begins a move from within <code>1.0 ATR</code> of DAVWAP, expanding initially at least <code>0.5 ATR</code>.</li>
-                    <li><strong>G2 (Continuation):</strong> Day 2 closes higher, and cumulative expansion from G1 origin exceeds <code>0.8 ATR</code>.</li>
-                    <li><strong>G3 (Completion):</strong> Day 3 closes higher still, pushing the cumulative expansion from G1 origin beyond <code>1.2 ATR</code>. The 5-Day Momentum Ledger slope must be actively rising. Additionally, the Money Capacity Score (MCS) must be tracking strictly positively, or greater than Day 0 (the day prior to G1 initiation).</li>
-                </ul>
-            </div>
-            <div class="guide-section">
-                <h4>Ghosting Mechanic</h4>
-                <p>The system gives you a live edge. If today acts like a strong Day 1, you will see a <strong>G1</strong> badge immediately. However, if this sequence fails to mature into a full 3-day Grind over the next few days, the isolated <strong>G1</strong> marker is retroactively "ghosted" (erased) to keep the historical chart pristine.</p>
-            </div>
-        `
-    },
     price: {
         title: "Price & Delivery Volume",
         body: `
@@ -968,24 +910,64 @@ const helpContent = {
             </div>
         `
     },
-    spring: {
-        title: "Spring Marker (Deep Washout & Reversal)",
-        body: `
-            <div class="guide-section">
-                <h4>What it is</h4>
-                <p>The Spring marker identifies high Risk-to-Reward (RRR) reversal setups where price is deeply discounted, but institutional accumulation (smart money) is beginning to rotate upward. It is represented by a <strong>Cyan Up-Arrow (S)</strong> beneath the candle.</p>
-            </div>
-            <div class="guide-section">
-                <h4>Triggers</h4>
-                <ul>
-                    <li><strong>Deep Discount:</strong> The origin of the move must be heavily discounted, strictly <code>>= 1.5 ATR</code> below the Delivery Anchored VWAP.</li>
-                    <li><strong>Strong Reversal:</strong> The day's expansion off the lows must be <code>>= 0.8 ATR</code> AND the candle must close in the upper half of its range (Positive MFM).</li>
-                    <li><strong>Momentum Rotation:</strong> Despite the markdown, the underlying 5-Day Cumulative Volume Ledger must be actively curling upward or strictly positive.</li>
-                </ul>
-            </div>
-        `
-    }
 };
+
+// ─── Dynamic Marker Metadata ──────────────────────────────
+// Fetched once from /lfm/api/markers and cached.
+let markerMeta = [];  // chart markers only
+let allMarkerMeta = []; // all markers (for screener metadata etc.)
+
+async function loadMarkerMetadata() {
+    try {
+        const res = await fetch('/lfm/api/markers');
+        if (!res.ok) return;
+        allMarkerMeta = await res.json();
+        markerMeta = allMarkerMeta.filter(m => m.is_chart_marker);
+
+        // Inject marker help content into the helpContent dict
+        markerMeta.forEach(m => {
+            if (m.help_title && m.help_html) {
+                helpContent[m.id] = {
+                    title: m.help_title,
+                    body: m.help_html,
+                };
+            }
+        });
+
+        // Render legend tags
+        renderMarkerLegends();
+    } catch (e) {
+        console.error('Failed to load marker metadata', e);
+    }
+}
+
+/**
+ * Dynamically build legend tags from marker metadata and inject into
+ * the #marker-legends container.  New markers auto-appear here.
+ */
+function renderMarkerLegends() {
+    const container = document.getElementById('marker-legends');
+    if (!container) return;
+    container.innerHTML = '';
+
+    markerMeta.forEach(m => {
+        const tag = document.createElement('div');
+        tag.className = 'legend-tag';
+        tag.style.cssText = 'margin: 0; cursor: pointer;';
+        tag.onclick = () => openHelp(m.id);
+
+        const dot = document.createElement('div');
+        dot.className = 'dot';
+        dot.style.cssText = m.legend_dot_style || `background:${m.color};`;
+
+        tag.appendChild(dot);
+        tag.appendChild(document.createTextNode(m.label));
+        container.appendChild(tag);
+    });
+}
+
+// Load marker metadata on page init
+loadMarkerMetadata();
 
 function openHelp(metricId) {
     const modal = document.getElementById('help-modal');
@@ -1076,46 +1058,46 @@ async function fetchStockData(sym) {
         // Update all series
         candleSeries.setData(data.candles);
 
-        // Build and Set Chart Markers
+        // Build and Set Chart Markers (dynamic from marker metadata)
         let markers = [];
 
         data.candles.forEach(d => {
-            if (d.is_ignition) {
+            // Dynamically iterate registered chart markers
+            markerMeta.forEach(m => {
+                const flagKey = m.flag_key;
+                if (!flagKey) return;
+
+                const flagVal = d[flagKey];
+                // Determine if this marker is active on this candle
+                let isActive = false;
+                if (typeof flagVal === 'boolean') {
+                    isActive = flagVal;
+                } else if (typeof flagVal === 'number') {
+                    isActive = flagVal > 0;  // e.g. grind_level
+                }
+                if (!isActive) return;
+
+                // Determine text label
+                let text = '';
+                if (agg === 'daily') {
+                    const tf = m.text_format;
+                    if (tf === 'score' && m.score_key) {
+                        text = `${d[m.score_key] || ''}`;
+                    } else if (tf === 'grind_level') {
+                        text = `G${flagVal}`;
+                    } else if (tf && tf.startsWith('fixed:')) {
+                        text = tf.substring(6);
+                    }
+                }
+
                 markers.push({
                     time: d.time,
-                    position: 'aboveBar',
-                    color: '#b197fc', // Purple
-                    shape: 'arrowUp',
-                    text: agg === 'daily' ? `${d.ignition_score}` : ''
+                    position: m.position,
+                    color: m.color,
+                    shape: m.shape,
+                    text: text,
                 });
-            }
-            if (d.is_coil) {
-                markers.push({
-                    time: d.time,
-                    position: 'belowBar',
-                    color: '#4dabf7', // Blue
-                    shape: 'circle',
-                    text: agg === 'daily' ? `${d.coil_score}` : ''
-                });
-            }
-            if (d.grind_level) {
-                markers.push({
-                    time: d.time,
-                    position: 'belowBar',
-                    color: '#fcc419', // Gold
-                    shape: 'arrowUp',
-                    text: agg === 'daily' ? `G${d.grind_level}` : ''
-                });
-            }
-            if (d.is_spring) {
-                markers.push({
-                    time: d.time,
-                    position: 'belowBar',
-                    color: '#00e5ff', // Cyan
-                    shape: 'arrowUp',
-                    text: 'S'
-                });
-            }
+            });
         });
 
         candleSeries.setMarkers(markers);

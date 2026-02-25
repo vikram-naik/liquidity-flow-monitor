@@ -122,24 +122,8 @@
                             <div class="legend-tag" style="margin: 0; cursor: pointer;" onclick="openHelp('ledger')">
                                 <div class="dot" style="background:var(--gold);"></div>Ledger
                             </div>
-                            <div class="legend-tag" style="margin: 0; cursor: pointer;" onclick="openHelp('ignition')">
-                                <div class="dot"
-                                    style="background:#b197fc; clip-path: polygon(50% 0%, 0% 100%, 100% 100%); border-radius: 0;">
-                                </div>Ignition
-                            </div>
-                            <div class="legend-tag" style="margin: 0; cursor: pointer;" onclick="openHelp('coil')">
-                                <div class="dot" style="background:#4dabf7; border-radius: 50%;"></div>Coil
-                            </div>
-                            <div class="legend-tag" style="margin: 0; cursor: pointer;" onclick="openHelp('grind')">
-                                <div class="dot"
-                                    style="background:#fcc419; clip-path: polygon(50% 0%, 0% 100%, 100% 100%); border-radius: 0;">
-                                </div>Grind (IG)
-                            </div>
-                            <div class="legend-tag" style="margin: 0; cursor: pointer;" onclick="openHelp('spring')">
-                                <div class="dot"
-                                    style="background:#00e5ff; clip-path: polygon(50% 0%, 0% 100%, 100% 100%); border-radius: 0;">
-                                </div>Spring
-                            </div>
+                            <!-- Dynamic marker legends injected here by JS from /lfm/api/markers -->
+                            <span id="marker-legends" style="display:contents;"></span>
                         </div>
                         <div class="metric" id="m-price">
                             <div style="display:flex; justify-content:space-between; align-items: center; width: 100%;">

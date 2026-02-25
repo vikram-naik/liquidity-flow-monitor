@@ -120,9 +120,83 @@ Overlay earnings announcement dates on the chart so the user can immediately con
 
 ---
 
+### 9. ~~Marker Factory Pattern — Modular Signal Architecture~~ ✅ DONE
+**Size: L** — Structural refactoring, unlocks plugin-style marker development
+
+*Completed 2026-02-25. Created `src/analysis/markers/` package with `MarkerInterface` ABC, `MarkerRegistry`, and 8 marker classes (Coil, Ignition, Spring, Grind, Intensity, CrossoverUp, CrossoverDown, HighScore). Refactored `data.py` (395→200 lines), `run_screener.py` (zero-logic orchestrator), `main.py` (dynamic API), and `dashboard.js/html` (dynamic frontend). 29 unit tests. Also fixed grind_level/is_spring aggregation gap in weekly/monthly views.*
+
+- [x] Define `MarkerInterface` (ABC) with methods: `name()`, `evaluate(df) → df`, `metadata()`, `screen()`, `agg_rules()`
+- [x] Implement `CoilMarker`, `IgnitionMarker`, `SpringMarker`, `GrindMarker`, `IntensityMarker` + 3 screener-only markers
+- [x] Create `MarkerRegistry` (factory) that auto-discovers and registers all marker implementations
+- [x] Refactor `data.py` to loop: `for marker in registry.get_all(): df = marker.evaluate(df)`
+- [x] Each marker's `metadata()` provides its own documentation (legend label, color, help text, scoring guide)
+- [x] Expose `GET /lfm/api/markers` endpoint returning all registered marker metadata → frontend dynamically renders legends and help modals
+- [x] Update `run_screener.py` to use registry instead of hardcoded checks — zero functional logic in screener
+
+**Benefits**: New markers (Distribution, Exhaustion, Divergence from backlog items #1-2) become a single new file drop, zero changes to `data.py` or frontend.
+
+---
+
+### 10. Ledger Engine — OOAD Refactoring
+**Size: M** — Converts standalone functions into composable, testable components
+
+`ledger.py` currently has **9 standalone functions** with no class structure. Functions share implicit contracts (column names, DataFrame shape) but these contracts are not formalized. The anchor logic (`find_day_zero_anchor`) at 146 lines is the largest and mixes detection algorithm, DB persistence, and fallback logic in a single function.
+
+**Current state** (in `ledger.py`):
+```
+calculate_mfm(df)           # Pure transform
+calculate_dvl(df, anchor)   # Depends on MFM output
+calculate_cumulative_dvl(df) # Depends on MFM output
+calculate_davwap(df, anchor) # Independent
+calculate_mcs(df, window)   # Independent
+calculate_volume_profile(df) # Independent
+find_day_zero_anchor(df)    # Algorithm + DB I/O (mixed concerns)
+get_or_create_anchor(sym, df) # DB I/O wrapper
+```
+
+**Target state** — Composable engine:
+
+- [ ] Define `LedgerEngine` class that owns the computation pipeline and enforces execution order (MFM → DVL → DAVWAP → MCS)
+- [ ] Extract anchor logic into `AnchorService` (separates detection algorithm from persistence)
+- [ ] Extract volume profile into `VolumeProfileAnalyzer`
+- [ ] Formalize the DataFrame column contract via a `LedgerSchema` (typed column names, expected dtypes)
+- [ ] Each component becomes independently testable with mock DataFrames
+- [ ] `data.py` instantiates `LedgerEngine` instead of calling 6 standalone functions in sequence
+
+---
+
+### 11. Query Centralization — Repository Pattern
+**Size: M** — Eliminates raw SQL dispersion, single source of truth for all DB access
+
+Raw `cursor.execute()` calls are currently **scattered across 7 files** with ~50+ individual SQL statements:
+
+| File | SQL Calls | Domain |
+|------|-----------|--------|
+| `src/api/main.py` | ~20 | Watchlist CRUD, symbol listing, upload |
+| `scripts/run_screener.py` | ~15 | Screener list init, population, universe fetch |
+| `src/analysis/ledger.py` | 2 | Anchor read/write |
+| `src/agents/nse_agent.py` | ~8 | Bhavcopy upsert, change calc |
+| `src/agents/nse_indices_agent.py` | ~4 | Index data upsert |
+| `scripts/sync_ca.py` | ~3 | Corporate action upsert |
+| `src/database.py` | DDL only | Schema creation |
+
+**Problems**: Duplicate queries (e.g., "get watchlist by name" appears in `main.py` and `run_screener.py`), no query reuse, schema changes require hunting across all files.
+
+**Target state** — Repository layer:
+
+- [ ] Create `src/repositories/watchlist_repo.py` — all watchlist & item CRUD
+- [ ] Create `src/repositories/market_data_repo.py` — all price/delivery/CA read/write
+- [ ] Create `src/repositories/anchor_repo.py` — anchor persistence (extracted from `ledger.py`)
+- [ ] Create `src/repositories/screener_repo.py` — screener list management
+- [ ] Each repo takes a `connection` parameter (DI), returns domain objects (dicts/dataclasses), never exposes cursors
+- [ ] Refactor `main.py`, `run_screener.py`, `ledger.py`, agents to use repos instead of raw SQL
+- [ ] Add `__init__.py` barrel export for clean imports
+
+---
+
 ## 🟢 Low Priority — Polish & Extensions
 
-### 9. Relative Strength (DVL-Based)
+### 12. Relative Strength (DVL-Based)
 **Size: S**
 
 - [ ] Calculate aggregate DVL slope for NIFTY 500 (or broad index)
@@ -132,7 +206,7 @@ Overlay earnings announcement dates on the chart so the user can immediately con
 
 ---
 
-### 10. ~~README Refresh~~ ✅
+### 13. ~~README Refresh~~ ✅
 **Size: S** — *Completed Feb 2026*
 
 - [x] Remove references to decommissioned CME/Treasury/FRED architecture
@@ -142,7 +216,7 @@ Overlay earnings announcement dates on the chart so the user can immediately con
 
 ---
 
-### 11. Screener Robustness
+### 14. Screener Robustness
 **Size: S**
 
 - [ ] Handle holiday/long-weekend edge cases for Grind G1→G2→G3 chain
@@ -151,7 +225,7 @@ Overlay earnings announcement dates on the chart so the user can immediately con
 
 ---
 
-### 12. MCS Interpretation Guard
+### 15. MCS Interpretation Guard
 **Size: S**
 
 - [ ] Add contextual tooltip or help note about MCS limitations:
@@ -161,7 +235,7 @@ Overlay earnings announcement dates on the chart so the user can immediately con
 
 ---
 
-### 13. Volume Profile Enhancements
+### 16. Volume Profile Enhancements
 **Size: M**
 
 - [ ] Render volume profile as horizontal bars on the price chart (not just POC line)
@@ -170,7 +244,7 @@ Overlay earnings announcement dates on the chart so the user can immediately con
 
 ---
 
-### 14. Multi-Timeframe Confirmation
+### 17. Multi-Timeframe Confirmation
 **Size: L**
 
 - [ ] When viewing daily, show weekly DVL trend direction as a background indicator
@@ -179,7 +253,7 @@ Overlay earnings announcement dates on the chart so the user can immediately con
 
 ---
 
-### 15. Export & Sharing
+### 18. Export & Sharing
 **Size: S**
 
 - [ ] Add "Screenshot Chart" button (canvas-to-image export)
@@ -187,7 +261,7 @@ Overlay earnings announcement dates on the chart so the user can immediately con
 
 ---
 
-### 16. Performance — Screener Parallelization
+### 19. Performance — Screener Parallelization
 **Size: M**
 
 - [ ] The screener currently processes symbols sequentially
