@@ -491,7 +491,7 @@ def get_stock_analysis(
             **{
                 meta['flag_key']: (
                     _safe(r.get(meta['flag_key'], 0))
-                    if meta['flag_key'] == 'grind_level'
+                    if meta['flag_key'] in ('grind_level', 'bearish_grind_level')
                     else bool(r.get(meta['flag_key'], False))
                 )
                 for meta in _registry.get_metadata()
@@ -554,3 +554,39 @@ def get_stock_analysis(
         "mcs": mcs_data,
         "volume_profile": volume_profile
     }
+
+
+# ─── Settings API ─────────────────────────────────────────────────────
+
+class SettingsUpdate(BaseModel):
+    settings: dict  # e.g. {"div_swing_n": "5", "div_min_spacing": "10"}
+
+@app.get("/lfm/api/settings")
+def get_settings():
+    """Return all user settings as a flat dict."""
+    db_path = os.getenv("DB_PATH", DB_PATH)
+    conn = sqlite3.connect(db_path)
+    rows = conn.execute("SELECT key, value FROM user_settings").fetchall()
+    conn.close()
+    return {r[0]: r[1] for r in rows}
+
+@app.put("/lfm/api/settings")
+def update_settings(body: SettingsUpdate):
+    """Update user settings and flush the Redis cache so changes take effect."""
+    db_path = os.getenv("DB_PATH", DB_PATH)
+    conn = sqlite3.connect(db_path)
+    for key, value in body.settings.items():
+        conn.execute(
+            "INSERT OR REPLACE INTO user_settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)",
+            (key, str(value))
+        )
+    conn.commit()
+    conn.close()
+
+    # Flush Redis so next analysis call uses fresh parameters
+    try:
+        cache.clear()
+    except Exception:
+        pass  # Redis may not be available
+
+    return {"status": "ok", "updated": list(body.settings.keys())}

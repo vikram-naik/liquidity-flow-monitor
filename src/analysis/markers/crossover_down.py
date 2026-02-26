@@ -39,6 +39,7 @@ class CrossoverDownMarker(MarkerInterface):
             'id': 'crossover_down',
             'label': 'Crossover Down',
             'is_chart_marker': False,
+            'marker_type': 'bearish',
             'screener_name': 'SCR: CO-D',
         }
 

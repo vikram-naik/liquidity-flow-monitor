@@ -141,10 +141,12 @@ def run_screener():
                         )
                         # Build a short display label from screener name
                         label = screener_name.replace('SCR: ', '')
-                        # Add grind level detail if applicable
                         if meta.get('flag_key') == 'grind_level':
                             level = int(latest.get('grind_level', 0))
                             label = f"GRIND G{level}"
+                        elif meta.get('flag_key') == 'bearish_grind_level':
+                            level = int(latest.get('bearish_grind_level', 0))
+                            label = f"BEAR GRIND BG{level}"
                         assigned.append(label)
 
                 if not assigned:

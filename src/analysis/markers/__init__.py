@@ -75,6 +75,7 @@ class MarkerInterface(ABC):
         id            : str   – same as ``name()``.
         label         : str   – human-readable name for the legend.
         is_chart_marker : bool – ``True`` if rendered on the candlestick chart.
+        marker_type   : str   – ``'bullish'``, ``'bearish'``, or ``'neutral'``.
         screener_name : str | None – watchlist name (e.g. ``'SCR: Ignition'``),
                         ``None`` if this marker has no screener.
 

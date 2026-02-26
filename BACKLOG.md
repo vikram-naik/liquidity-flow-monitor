@@ -8,39 +8,6 @@
 
 ## 🔴 High Priority — Core Analytical Gaps
 
-### 1. Divergence Engine (DVL vs Price)
-**Size: M** — Highest analytical value addition
-
-Automate detection of DVL-to-Price divergences instead of relying on the user's eye:
-
-| Pattern | Definition | Significance |
-|---------|-----------|--------------|
-| **Bullish Divergence** | Price makes lower low, DVL makes higher low | Hidden accumulation during selloff |
-| **Bearish Divergence** | Price makes higher high, DVL makes lower high | Distribution behind rising prices |
-| **Confirmation** | Both making new highs | Healthy trend |
-
-- [ ] Implement swing-high/low detection on both price and DVL series
-- [ ] Classify divergence type (bullish/bearish/confirmation)
-- [ ] Surface as chart markers and in API response metadata
-- [ ] Add to screener (e.g., `SCR: Divergence-Bull`, `SCR: Divergence-Bear`)
-
----
-
-### 2. Distribution-Side Signal Markers
-**Size: M** — Completes the signal framework
-
-The current marker set (Coil, Ignition, Spring, Grind) is exclusively bullish. Add bearish equivalents:
-
-- [ ] **Distribution Marker** — High-volume expansion candle closing in lower half of range near DAVWAP (inverse of Ignition)
-- [ ] **Bearish Absorption (BD)** — Volume spiking on down candles with DVL declining
-- [ ] **Exhaustion Marker** — DVL flattening at extreme highs while price grinds higher
-- [ ] Add to screener watchlists (`SCR: Distribution`, `SCR: Exhaustion`)
-- [ ] Add legend entries, help modals, and chart marker rendering in frontend
-
-> **Note**: D and BD signals were previously explored in conversations `f182024a` and `638c6dfa` via a `smart_money.py` module that has since been removed. Review those conversations for prior logic.
-
----
-
 ### 3. Sector Flow Heatmap
 **Size: M** — Answers "where is smart money flowing" at scale
 
@@ -120,23 +87,6 @@ Overlay earnings announcement dates on the chart so the user can immediately con
 
 ---
 
-### 9. ~~Marker Factory Pattern — Modular Signal Architecture~~ ✅ DONE
-**Size: L** — Structural refactoring, unlocks plugin-style marker development
-
-*Completed 2026-02-25. Created `src/analysis/markers/` package with `MarkerInterface` ABC, `MarkerRegistry`, and 8 marker classes (Coil, Ignition, Spring, Grind, Intensity, CrossoverUp, CrossoverDown, HighScore). Refactored `data.py` (395→200 lines), `run_screener.py` (zero-logic orchestrator), `main.py` (dynamic API), and `dashboard.js/html` (dynamic frontend). 29 unit tests. Also fixed grind_level/is_spring aggregation gap in weekly/monthly views.*
-
-- [x] Define `MarkerInterface` (ABC) with methods: `name()`, `evaluate(df) → df`, `metadata()`, `screen()`, `agg_rules()`
-- [x] Implement `CoilMarker`, `IgnitionMarker`, `SpringMarker`, `GrindMarker`, `IntensityMarker` + 3 screener-only markers
-- [x] Create `MarkerRegistry` (factory) that auto-discovers and registers all marker implementations
-- [x] Refactor `data.py` to loop: `for marker in registry.get_all(): df = marker.evaluate(df)`
-- [x] Each marker's `metadata()` provides its own documentation (legend label, color, help text, scoring guide)
-- [x] Expose `GET /lfm/api/markers` endpoint returning all registered marker metadata → frontend dynamically renders legends and help modals
-- [x] Update `run_screener.py` to use registry instead of hardcoded checks — zero functional logic in screener
-
-**Benefits**: New markers (Distribution, Exhaustion, Divergence from backlog items #1-2) become a single new file drop, zero changes to `data.py` or frontend.
-
----
-
 ### 10. Ledger Engine — OOAD Refactoring
 **Size: M** — Converts standalone functions into composable, testable components
 
@@ -206,16 +156,6 @@ Raw `cursor.execute()` calls are currently **scattered across 7 files** with ~50
 
 ---
 
-### 13. ~~README Refresh~~ ✅
-**Size: S** — *Completed Feb 2026*
-
-- [x] Remove references to decommissioned CME/Treasury/FRED architecture
-- [x] Document current NSE-focused system architecture
-- [x] Update scripts reference section
-- [ ] Add screenshot of dashboard
-
----
-
 ### 14. Screener Robustness
 **Size: S**
 
@@ -267,6 +207,38 @@ Raw `cursor.execute()` calls are currently **scattered across 7 files** with ~50
 - [ ] The screener currently processes symbols sequentially
 - [ ] For NIFTY 500 (500 symbols), consider `concurrent.futures.ThreadPoolExecutor` for cache-warm scans
 - [ ] Be mindful of SQLite write contention — batch commits after parallel reads
+
+---
+
+## ✅ Completed
+
+### ~~1. Divergence Engine (DVL vs Price)~~ ✅
+**Size: M** — *Completed 2026-02-25*
+
+Implemented swing-point detection using fractal windows. Classifies Bullish Divergence, Bearish Divergence, Confirm Bull, and Confirm Bear markers. Integrated into the Screener, Dashboard UI, and Methodology Guide. Includes "Strict Mode" toggle for structural filtering. Added 6-quadrant classification model (Failed High, Strong Low), configurable engine settings (Fractal Period, Min Swing Spacing, Min DVL %), and HTF structural-only markers on weekly/monthly views.
+
+---
+
+### ~~2. Distribution-Side Signal Markers~~ ✅
+**Size: M** — *Completed 2026-02-26*
+
+Implemented full distribution-side marker suite: Distribution, Bearish Absorption (BD), Exhaustion, and Bearish Grind. All markers integrated into the Marker Factory pattern with screener support, chart markers, legend entries, and help modals. Added divergence engine settings UI with persistence (`user_settings` table), configurable via modal with inline help text. Strict mode defaults to OFF. Weekly/monthly views show only structural markers.
+
+---
+
+### ~~9. Marker Factory Pattern — Modular Signal Architecture~~ ✅
+**Size: L** — *Completed 2026-02-25*
+
+Created `src/analysis/markers/` package with `MarkerInterface` ABC, `MarkerRegistry`, and 8+ marker classes. Refactored `data.py` (395→200 lines), `run_screener.py` (zero-logic orchestrator), `main.py` (dynamic API), and `dashboard.js/html` (dynamic frontend). 29 unit tests.
+
+---
+
+### ~~13. README Refresh~~ ✅
+**Size: S** — *Completed Feb 2026*
+
+- [x] Remove references to decommissioned CME/Treasury/FRED architecture
+- [x] Document current NSE-focused system architecture
+- [x] Update scripts reference section
 
 ---
 

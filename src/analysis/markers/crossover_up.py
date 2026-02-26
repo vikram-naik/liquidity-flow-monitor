@@ -39,6 +39,7 @@ class CrossoverUpMarker(MarkerInterface):
             'id': 'crossover_up',
             'label': 'Crossover Up',
             'is_chart_marker': False,
+            'marker_type': 'bullish',
             'screener_name': 'SCR: CO-U',
         }
 

@@ -11,12 +11,82 @@ window.switchTbtn = function (btn) {
     if (typeof loadSymbol === 'function') loadSymbol();
 };
 
-let strictMode = true;
+let strictMode = false;
 window.toggleStrictMode = function () {
     const cb = document.getElementById('toggle-strict');
     if (cb) strictMode = cb.checked;
+    const statusEl = document.getElementById('strict-status');
+    if (statusEl) {
+        statusEl.textContent = strictMode ? 'ON' : 'OFF';
+        statusEl.style.color = strictMode ? 'var(--blue)' : 'var(--text-2)';
+    }
     if (typeof loadSymbol === 'function') loadSymbol(); // reload chart
 };
+
+// ─── Divergence Engine Settings ──────────────────────────────────
+window.openDivSettings = async function () {
+    try {
+        const res = await fetch('/lfm/api/settings');
+        const s = await res.json();
+        const swingN = s.div_swing_n || '5';
+        const spacing = s.div_min_spacing || '8';
+        const dvlPct = Math.round(parseFloat(s.div_min_dvl_pct || '0.05') * 100);
+
+        document.getElementById('set-swing-n').value = swingN;
+        document.getElementById('lbl-swing-n').textContent = swingN;
+        document.getElementById('set-min-spacing').value = spacing;
+        document.getElementById('lbl-min-spacing').textContent = spacing;
+        document.getElementById('set-dvl-pct').value = dvlPct;
+        document.getElementById('lbl-dvl-pct').textContent = dvlPct + '%';
+    } catch (e) { console.error('Failed to load settings:', e); }
+    document.getElementById('div-settings-modal').style.display = 'flex';
+};
+
+window.closeDivSettings = function (event) {
+    if (event && event.target !== event.currentTarget) return;
+    document.getElementById('div-settings-modal').style.display = 'none';
+};
+
+window.saveDivSettings = async function () {
+    const swingN = document.getElementById('set-swing-n').value;
+    const spacing = document.getElementById('set-min-spacing').value;
+    const dvlPct = (parseInt(document.getElementById('set-dvl-pct').value) / 100).toFixed(2);
+
+    try {
+        await fetch('/lfm/api/settings', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                settings: {
+                    div_swing_n: swingN,
+                    div_min_spacing: spacing,
+                    div_min_dvl_pct: dvlPct
+                }
+            })
+        });
+        document.getElementById('div-settings-modal').style.display = 'none';
+        updateDivSettingsSummary(swingN, spacing, dvlPct);
+        if (typeof loadSymbol === 'function') loadSymbol(); // reload with new params
+    } catch (e) { console.error('Failed to save settings:', e); }
+};
+
+function updateDivSettingsSummary(n, sp, dvl) {
+    const el = document.getElementById('div-settings-summary');
+    if (el) el.textContent = `N=${n} S=${sp} D=${Math.round(dvl * 100)}%`;
+}
+
+// Load settings summary on page init
+(async function loadDivSettingsSummary() {
+    try {
+        const res = await fetch('/lfm/api/settings');
+        const s = await res.json();
+        updateDivSettingsSummary(
+            s.div_swing_n || '5',
+            s.div_min_spacing || '8',
+            s.div_min_dvl_pct || '0.05'
+        );
+    } catch (e) { /* ignore on init */ }
+})();
 
 // ─── Chart Theme ──────────────────────────────────────────────
 const theme = {
@@ -918,6 +988,19 @@ const helpContent = {
             </div>
         `
     },
+    strict: {
+        title: "Strict Mode",
+        body: `
+            <div class="guide-section">
+                <h4>What it is</h4>
+                <p>Strict Mode acts as a primary institutional trend filter. When enabled, it suppresses tactical accumulation markers (like Coils and Springs) if the stock is in a confirmed structural downtrend. Likewise, it hides tactical distribution markers (like Bear Absorption) during confirmed uptrends.</p>
+            </div>
+            <div class="guide-section">
+                <h4>Why use it?</h4>
+                <p>It acts as a critical risk management safety net. Buying a "dip" in a confirmed institutional distribution phase is dangerous. Strict Mode enforces trading only in the direction of the dominant institutional flow, requiring the structure to be repaired before highlighting counter-trend tactical setups.</p>
+            </div>
+        `
+    }
 };
 
 // ─── Dynamic Marker Metadata ──────────────────────────────
@@ -954,15 +1037,17 @@ async function loadMarkerMetadata() {
  * the #marker-legends container.  New markers auto-appear here.
  */
 function renderMarkerLegends() {
-    const container = document.getElementById('marker-legends');
-    if (!container) return;
-    container.innerHTML = '';
+    const containerBull = document.getElementById('marker-legends-bull');
+    const containerBear = document.getElementById('marker-legends-bear');
+    if (!containerBull || !containerBear) return;
+    containerBull.innerHTML = '';
+    containerBear.innerHTML = '';
 
     markerMeta.forEach(m => {
         const tag = document.createElement('div');
         tag.className = 'legend-tag';
         tag.style.cssText = 'margin: 0; cursor: pointer;';
-        tag.onclick = () => openHelp(m.id);
+        tag.onclick = (e) => { e.stopPropagation(); openHelp(m.id); };
 
         const dot = document.createElement('div');
         dot.className = 'dot';
@@ -970,7 +1055,12 @@ function renderMarkerLegends() {
 
         tag.appendChild(dot);
         tag.appendChild(document.createTextNode(m.label));
-        container.appendChild(tag);
+
+        if (m.marker_type === 'bullish') {
+            containerBull.appendChild(tag);
+        } else if (m.marker_type === 'bearish') {
+            containerBear.appendChild(tag);
+        }
     });
 }
 
@@ -1083,11 +1173,14 @@ async function fetchStockData(sym) {
                 const flagKey = m.flag_key;
                 if (!flagKey) return;
 
-                // Strict Mode Filter: Drop tactical setups during a confirmed bearish structure
-                if (strictMode && currentStructurePhase === 'bear') {
-                    if (['is_coil', 'is_spring', 'grind_level'].includes(flagKey)) {
-                        return;
-                    }
+                // HTF Filter: On weekly/monthly, only show structural markers (divergence/confirmation)
+                const isStructural = m.id && (m.id.startsWith('div_') || m.id.startsWith('confirm_'));
+                if (agg !== 'daily' && !isStructural) return;
+
+                // Strict Mode Filter: Drop tactical setups during conflicting structure phases
+                if (strictMode) {
+                    if (currentStructurePhase === 'bear' && m.marker_type === 'bullish') return;
+                    if (currentStructurePhase === 'bull' && m.marker_type === 'bearish') return;
                 }
 
                 const flagVal = d[flagKey];
@@ -1102,14 +1195,18 @@ async function fetchStockData(sym) {
 
                 // Determine text label
                 let text = '';
-                if (agg === 'daily') {
-                    const tf = m.text_format;
+                const tf = m.text_format;
+                if (tf && tf.startsWith('fixed:')) {
+                    // Fixed labels (D↑, D↓, CB, CD, BD, E, S) always show on all TFs
+                    text = tf.substring(6);
+                } else if (agg === 'daily') {
+                    // Score/grind labels only on daily (too noisy on higher TFs)
                     if (tf === 'score' && m.score_key) {
                         text = `${d[m.score_key] || ''}`;
                     } else if (tf === 'grind_level') {
                         text = `G${flagVal}`;
-                    } else if (tf && tf.startsWith('fixed:')) {
-                        text = tf.substring(6);
+                    } else if (tf === 'bearish_grind_level') {
+                        text = `BG${flagVal}`;
                     }
                 }
 

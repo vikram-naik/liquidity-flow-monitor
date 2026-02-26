@@ -114,16 +114,40 @@
                     </div>
 
                     <div id="metrics">
-                        <div class="metric" id="m-legends"
-                            style="flex-direction: row; align-items: center; justify-content: center; gap: 12px; padding: 0 14px;">
-                            <div class="legend-tag" style="margin: 0; cursor: pointer;" onclick="openHelp('davwap')">
-                                <div class="dot" style="background:var(--blue);"></div>DAVWAP
+                        <div class="metric dropdown hover-menu" id="m-legends"
+                            style="cursor:pointer; position:relative; overflow:visible; min-width:90px; padding:6px 14px;">
+                            <span class="label">Signals <span style="font-size:8px; margin-left:2px;">▼</span></span>
+                            <div class="value" style="font-size:13px; margin-top:0px;">Legend</div>
+                            <div class="dropdown-content"
+                                style="top:calc(100% + 4px); right:0; padding:16px; width:320px; z-index:200; cursor:default;">
+                                <div
+                                    style="font-size:10px; font-weight:800; color:var(--text-2); text-transform:uppercase; letter-spacing:1px; margin-bottom:12px;">
+                                    Core Indicators</div>
+                                <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:6px;">
+                                    <div class="legend-tag" style="margin:0; cursor:pointer;"
+                                        onclick="openHelp('davwap'); event.stopPropagation();">
+                                        <div class="dot" style="background:var(--blue);"></div>DAVWAP
+                                    </div>
+                                    <div class="legend-tag" style="margin:0; cursor:pointer;"
+                                        onclick="openHelp('ledger'); event.stopPropagation();">
+                                        <div class="dot" style="background:var(--gold);"></div>Ledger
+                                    </div>
+                                </div>
+                                <div
+                                    style="font-size:10px; font-weight:800; color:var(--text-2); text-transform:uppercase; letter-spacing:1px; margin:16px 0 12px 0; padding-top:16px; border-top:1px solid var(--border);">
+                                    Bullish Markers</div>
+                                <div id="marker-legends-bull"
+                                    style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+                                    <!-- Dynamic bull markers injected here -->
+                                </div>
+                                <div
+                                    style="font-size:10px; font-weight:800; color:var(--text-2); text-transform:uppercase; letter-spacing:1px; margin:16px 0 12px 0; padding-top:16px; border-top:1px solid var(--border);">
+                                    Bearish Markers</div>
+                                <div id="marker-legends-bear"
+                                    style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+                                    <!-- Dynamic bear markers injected here -->
+                                </div>
                             </div>
-                            <div class="legend-tag" style="margin: 0; cursor: pointer;" onclick="openHelp('ledger')">
-                                <div class="dot" style="background:var(--gold);"></div>Ledger
-                            </div>
-                            <!-- Dynamic marker legends injected here by JS from /lfm/api/markers -->
-                            <span id="marker-legends" style="display:contents;"></span>
                         </div>
                         <div class="metric" id="m-price">
                             <div style="display:flex; justify-content:space-between; align-items: center; width: 100%;">
@@ -150,12 +174,20 @@
                             <span class="label">Strict Mode <span class="help-icon"
                                     title="Hides tactical setups (Coils, Springs) when the structure is in a confirmed downtrend."
                                     onclick="openHelp('strict')">?</span></span>
-                            <div style="display:flex; align-items:center; margin-top:4px;">
+                            <div style="display:flex; align-items:center; margin-top:4px; gap:8px;">
                                 <label class="switch" title="Toggle Strict Mode">
-                                    <input type="checkbox" id="toggle-strict" onchange="toggleStrictMode()" checked>
+                                    <input type="checkbox" id="toggle-strict" onchange="toggleStrictMode()">
                                     <span class="slider round"></span>
                                 </label>
+                                <span id="strict-status"
+                                    style="font-size:11px; font-weight:800; color:var(--text-2);">OFF</span>
                             </div>
+                        </div>
+                        <div class="metric" id="m-div-settings" style="cursor:pointer;" onclick="openDivSettings()"
+                            title="Divergence Engine Settings">
+                            <span class="label">Engine <span class="help-icon">⚙</span></span>
+                            <span class="value" style="font-size:11px; color:var(--text-2);"
+                                id="div-settings-summary">—</span>
                         </div>
                         <div class="metric" id="m-anchor">
                             <span class="label">Anchor <span class="help-icon"
@@ -461,6 +493,76 @@
             </div>
             <div class="modal-body" id="help-body">
                 <!-- Data injected via JS -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Divergence Engine Settings Modal -->
+    <div id="div-settings-modal" class="modal-overlay" onclick="closeDivSettings(event)">
+        <div class="modal-content" style="max-width: 420px;" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <h3>⚙ Divergence Engine Settings</h3>
+                <button class="modal-close" onclick="closeDivSettings()">×</button>
+            </div>
+            <div class="modal-body">
+                <div style="display:flex; flex-direction:column; gap:20px;">
+                    <div>
+                        <label style="font-size:12px; color:var(--text-2); font-weight:600;">
+                            Fractal Period <span style="float:right; color:var(--blue);" id="lbl-swing-n">5</span>
+                        </label>
+                        <p style="font-size:10px; color:var(--text-3); margin:4px 0 0;">
+                            Number of bars on each side required to confirm a swing high or low.
+                            Lower values detect pivots faster but may flag minor zig-zags as structural swings.
+                            Higher values are more stable but introduce lag in identifying peaks and troughs.
+                        </p>
+                        <input type="range" id="set-swing-n" min="3" max="10" step="1" value="5"
+                            style="width:100%; margin-top:6px; accent-color:var(--blue);"
+                            oninput="document.getElementById('lbl-swing-n').textContent=this.value">
+                        <div style="display:flex; justify-content:space-between; font-size:10px; color:var(--text-3);">
+                            <span>3 (fast)</span><span>10 (stable)</span>
+                        </div>
+                    </div>
+                    <div>
+                        <label style="font-size:12px; color:var(--text-2); font-weight:600;">
+                            Min Swing Spacing <span style="float:right; color:var(--blue);"
+                                id="lbl-min-spacing">8</span>
+                        </label>
+                        <p style="font-size:10px; color:var(--text-3); margin:4px 0 0;">
+                            Minimum number of bars between two consecutive swing highs (or lows) for a
+                            divergence comparison. Prevents false signals from closely-spaced peaks within
+                            a consolidation zone. Example: 10 bars ≈ 2 trading weeks.
+                        </p>
+                        <input type="range" id="set-min-spacing" min="5" max="25" step="1" value="8"
+                            style="width:100%; margin-top:6px; accent-color:var(--blue);"
+                            oninput="document.getElementById('lbl-min-spacing').textContent=this.value">
+                        <div style="display:flex; justify-content:space-between; font-size:10px; color:var(--text-3);">
+                            <span>5 bars</span><span>25 bars</span>
+                        </div>
+                    </div>
+                    <div>
+                        <label style="font-size:12px; color:var(--text-2); font-weight:600;">
+                            Min DVL Significance <span style="float:right; color:var(--blue);"
+                                id="lbl-dvl-pct">5%</span>
+                        </label>
+                        <p style="font-size:10px; color:var(--text-3); margin:4px 0 0;">
+                            The minimum percentage change in Delivery Volume Ledger (DVL) between two
+                            swing points to be considered meaningful. Filters out minor DVL fluctuations
+                            so only structurally significant divergences are flagged.
+                        </p>
+                        <input type="range" id="set-dvl-pct" min="1" max="20" step="1" value="5"
+                            style="width:100%; margin-top:6px; accent-color:var(--blue);"
+                            oninput="document.getElementById('lbl-dvl-pct').textContent=this.value+'%'">
+                        <div style="display:flex; justify-content:space-between; font-size:10px; color:var(--text-3);">
+                            <span>1% (sensitive)</span><span>20% (conservative)</span>
+                        </div>
+                    </div>
+                </div>
+                <div style="margin-top:24px; display:flex; gap:12px; justify-content:flex-end;">
+                    <button class="btn-guide" onclick="closeDivSettings()" style="margin:0;">Cancel</button>
+                    <button class="btn-guide" onclick="saveDivSettings()"
+                        style="margin:0; background:linear-gradient(135deg, var(--blue), var(--purple)); color:white; border:none;">Save
+                        & Reload</button>
+                </div>
             </div>
         </div>
     </div>

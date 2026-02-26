@@ -2,15 +2,29 @@
 Divergence Engine — DVL vs Price Structural Divergence Detection.
 
 Implements 5-bar fractal swing detection on price, reads DVL at swing
-dates, and classifies the relationship into one of four structural
-patterns.
+dates, and classifies the relationship into one of six structural
+patterns (merged into four marker classes).
+
+Classification matrix for **Swing Highs**:
+
+  * Price HH + DVL LH → ``div_bear``    (classic divergence)
+  * Price LH + DVL LH → ``div_bear``    (failed high / structural weakness)
+  * Price HH + DVL HH → ``confirm_bull`` (healthy trend)
+  * Price LH + DVL HH → skipped         (ambiguous)
+
+Classification matrix for **Swing Lows**:
+
+  * Price LL + DVL HL → ``div_bull``     (classic divergence)
+  * Price HL + DVL HL → ``div_bull``     (strong low / structural strength)
+  * Price LL + DVL LL → ``confirm_bear`` (confirmed decline)
+  * Price HL + DVL LL → skipped          (ambiguous)
 
 Four concrete marker classes share a ``_DivergenceBase``:
 
-  * ``BullDivergenceMarker``   — Price LL + DVL HL (hidden accumulation)
-  * ``BearDivergenceMarker``   — Price HH + DVL LH (distribution)
-  * ``BullConfirmationMarker`` — Price HH + DVL HH (healthy trend)
-  * ``BearConfirmationMarker`` — Price LL + DVL LL  (confirmed decline)
+  * ``BullDivergenceMarker``   — hidden accumulation
+  * ``BearDivergenceMarker``   — distribution / failed high
+  * ``BullConfirmationMarker`` — healthy trend
+  * ``BearConfirmationMarker`` — confirmed decline
 """
 
 import numpy as np
@@ -30,13 +44,34 @@ class _DivergenceBase(MarkerInterface):
     specific pattern from the cached columns.
     """
 
-    # Fractal length (n bars on left, n bars on right) for Swing High/Low
-    _SWING_N = 8
-    
-    # Minimum requirements to pair consecutive swings
-    _MIN_SWING_SPACING = 15     # bars
-    _MIN_PRICE_ATR     = 0.5    # 0.5 * 50-day ATR difference between price legs
-    _MIN_DVL_PCT       = 0.05   # 5% relative difference in DVL between legs
+    # Default constants (overridden by user_settings DB table)
+    _SWING_N = 5
+    _MIN_SWING_SPACING = 8
+    _MIN_PRICE_ATR     = 0.5
+    _MIN_DVL_PCT       = 0.05
+
+    @staticmethod
+    def _load_settings() -> dict:
+        """Load divergence parameters from user_settings table, falling back to class defaults."""
+        try:
+            from src.database import get_db_connection
+            conn = get_db_connection()
+            rows = conn.execute(
+                "SELECT key, value FROM user_settings WHERE key LIKE 'div_%'"
+            ).fetchall()
+            conn.close()
+            s = {r[0]: r[1] for r in rows}
+            return {
+                'swing_n':     int(s.get('div_swing_n', _DivergenceBase._SWING_N)),
+                'min_spacing': int(s.get('div_min_spacing', _DivergenceBase._MIN_SWING_SPACING)),
+                'min_dvl_pct': float(s.get('div_min_dvl_pct', _DivergenceBase._MIN_DVL_PCT)),
+            }
+        except Exception:
+            return {
+                'swing_n':     _DivergenceBase._SWING_N,
+                'min_spacing': _DivergenceBase._MIN_SWING_SPACING,
+                'min_dvl_pct': _DivergenceBase._MIN_DVL_PCT,
+            }
 
     # --- shared detection (idempotent) ---------------------------------
 
@@ -51,7 +86,9 @@ class _DivergenceBase(MarkerInterface):
         if '_swing_high' in df.columns:
             return df          # already computed by a sibling marker
 
-        n = _DivergenceBase._SWING_N
+        # Load user-configurable parameters
+        cfg = _DivergenceBase._load_settings()
+        n = cfg['swing_n']
 
         # --- Swing detection via rolling max/min comparison ---
         swing_high = pd.Series(False, index=df.index)
@@ -86,7 +123,11 @@ class _DivergenceBase(MarkerInterface):
         sh_idxs = df.index[swing_high].tolist()
         sl_idxs = df.index[swing_low].tolist()
 
-        # --- Swing High classification (Bearish Div / Bullish Confirm) ---
+        # --- Swing High classification (6-quadrant) ----------------------
+        # HH + DVL LH → div_bear   (classic divergence)
+        # LH + DVL LH → div_bear   (failed high / structural weakness)
+        # HH + DVL HH → confirm_bull (healthy trend)
+        # LH + DVL HH → skip        (ambiguous — DVL strong despite lower price)
         for k in range(1, len(sh_idxs)):
             curr_idx = sh_idxs[k]
             prev_idx = sh_idxs[k - 1]
@@ -95,17 +136,13 @@ class _DivergenceBase(MarkerInterface):
             prev_pos = df.index.get_loc(prev_idx)
 
             # Minimum spacing check
-            if (curr_pos - prev_pos) < _DivergenceBase._MIN_SWING_SPACING:
+            if (curr_pos - prev_pos) < cfg['min_spacing']:
                 continue
 
             price_curr = highs[curr_pos]
             price_prev = highs[prev_pos]
             dvl_curr = dvl[curr_pos]
             dvl_prev = dvl[prev_pos]
-
-            # Must be Price Higher High
-            if not (price_curr > price_prev):
-                continue
 
             # Significance filters
             curr_atr = atr[curr_pos] if not np.isnan(atr[curr_pos]) else 1.0
@@ -117,16 +154,25 @@ class _DivergenceBase(MarkerInterface):
 
             dvl_base = abs(dvl_prev) if abs(dvl_prev) > 0 else 1.0
             dvl_delta_pct = abs(dvl_curr - dvl_prev) / dvl_base
-            if dvl_delta_pct < _DivergenceBase._MIN_DVL_PCT:
+            if dvl_delta_pct < cfg['min_dvl_pct']:
                 continue
 
-            # Classify
-            if dvl_curr < dvl_prev:
-                div_type_high.at[curr_idx] = 'div_bear'
-            else:
-                div_type_high.at[curr_idx] = 'confirm_bull'
+            price_is_hh = price_curr > price_prev
 
-        # --- Swing Low classification (Bullish Div / Bearish Confirm) ----
+            if dvl_curr < dvl_prev:
+                # DVL declining: bearish signal regardless of price direction
+                # HH + DVL LH = classic divergence, LH + DVL LH = failed high
+                div_type_high.at[curr_idx] = 'div_bear'
+            elif price_is_hh:
+                # HH + DVL HH = healthy trend confirmation
+                div_type_high.at[curr_idx] = 'confirm_bull'
+            # else: LH + DVL HH → ambiguous, skip
+
+        # --- Swing Low classification (6-quadrant) -----------------------
+        # LL + DVL HL → div_bull    (classic divergence)
+        # HL + DVL HL → div_bull    (strong low / structural strength)
+        # LL + DVL LL → confirm_bear (confirmed decline)
+        # HL + DVL LL → skip         (ambiguous — DVL weak despite higher price)
         for k in range(1, len(sl_idxs)):
             curr_idx = sl_idxs[k]
             prev_idx = sl_idxs[k - 1]
@@ -134,17 +180,13 @@ class _DivergenceBase(MarkerInterface):
             curr_pos = df.index.get_loc(curr_idx)
             prev_pos = df.index.get_loc(prev_idx)
 
-            if (curr_pos - prev_pos) < _DivergenceBase._MIN_SWING_SPACING:
+            if (curr_pos - prev_pos) < cfg['min_spacing']:
                 continue
 
             price_curr = lows[curr_pos]
             price_prev = lows[prev_pos]
             dvl_curr = dvl[curr_pos]
             dvl_prev = dvl[prev_pos]
-
-            # Must be Price Lower Low
-            if not (price_curr < price_prev):
-                continue
 
             curr_atr = atr[curr_pos] if not np.isnan(atr[curr_pos]) else 1.0
             if abs(price_curr - price_prev) < _DivergenceBase._MIN_PRICE_ATR * curr_atr:
@@ -155,13 +197,19 @@ class _DivergenceBase(MarkerInterface):
 
             dvl_base = abs(dvl_prev) if abs(dvl_prev) > 0 else 1.0
             dvl_delta_pct = abs(dvl_curr - dvl_prev) / dvl_base
-            if dvl_delta_pct < _DivergenceBase._MIN_DVL_PCT:
+            if dvl_delta_pct < cfg['min_dvl_pct']:
                 continue
 
+            price_is_ll = price_curr < price_prev
+
             if dvl_curr > dvl_prev:
+                # DVL improving: bullish signal regardless of price direction
+                # LL + DVL HL = classic divergence, HL + DVL HL = strong low
                 div_type_low.at[curr_idx] = 'div_bull'
-            else:
+            elif price_is_ll:
+                # LL + DVL LL = confirmed decline
                 div_type_low.at[curr_idx] = 'confirm_bear'
+            # else: HL + DVL LL → ambiguous, skip
 
         df['_div_type_high'] = div_type_high
         df['_div_type_low'] = div_type_low
@@ -273,6 +321,13 @@ class BullDivergenceMarker(_DivergenceBase):
     def evaluate(self, df: pd.DataFrame) -> pd.DataFrame:
         df = self._ensure_swing_columns(df)
         df['is_div_bull'] = df['_div_type_low'] == 'div_bull'
+        
+        # Mutual Exclusion
+        priority_flags = ['is_exhaustion', 'is_bearish_absorption', 'is_spring', 'is_distribution', 'is_ignition', 'is_coil']
+        for flag in priority_flags:
+            if flag in df.columns:
+                df['is_div_bull'] = df['is_div_bull'] & ~df[flag].fillna(False)
+
         return df
 
     def screen(self, df: pd.DataFrame, latest: pd.Series,
@@ -284,6 +339,7 @@ class BullDivergenceMarker(_DivergenceBase):
             'id': 'div_bull',
             'label': 'D↑',
             'is_chart_marker': True,
+            'marker_type': 'bullish',
             'color': '#26a69a',
             'shape': 'diamond',
             'position': 'belowBar',
@@ -333,6 +389,13 @@ class BearDivergenceMarker(_DivergenceBase):
     def evaluate(self, df: pd.DataFrame) -> pd.DataFrame:
         df = self._ensure_swing_columns(df)
         df['is_div_bear'] = df['_div_type_high'] == 'div_bear'
+
+        # Mutual Exclusion
+        priority_flags = ['is_exhaustion', 'is_bearish_absorption', 'is_spring', 'is_distribution', 'is_ignition', 'is_coil']
+        for flag in priority_flags:
+            if flag in df.columns:
+                df['is_div_bear'] = df['is_div_bear'] & ~df[flag].fillna(False)
+
         return df
 
     def screen(self, df: pd.DataFrame, latest: pd.Series,
@@ -344,6 +407,7 @@ class BearDivergenceMarker(_DivergenceBase):
             'id': 'div_bear',
             'label': 'D↓',
             'is_chart_marker': True,
+            'marker_type': 'bearish',
             'color': '#ef5350',
             'shape': 'diamond',
             'position': 'aboveBar',
@@ -393,6 +457,13 @@ class BullConfirmationMarker(_DivergenceBase):
     def evaluate(self, df: pd.DataFrame) -> pd.DataFrame:
         df = self._ensure_swing_columns(df)
         df['is_confirm_bull'] = df['_div_type_high'] == 'confirm_bull'
+
+        # Mutual Exclusion
+        priority_flags = ['is_exhaustion', 'is_bearish_absorption', 'is_spring', 'is_distribution', 'is_ignition', 'is_coil']
+        for flag in priority_flags:
+            if flag in df.columns:
+                df['is_confirm_bull'] = df['is_confirm_bull'] & ~df[flag].fillna(False)
+
         return df
 
     def screen(self, df: pd.DataFrame, latest: pd.Series,
@@ -404,6 +475,7 @@ class BullConfirmationMarker(_DivergenceBase):
             'id': 'confirm_bull',
             'label': 'C↑',
             'is_chart_marker': True,
+            'marker_type': 'bullish',
             'color': '#66bb6a',
             'shape': 'diamond',
             'position': 'belowBar',
@@ -447,6 +519,13 @@ class BearConfirmationMarker(_DivergenceBase):
     def evaluate(self, df: pd.DataFrame) -> pd.DataFrame:
         df = self._ensure_swing_columns(df)
         df['is_confirm_bear'] = df['_div_type_low'] == 'confirm_bear'
+
+        # Mutual Exclusion
+        priority_flags = ['is_exhaustion', 'is_bearish_absorption', 'is_spring', 'is_distribution', 'is_ignition', 'is_coil']
+        for flag in priority_flags:
+            if flag in df.columns:
+                df['is_confirm_bear'] = df['is_confirm_bear'] & ~df[flag].fillna(False)
+
         return df
 
     def screen(self, df: pd.DataFrame, latest: pd.Series,
@@ -458,6 +537,7 @@ class BearConfirmationMarker(_DivergenceBase):
             'id': 'confirm_bear',
             'label': 'C↓',
             'is_chart_marker': True,
+            'marker_type': 'bearish',
             'color': '#ef9a9a',
             'shape': 'diamond',
             'position': 'aboveBar',

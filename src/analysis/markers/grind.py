@@ -82,6 +82,12 @@ class GrindMarker(MarkerInterface):
             elif is_grind_day1.at[last_idx] and df.at[last_idx, 'grind_level'] == 0:
                 df.at[last_idx, 'grind_level'] = 1
 
+        # Mutual Exclusion: Suppress if higher-priority (tactical/initiation) markers triggered on this candle
+        priority_flags = ['is_exhaustion', 'is_bearish_absorption', 'is_spring', 'is_distribution', 'is_ignition', 'is_coil']
+        for flag in priority_flags:
+            if flag in df.columns:
+                df.loc[df[flag].fillna(False), 'grind_level'] = 0
+
         return df
 
     def debug_info(self, df: pd.DataFrame, row_idx: int) -> list[dict]:
@@ -142,6 +148,7 @@ class GrindMarker(MarkerInterface):
             'id': 'grind',
             'label': 'Grind (G)',
             'is_chart_marker': True,
+            'marker_type': 'bullish',
             'color': '#fcc419',
             'shape': 'arrowUp',
             'position': 'belowBar',

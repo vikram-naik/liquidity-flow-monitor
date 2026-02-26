@@ -38,6 +38,7 @@ class HighScoreMarker(MarkerInterface):
             'id': 'high_score',
             'label': '90+ Score',
             'is_chart_marker': False,
+            'marker_type': 'neutral',
             'screener_name': 'SCR: 90UP',
         }
 

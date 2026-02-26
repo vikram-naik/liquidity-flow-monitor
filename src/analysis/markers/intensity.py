@@ -65,6 +65,7 @@ class IntensityMarker(MarkerInterface):
             'id': 'intensity',
             'label': 'Trend Intensity',
             'is_chart_marker': False,
+            'marker_type': 'neutral',
             'screener_name': None,
         }
 

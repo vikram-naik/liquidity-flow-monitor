@@ -43,6 +43,12 @@ class SpringMarker(MarkerInterface):
         )
 
         df['is_spring'] = deep_discount & strong_reversal & ledger_improving
+        
+        # Mutual Exclusion: Suppress if higher-priority markers triggered on this candle
+        for higher in ['is_distribution', 'is_ignition', 'is_coil']:
+            if higher in df.columns:
+                df['is_spring'] = df['is_spring'] & ~df[higher].fillna(False)
+
         df['is_spring'] = df['is_spring'].fillna(False)
 
         # -- Scoring Calculation (0-100) --
@@ -129,6 +135,7 @@ class SpringMarker(MarkerInterface):
             'id': 'spring',
             'label': 'Spring',
             'is_chart_marker': True,
+            'marker_type': 'bullish',
             'color': '#00e5ff',
             'shape': 'arrowUp',
             'position': 'belowBar',

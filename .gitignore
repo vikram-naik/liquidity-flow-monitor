@@ -26,3 +26,7 @@ server.log
 liquidity_monitor.db-shm
 liquidity_monitor.db-wal
 src/analysis/champak.md
+bajfinance_investigation.csv
+bajfin_verify.txt
+investigation_output.txt
+tactical_check.txt

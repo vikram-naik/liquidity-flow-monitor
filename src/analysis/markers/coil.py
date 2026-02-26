@@ -108,6 +108,7 @@ class CoilMarker(MarkerInterface):
             'id': 'coil',
             'label': 'Coil',
             'is_chart_marker': True,
+            'marker_type': 'bullish',
             'color': '#4dabf7',
             'shape': 'circle',
             'position': 'belowBar',

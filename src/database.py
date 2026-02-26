@@ -123,6 +123,25 @@ def init_db():
     """)
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_ca_symbol ON corporate_actions(symbol);")
 
+    # Table: user_settings (key-value store for configurable parameters)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS user_settings (
+        key TEXT PRIMARY KEY,
+        value TEXT,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    """)
+
+    # Seed divergence engine defaults (INSERT OR IGNORE = only on first run)
+    cursor.executemany(
+        "INSERT OR IGNORE INTO user_settings (key, value) VALUES (?, ?)",
+        [
+            ('div_swing_n',      '5'),
+            ('div_min_spacing',  '10'),
+            ('div_min_dvl_pct',  '0.08'),
+        ]
+    )
+
     # --- Secondary Indices for Performance ---
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_nse_symbol_date ON nse_delivery_log (symbol, record_date);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_watchlists_created ON watchlists (created_at DESC);")
