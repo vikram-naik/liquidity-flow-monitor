@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Divergence Engine</title>
+  <link rel="stylesheet" href="/lfm/static/css/divergence_engine.css">
+  <script src="https://unpkg.com/lightweight-charts@5.1.0/dist/lightweight-charts.standalone.production.js"></script>
+</head>
+
+<body>
+  <div class="hdr">
+    <div class="hdr-left">
+      <h1>Divergence Engine &mdash; <span id="ticker-label"></span></h1>
+      <span class="sub">Multi-Anchor Rolling Window Analysis</span>
+    </div>
+    <div class="win-toggles">
+      <!-- Price overlays -->
+      <div class="pill-grp">
+        <label class="pill ov-cwvap"><input type="checkbox" id="cbCWVAP" checked><span>CWVAP</span></label>
+        <label class="pill ov-cpoc"><input type="checkbox" id="cbCPOC" checked><span>CPOC</span></label>
+        <label class="pill ov-va"><input type="checkbox" id="cbVA" checked><span>VA</span></label>
+        <label class="pill ov-vol"><input type="checkbox" id="cbVol" checked><span>Vol</span></label>
+      </div>
+      <div class="sep">|</div>
+      <!-- Windows -->
+      <div class="pill-grp">
+        <label class="pill p10"><input type="checkbox" id="cb10" checked><span>10</span></label>
+        <label class="pill p30"><input type="checkbox" id="cb30" checked><span>30</span></label>
+        <label class="pill p60"><input type="checkbox" id="cb60" checked><span>60</span></label>
+        <label class="pill p120"><input type="checkbox" id="cb120" checked><span>120</span></label>
+      </div>
+      <div class="sep">|</div>
+      <!-- Panel 2: CWC -->
+      <div class="pill-grp">
+        <label class="pill ov-cwc"><input type="checkbox" id="cbCWC" checked><span>CWC</span></label>
+      </div>
+      <div class="sep">|</div>
+      <!-- Panel 3: MCS -->
+      <div class="pill-grp">
+        <label class="pill ov-mcs"><input type="checkbox" id="cbMCS" checked><span>MCS</span></label>
+        <label class="pill ov-mfm"><input type="checkbox" id="cbMFM" checked><span>MFM</span></label>
+        <label class="pill ov-mcsd"><input type="checkbox" id="cbMCSD" checked><span>ΔM</span></label>
+      </div>
+    </div>
+    <button id="toggle-sidebar" class="sidebar-btn" title="Toggle Sidebar Information">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M9 19l7-7-7-7" />
+      </svg>
+    </button>
+  </div>
+
+  <div class="main-wrapper">
+    <div class="chart-area" id="chart-container">
+      <div id="p1" class="panel">
+        <div id="leg1" class="legend"></div>
+      </div>
+      <div id="p2" class="panel">
+        <div id="leg2" class="legend"></div>
+      </div>
+      <div id="p3" class="panel">
+        <div id="leg3" class="legend"></div>
+      </div>
+      <div id="p4" class="panel">
+        <div id="leg4" class="legend"></div>
+      </div>
+    </div>
+
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-section">
+        <h3>Analysis Insights</h3>
+        <p class="placeholder">Additional metrics and automated insights will appear here.</p>
+      </div>
+      <div class="sidebar-section sidebar-bottom">
+        <h3>Current Engine State</h3>
+        <div id="sidebar-annotations">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <div id="loading" class="loading">Loading Engine Data...</div>
+  <div id="tooltip" class="tooltip"></div>
+
+  <script src="/lfm/static/js/divergence_engine.js"></script>
+</body>
+
+</html>

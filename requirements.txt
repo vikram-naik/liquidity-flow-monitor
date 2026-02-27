@@ -1,4 +1,6 @@
 pandas
+numpy>=2.4.0
+scipy>=1.17.0
 requests
 uvicorn
 fastapi

@@ -1,0 +1,358 @@
+/* Divergence Engine — 4-panel chart layout */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box
+}
+
+body {
+  background: #0d1117;
+  color: #c9d1d9;
+  font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+  overflow: hidden;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.hdr {
+  padding: 0 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid #21262d;
+  background: #161b22;
+  min-height: 50px;
+  flex-shrink: 0;
+}
+
+.hdr h1 {
+  font-size: 16px;
+  color: #e6edf3;
+  font-weight: 600
+}
+
+.hdr .sub {
+  font-size: 11px;
+  color: #8b949e
+}
+
+/* Toggle pills */
+.win-toggles {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  flex-wrap: nowrap
+}
+
+
+
+.sidebar-btn {
+  background: transparent;
+  border: none;
+  color: #8b949e;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 6px;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+}
+
+.sidebar-btn:hover {
+  color: #e6edf3;
+  background: #30363d;
+}
+
+.sidebar-btn svg {
+  transition: transform 0.3s ease;
+}
+
+.sidebar-btn.active svg {
+  transform: rotate(180deg);
+}
+
+/* Layout Wrapper */
+.main-wrapper {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+}
+
+.chart-area {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.panel {
+  width: 100%;
+  position: relative;
+  flex: 1;
+}
+
+.panel+.panel {
+  border-top: 1px solid #30363d
+}
+
+/* Header pill groups */
+.pill-grp {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.sep {
+  color: #30363d;
+  font-size: 14px;
+  margin: 0 4px;
+}
+
+.pill {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+}
+
+.pill input {
+  display: none;
+}
+
+.pill span {
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 600;
+  border: 1px solid #30363d;
+  color: #8b949e;
+  background: #0d1117;
+  transition: all .15s ease;
+  user-select: none;
+}
+
+.pill:hover span {
+  border-color: #58a6ff;
+}
+
+.pill input:checked+span {
+  background: #30363d;
+  color: #e6edf3;
+  border-color: #58a6ff;
+}
+
+/* Window pills */
+.pill.p10 input:checked+span {
+  background: #64b5f6;
+  color: #0d1117;
+  border-color: #64b5f6;
+}
+
+.pill.p30 input:checked+span {
+  background: #42a5f5;
+  color: #0d1117;
+  border-color: #42a5f5;
+}
+
+.pill.p60 input:checked+span {
+  background: #1e88e5;
+  color: #fff;
+  border-color: #1e88e5;
+}
+
+.pill.p120 input:checked+span {
+  background: #1565c0;
+  color: #fff;
+  border-color: #1565c0;
+}
+
+/* Overlay pills */
+.pill.ov-cwvap input:checked+span {
+  background: #00bfa5;
+  color: #0d1117;
+  border-color: #00bfa5;
+}
+
+.pill.ov-cpoc input:checked+span {
+  background: #ffab40;
+  color: #0d1117;
+  border-color: #ffab40;
+}
+
+.pill.ov-va input:checked+span {
+  background: #555;
+  color: #fff;
+  border-color: #888;
+}
+
+.pill.ov-vol input:checked+span {
+  background: #78909c;
+  color: #fff;
+  border-color: #78909c;
+}
+
+.pill.ov-cwc input:checked+span {
+  background: #42a5f5;
+  color: #0d1117;
+  border-color: #42a5f5;
+}
+
+.pill.ov-mcs input:checked+span {
+  background: #ab47bc;
+  color: #fff;
+  border-color: #ab47bc;
+}
+
+.pill.ov-mfm input:checked+span {
+  background: #ec407a;
+  color: #fff;
+  border-color: #ec407a;
+}
+
+.pill.ov-mcsd input:checked+span {
+  background: #7e57c2;
+  color: #fff;
+  border-color: #7e57c2;
+}
+
+/* Sidebar */
+.sidebar {
+  width: 280px;
+  background: #161b22;
+  border-left: 1px solid #21262d;
+  display: flex;
+  flex-direction: column;
+  transition: width 0.3s ease, opacity 0.3s ease;
+  overflow-y: auto;
+  flex-shrink: 0;
+}
+
+.sidebar.collapsed {
+  width: 0;
+  opacity: 0;
+  border-left: none;
+}
+
+.sidebar-section {
+  padding: 16px;
+  border-bottom: 1px solid #21262d;
+}
+
+.sidebar-bottom {
+  margin-top: auto;
+  border-top: 1px solid #21262d;
+}
+
+.sidebar h3 {
+  font-size: 13px;
+  color: #8b949e;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 12px;
+}
+
+.placeholder {
+  font-size: 12px;
+  color: #484f58;
+  font-style: italic;
+}
+
+/* LHS legend overlay */
+.legend {
+  position: absolute;
+  top: 4px;
+  left: 8px;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  pointer-events: none;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  color: #8b949e;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  line-height: 1.2;
+}
+
+.legend-dot {
+  width: 8px;
+  height: 3px;
+  border-radius: 1px;
+  flex-shrink: 0;
+}
+
+.loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #0d1117;
+  z-index: 100;
+  color: #8b949e;
+  font-size: 16px;
+}
+
+/* Marker tooltip */
+.tooltip {
+  display: none;
+  position: fixed;
+  z-index: 100;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  background: rgba(22, 27, 34, 0.95);
+  color: #e6edf3;
+  border: 1px solid #30363d;
+  pointer-events: none;
+  font-family: 'JetBrains Mono', monospace;
+  white-space: nowrap;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+}
+
+/* Sidebar Annotation Table */
+.ann-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.ann-table td {
+  padding: 8px 0;
+  font-size: 12px;
+  border-bottom: 1px solid #21262d;
+}
+
+.ann-table td:first-child {
+  color: #8b949e;
+  width: 120px;
+}
+
+.ann-table .val {
+  color: #e6edf3;
+  font-family: 'JetBrains Mono', monospace;
+  text-align: right;
+}
+
+.ann-table tr:last-child td {
+  border-bottom: none;
+}
+
+.err {
+  color: #ef5350;
+  text-align: center;
+  padding: 40px;
+  font-size: 18px;
+}
+
+/* Hide TradingView watermark */
+a[href*="tradingview.com"],
+div[class*="apply-common-tooltip"] {
+  display: none !important
+}
