@@ -18,8 +18,8 @@ if TYPE_CHECKING:
 
 from src.divergence_engine.repository import DeliveryRepository
 
-# Minimum number of bars required (120 for longest anchor + 10 buffer)
-MIN_BARS = 130
+# Minimum number of bars required (10 bars minimum for basic indicators)
+MIN_BARS = 10
 
 # Rolling anchor windows
 WINDOWS = [10, 30, 60, 120]

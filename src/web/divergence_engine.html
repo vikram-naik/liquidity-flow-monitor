@@ -20,16 +20,16 @@
       <div class="pill-grp">
         <label class="pill ov-cwvap"><input type="checkbox" id="cbCWVAP" checked><span>CWVAP</span></label>
         <label class="pill ov-cpoc"><input type="checkbox" id="cbCPOC" checked><span>CPOC</span></label>
-        <label class="pill ov-va"><input type="checkbox" id="cbVA" checked><span>VA</span></label>
+        <label class="pill ov-va"><input type="checkbox" id="cbVA"><span>VA</span></label>
         <label class="pill ov-vol"><input type="checkbox" id="cbVol" checked><span>Vol</span></label>
       </div>
       <div class="sep">|</div>
       <!-- Windows -->
       <div class="pill-grp">
-        <label class="pill p10"><input type="checkbox" id="cb10" checked><span>10</span></label>
-        <label class="pill p30"><input type="checkbox" id="cb30" checked><span>30</span></label>
-        <label class="pill p60"><input type="checkbox" id="cb60" checked><span>60</span></label>
-        <label class="pill p120"><input type="checkbox" id="cb120" checked><span>120</span></label>
+        <label class="pill p10"><input type="checkbox" id="cb10"><span>10</span></label>
+        <label class="pill p30"><input type="checkbox" id="cb30"><span>30</span></label>
+        <label class="pill p60"><input type="checkbox" id="cb60"><span>60</span></label>
+        <label class="pill p120"><input type="checkbox" id="cb120"><span>120</span></label>
       </div>
       <div class="sep">|</div>
       <!-- Panel 2: CWC -->
@@ -39,11 +39,12 @@
       <div class="sep">|</div>
       <!-- Panel 3: MCS -->
       <div class="pill-grp">
-        <label class="pill ov-mcs"><input type="checkbox" id="cbMCS" checked><span>MCS</span></label>
-        <label class="pill ov-mfm"><input type="checkbox" id="cbMFM" checked><span>MFM</span></label>
+        <label class="pill ov-mcs"><input type="checkbox" id="cbMCS"><span>MCS</span></label>
+        <label class="pill ov-mfm"><input type="checkbox" id="cbMFM"><span>MFM</span></label>
         <label class="pill ov-mcsd"><input type="checkbox" id="cbMCSD" checked><span>ΔM</span></label>
       </div>
     </div>
+    <a href="/lfm/help" class="help-btn" title="Help Guide — Markers &amp; Trends Reference">?</a>
     <button id="toggle-sidebar" class="sidebar-btn" title="Toggle Sidebar Information">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <path d="M9 19l7-7-7-7" />
@@ -68,10 +69,43 @@
     </div>
 
     <aside class="sidebar" id="sidebar">
+      <!-- NEW: Symbol Search & Typeahead -->
       <div class="sidebar-section">
-        <h3>Analysis Insights</h3>
-        <p class="placeholder">Additional metrics and automated insights will appear here.</p>
+        <h3>Symbol Search</h3>
+        <div class="search-container">
+          <input type="text" id="symbol-input" placeholder="Search Symbol or Name..." autocomplete="off">
+          <div id="search-results" class="search-dropdown"></div>
+        </div>
       </div>
+
+      <!-- NEW: Watchlist Management -->
+      <div id="watchlist-manager" class="sidebar-section">
+        <div class="wl-header">
+          <h3>Watchlist</h3>
+          <div class="wl-actions">
+            <button id="wl-add" title="Create New Watchlist">+</button>
+            <button id="wl-rename" title="Rename Current Watchlist">✎</button>
+            <button id="wl-delete" title="Delete Current Watchlist">🗑</button>
+            <button id="wl-import" title="Import from Index">↓</button>
+            <button id="wl-download" title="Download Watchlist">💾</button>
+          </div>
+        </div>
+        <div class="wl-sort-controls">
+          <select id="wl-sort">
+            <option value="date-desc">Date (Newest)</option>
+            <option value="date-asc">Date (Oldest)</option>
+            <option value="name-asc">Name (A-Z)</option>
+            <option value="name-desc">Name (Z-A)</option>
+          </select>
+        </div>
+        <select id="wl-select">
+          <option value="">Select Watchlist</option>
+        </select>
+        <div id="wl-items" class="wl-items-list">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+
       <div class="sidebar-section sidebar-bottom">
         <h3>Current Engine State</h3>
         <div id="sidebar-annotations">

@@ -2,7 +2,7 @@ import redis
 import os
 import argparse
 
-def flush_lfm_cache(pattern="lfm:*"):
+def flush_lfm_cache(pattern="de:*"):
     host = os.getenv("REDIS_HOST", "172.17.0.1")
     port = int(os.getenv("REDIS_PORT", 6379))
     db = int(os.getenv("REDIS_DB", 0))
@@ -25,7 +25,7 @@ def flush_lfm_cache(pattern="lfm:*"):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Flush LFM specific cache from Redis.")
-    parser.add_argument("--pattern", type=str, default="lfm:*", help="Pattern of keys to delete (default: lfm:*)")
+    parser.add_argument("--pattern", type=str, default="de:*", help="Pattern of keys to delete (default: lfm:*)")
     args = parser.parse_args()
     
     try:

@@ -1,0 +1,1149 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Divergence Engine — Help Guide</title>
+    <meta name="description"
+        content="Complete reference guide for all markers, trends, and indicators in the Divergence Engine multi-anchor analysis system.">
+    <link rel="stylesheet" href="/lfm/static/css/help_guide.css">
+</head>
+
+<body>
+
+    <!-- ════════════════ STICKY HEADER ════════════════ -->
+    <header class="guide-header">
+        <h1>
+            <span class="logo-icon">⚙️</span> Divergence Engine
+            <span class="subtitle">— Help Guide</span>
+        </h1>
+        <a href="#"
+            onclick="if(history.length>1){history.back()}else{location.href='/lfm/divergence-engine/RELIANCE'};return false"
+            class="back-link">← Back to Chart</a>
+    </header>
+
+    <div class="guide-wrapper">
+
+        <!-- ════════════════ TABLE OF CONTENTS ════════════════ -->
+        <nav class="toc" id="toc">
+            <h2>Contents</h2>
+            <a href="#overview">Overview</a>
+            <a href="#sec-price">Price Chart Overlays</a>
+            <a href="#sec-markers" class="sub">Chart Markers</a>
+            <a href="#sec-states" class="sub">Market States</a>
+            <a href="#sec-cwc">CWC Panel</a>
+            <a href="#sec-mcs">MCS Panel</a>
+            <a href="#sec-velocity">Velocity Panel</a>
+            <a href="#sec-sidebar">Sidebar Annotations</a>
+            <a href="#sec-gradient" class="sub">Gradient Shapes</a>
+            <a href="#sec-location" class="sub">Price Location</a>
+        </nav>
+
+        <!-- ════════════════ MAIN CONTENT ════════════════ -->
+        <main class="guide-content">
+
+            <!-- HERO -->
+            <div class="hero" id="overview">
+                <h1>Indicator Reference Guide</h1>
+                <p>This guide documents every marker, overlay, and data point displayed in the Divergence Engine charts.
+                    Each entry includes its definition, typical value range, and practical interpretation guidance for
+                    making informed trading decisions.</p>
+                <p style="margin-top:8px;">The Divergence Engine uses a <strong>multi-anchor rolling window</strong>
+                    system across four time horizons — <strong>10, 30, 60, and 120 bars</strong> — to analyze delivery
+                    volume behaviour and its relationship with price.</p>
+            </div>
+
+            <!-- ═══════════════════════════════════════════════════ -->
+            <!-- SECTION 1 — PRICE CHART OVERLAYS                   -->
+            <!-- ═══════════════════════════════════════════════════ -->
+            <div class="section" id="sec-price">
+                <div class="section-header">
+                    <span class="section-icon">📈</span>
+                    <h2>Price Chart Overlays</h2>
+                </div>
+                <p class="section-intro">Lines and bands overlaid on the candlestick chart. These represent composite
+                    delivery-weighted price levels, acting as dynamic support/resistance zones derived from
+                    institutional participation data.</p>
+
+                <!-- CWVAP -->
+                <div class="indicator-card">
+                    <div class="card-header" onclick="this.parentElement.classList.toggle('open')">
+                        <span class="color-swatch" style="background:#00bfa5"></span>
+                        <h3>CWVAP <span style="font-weight:400;color:#8b949e;font-size:12px;">— Composite Weighted
+                                VWAP</span></h3>
+                        <span class="badge overlay">Overlay</span>
+                        <span class="chevron">▸</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="card-body-inner">
+                            <p><strong>Definition:</strong> A delivery-weighted blend of DVWAPs (Delivery VWAPs) across
+                                all four anchor windows [10, 30, 60, 120]. Each window's DVWAP is weighted by its DVL
+                                rate and proximity to the current price, producing a single composite "fair value" line.
+                            </p>
+                            <div class="info-row"><span class="label">Formula:</span><span class="value">CWVAP =
+                                    Σ(DVWAP_n × W_n) / Σ(W_n), where W_n = DVL_rate_n × (1 / (1 + |close − DVWAP_n| /
+                                    ATR₂₀))</span></div>
+                            <div class="info-row"><span class="label">Scale:</span><span class="value">Price units (same
+                                    as the stock price)</span></div>
+                            <p><strong>How to interpret:</strong></p>
+                            <table class="threshold-table">
+                                <tr>
+                                    <th>Condition</th>
+                                    <th>Signal</th>
+                                    <th>Meaning</th>
+                                </tr>
+                                <tr>
+                                    <td>Price above CWVAP</td>
+                                    <td class="signal-bull">Bullish</td>
+                                    <td>Price is above fair delivery value — upside momentum is being supported by
+                                        institutional participation.</td>
+                                </tr>
+                                <tr>
+                                    <td>Price below CWVAP</td>
+                                    <td class="signal-bear">Bearish</td>
+                                    <td>Price is trading below the delivery-weighted average — institutions may be
+                                        holding back.</td>
+                                </tr>
+                                <tr>
+                                    <td>Price crossing above CWVAP</td>
+                                    <td class="signal-bull">Bullish Reclaim</td>
+                                    <td>A potential inflection — delivery support is being recaptured. Watch for
+                                        follow-through.</td>
+                                </tr>
+                                <tr>
+                                    <td>Price crossing below CWVAP</td>
+                                    <td class="signal-bear">Value Loss</td>
+                                    <td>Loss of delivery support. Can trigger "losing_value" price location
+                                        classification.</td>
+                                </tr>
+                            </table>
+                            <p style="margin-top:8px;color:#8b949e;font-size:12px;">💡 <em>CWVAP is the most important
+                                    single line on the chart — it represents where the "smart money" consensus is.</em>
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- CPOC -->
+                <div class="indicator-card">
+                    <div class="card-header" onclick="this.parentElement.classList.toggle('open')">
+                        <span class="color-swatch" style="background:#ffab40"></span>
+                        <h3>CPOC <span style="font-weight:400;color:#8b949e;font-size:12px;">— Composite Point of
+                                Control</span></h3>
+                        <span class="badge overlay">Overlay</span>
+                        <span class="chevron">▸</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="card-body-inner">
+                            <p><strong>Definition:</strong> The delivery-weighted average of per-window POCs. Each POC
+                                is the price level where the most delivery volume transacted within a given anchor
+                                window. Serves as an alternative "magnet" price level based on the highest delivery
+                                concentration.</p>
+                            <div class="info-row"><span class="label">Scale:</span><span class="value">Price
+                                    units</span></div>
+                            <p><strong>How to interpret:</strong></p>
+                            <table class="threshold-table">
+                                <tr>
+                                    <th>Condition</th>
+                                    <th>Signal</th>
+                                    <th>Meaning</th>
+                                </tr>
+                                <tr>
+                                    <td>CPOC close to CWVAP</td>
+                                    <td class="signal-neutral">Consensus</td>
+                                    <td>Delivery activity is concentrated around the same level — strong
+                                        support/resistance zone.</td>
+                                </tr>
+                                <tr>
+                                    <td>CPOC diverging from CWVAP</td>
+                                    <td class="signal-bear">Caution</td>
+                                    <td>The peak delivery price is shifting away from the weighted average — potential
+                                        transition happening.</td>
+                                </tr>
+                                <tr>
+                                    <td>Price > CPOC > CWVAP</td>
+                                    <td class="signal-bear">Distribution risk</td>
+                                    <td>Price location is classified as "extended_above" — a distribution zone warning.
+                                    </td>
+                                </tr>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- CVAH / CVAL -->
+                <div class="indicator-card">
+                    <div class="card-header" onclick="this.parentElement.classList.toggle('open')">
+                        <span class="color-swatch" style="background:rgba(255,255,255,0.25)"></span>
+                        <h3>CVAH / CVAL <span style="font-weight:400;color:#8b949e;font-size:12px;">— Composite Value
+                                Area High / Low</span></h3>
+                        <span class="badge overlay">Overlay</span>
+                        <span class="chevron">▸</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="card-body-inner">
+                            <p><strong>Definition:</strong> The upper and lower bounds of the composite value area,
+                                displayed as <strong>thin ghost lines</strong> (dashed) on the chart.
+                                Computed as delivery-weighted extremes of per-window value-area bands. Together, CVAH
+                                and CVAL define the zone where the majority of delivery volume has transacted.</p>
+                            <div class="info-row"><span class="label">Scale:</span><span class="value">Price
+                                    units</span></div>
+                            <p><strong>How to interpret:</strong></p>
+                            <table class="threshold-table">
+                                <tr>
+                                    <th>Condition</th>
+                                    <th>Signal</th>
+                                    <th>Meaning</th>
+                                </tr>
+                                <tr>
+                                    <td>Price within the Value Area (CVAL–CVAH)</td>
+                                    <td class="signal-neutral">In Value Area</td>
+                                    <td>Price is trading within the normal delivery range — no extreme positioning.</td>
+                                </tr>
+                                <tr>
+                                    <td>Price above CVAH</td>
+                                    <td class="signal-bull">Above Value</td>
+                                    <td>Price is extended beyond the delivery area — can signal strength or
+                                        overextension.</td>
+                                </tr>
+                                <tr>
+                                    <td>Price below CVAL</td>
+                                    <td class="signal-bear">Below Value</td>
+                                    <td>Price has fallen below the delivery zone — weakness or opportunity for
+                                        accumulation.</td>
+                                </tr>
+                                <tr>
+                                    <td>Narrow Value Area</td>
+                                    <td class="signal-neutral">Compression</td>
+                                    <td>Delivery is concentrated — potential breakout setup.</td>
+                                </tr>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- DVWAPs -->
+                <div class="indicator-card">
+                    <div class="card-header" onclick="this.parentElement.classList.toggle('open')">
+                        <span class="color-swatch" style="background:#42a5f5"></span>
+                        <h3>DV10 / DV30 / DV60 / DV120 <span style="font-weight:400;color:#8b949e;font-size:12px;">—
+                                Delivery VWAPs</span></h3>
+                        <span class="badge overlay">Overlay</span>
+                        <span class="chevron">▸</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="card-body-inner">
+                            <p><strong>Definition:</strong> Per-window Delivery VWAPs — the rolling volume-weighted
+                                average price over 10, 30, 60, and 120 bars respectively. Each DVWAP reveals the average
+                                cost basis of participants entering during that specific time window.</p>
+                            <div class="info-row"><span class="label">Formula:</span><span class="value">DVWAP_n =
+                                    rolling_sum(TP × volume, n) / rolling_sum(volume, n)</span></div>
+                            <div class="info-row"><span class="label">Scale:</span><span class="value">Price
+                                    units</span></div>
+                            <table class="threshold-table">
+                                <tr>
+                                    <th>Window</th>
+                                    <th>Color</th>
+                                    <th>Timeframe Signal</th>
+                                </tr>
+                                <tr>
+                                    <td><code>DV10</code></td>
+                                    <td style="color:#64b5f6">Light Blue</td>
+                                    <td>Short-term (2 weeks) — fast-moving traders</td>
+                                </tr>
+                                <tr>
+                                    <td><code>DV30</code></td>
+                                    <td style="color:#42a5f5">Blue</td>
+                                    <td>Medium-short (6 weeks) — swing traders</td>
+                                </tr>
+                                <tr>
+                                    <td><code>DV60</code></td>
+                                    <td style="color:#1e88e5">Medium Blue</td>
+                                    <td>Medium-term (3 months) — positional players</td>
+                                </tr>
+                                <tr>
+                                    <td><code>DV120</code></td>
+                                    <td style="color:#1565c0">Dark Blue</td>
+                                    <td>Long-term (6 months) — institutional anchors</td>
+                                </tr>
+                            </table>
+                            <p style="margin-top:8px"><strong>Interpretation:</strong> When DVWAPs are fanned out in
+                                ascending order (DV10 > DV30 > DV60 > DV120), it signals a healthy uptrend with each new
+                                cohort entering at higher prices. When they converge, a trend change may be developing.
+                                When they cross over, "smart money" is repositioning.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Delivery Volume -->
+                <div class="indicator-card">
+                    <div class="card-header" onclick="this.parentElement.classList.toggle('open')">
+                        <span class="color-swatch" style="background:rgba(38,166,154,0.5)"></span>
+                        <h3>Delivery Volume <span style="font-weight:400;color:#8b949e;font-size:12px;">— Volume
+                                Histogram</span></h3>
+                        <span class="badge overlay">Overlay</span>
+                        <span class="chevron">▸</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="card-body-inner">
+                            <p><strong>Definition:</strong> The actual shares delivered (settled) on each trading day,
+                                plotted as a histogram on the price chart. The bar colour is determined by the Money
+                                Flow Multiplier (MFM): green for positive MFM (closes in upper half of range), red for
+                                negative MFM (closes in lower half).</p>
+                            <div class="info-row"><span class="label">Color:</span><span class="value"><span
+                                        class="signal-bull">Green</span> = MFM ≥ 0 (bullish intraday close) · <span
+                                        class="signal-bear">Red</span> = MFM &lt; 0 (bearish intraday close)</span>
+                            </div>
+                            <p><strong>How to interpret:</strong> High delivery volume with green bars = strong
+                                institutional buying. High delivery with red bars = distribution day. Look for delivery
+                                spikes on breakout days to confirm the move has institutional support.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ═══════════════════════════════════════════════════ -->
+            <!-- SECTION 2 — CHART MARKERS                         -->
+            <!-- ═══════════════════════════════════════════════════ -->
+            <div class="section" id="sec-markers">
+                <div class="section-header">
+                    <span class="section-icon">🔖</span>
+                    <h2>Chart Markers</h2>
+                </div>
+                <p class="section-intro">Discrete signals plotted directly on the price candles. These appear only when
+                    specific confidence/probability thresholds are met, ensuring only actionable signals are shown.</p>
+
+                <div class="indicator-card">
+                    <div class="card-header" onclick="this.parentElement.classList.toggle('open')">
+                        <span class="color-swatch" style="background:linear-gradient(135deg,#26a69a,#ef5350)"></span>
+                        <h3>Divergence Arrows <span style="font-weight:400;color:#8b949e;font-size:12px;">— Bullish ↑ /
+                                Bearish ↓</span></h3>
+                        <span class="badge marker">Marker</span>
+                        <span class="chevron">▸</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="card-body-inner">
+                            <p><strong>Definition:</strong> Arrows plotted when the Divergence Engine detects a
+                                significant mismatch between price momentum and delivery participation. The opacity of
+                                the arrow reflects the divergence probability — more opaque = higher confidence.</p>
+                            <div class="info-row"><span class="label">Trigger:</span><span class="value">Divergence
+                                    probability > 50% and direction ≠ "none"</span></div>
+                            <table class="threshold-table">
+                                <tr>
+                                    <th>Arrow</th>
+                                    <th>Position</th>
+                                    <th>Signal</th>
+                                    <th>Meaning</th>
+                                </tr>
+                                <tr>
+                                    <td class="signal-bull">▲ Green Up</td>
+                                    <td>Below bar</td>
+                                    <td class="signal-bull">Bullish Divergence</td>
+                                    <td>Price is falling but delivery volume is rising — institutions may be
+                                        accumulating quietly.</td>
+                                </tr>
+                                <tr>
+                                    <td class="signal-bear">▼ Red Down</td>
+                                    <td>Above bar</td>
+                                    <td class="signal-bear">Bearish Divergence</td>
+                                    <td>Price is rising but delivery is declining — smart money may be distributing into
+                                        strength.</td>
+                                </tr>
+                            </table>
+                            <p><strong>Probability components:</strong></p>
+                            <table class="threshold-table">
+                                <tr>
+                                    <th>Component</th>
+                                    <th>Weight</th>
+                                    <th>Details</th>
+                                </tr>
+                                <tr>
+                                    <td>Multi-window Confluence</td>
+                                    <td>30%</td>
+                                    <td>Agreement across 10, 30, 60, 120 anchors</td>
+                                </tr>
+                                <tr>
+                                    <td>|MCS Composite|</td>
+                                    <td>30%</td>
+                                    <td>Magnitude of money flow alignment</td>
+                                </tr>
+                                <tr>
+                                    <td>|PDD Weighted Avg|</td>
+                                    <td>20%</td>
+                                    <td>Magnitude of Price-Delivery Divergence</td>
+                                </tr>
+                                <tr>
+                                    <td>(1 − CWC)</td>
+                                    <td>20%</td>
+                                    <td>Inverse of Cross-Window Coherence</td>
+                                </tr>
+                            </table>
+                            <p style="margin-top:6px;color:#8b949e;font-size:12px;">💡 <em>The raw composite is passed
+                                    through a sigmoid function to produce the final [0, 1] probability.</em></p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- State Markers -->
+                <div class="indicator-card" id="sec-states">
+                    <div class="card-header" onclick="this.parentElement.classList.toggle('open')">
+                        <span class="color-swatch"
+                            style="background:linear-gradient(135deg,#26a69a,#42a5f5,#ffa726,#78909c)"></span>
+                        <h3>Market State Markers <span style="font-weight:400;color:#8b949e;font-size:12px;">— 6
+                                States</span></h3>
+                        <span class="badge marker">Marker</span>
+                        <span class="chevron">▸</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="card-body-inner">
+                            <p><strong>Definition:</strong> Each bar is classified into one of 6 market states using
+                                weighted evidence scoring across all divergence engine metrics. A marker appears on the
+                                candlestick only when the state confidence exceeds <strong>65%</strong>.</p>
+                            <div class="state-grid">
+                                <div class="state-card">
+                                    <div class="state-name"><span class="state-shape" style="color:#26a69a">▲</span>
+                                        UPTREND</div>
+                                    <p>All velocity cohorts are positive and aligned. CWC is high. MCS is positive.
+                                        Delivery supports the upward price move. <em>Typically seen when institutions
+                                            are actively buying.</em></p>
+                                </div>
+                                <div class="state-card">
+                                    <div class="state-name"><span class="state-shape" style="color:#ef5350">▼</span>
+                                        DOWNTREND</div>
+                                    <p>All velocity cohorts are negative. MCS is negative. Price is below value.
+                                        Delivery is declining. <em>Selling pressure from institutional
+                                            participants.</em></p>
+                                </div>
+                                <div class="state-card">
+                                    <div class="state-name"><span class="state-dot" style="background:#42a5f5"></span>
+                                        ACCUMULATION</div>
+                                    <p>Bullish divergence is building — delivery is quietly rising while price stays
+                                        flat or dips. Short-term velocity is positive, longer windows are still
+                                        negative. <em>Smart money is stealthily building positions.</em></p>
+                                </div>
+                                <div class="state-card">
+                                    <div class="state-name"><span class="state-dot" style="background:#ffa726"></span>
+                                        DISTRIBUTION</div>
+                                    <p>Bearish divergence — delivery is fading while price holds up. Short-term velocity
+                                        is declining while longer windows are still positive. <em>Institutions selling
+                                            into retail buying.</em></p>
+                                </div>
+                                <div class="state-card">
+                                    <div class="state-name"><span class="state-dot" style="background:#26c6da"></span>
+                                        RECOVERY</div>
+                                    <p>V10 turning positive, V30 improving, V60 still negative. The gradient is shifting
+                                        from downtrend to uptrend. Bullish divergence probabilities are rising.
+                                        <em>Early signs of a trend reversal.</em>
+                                    </p>
+                                </div>
+                                <div class="state-card">
+                                    <div class="state-name"><span class="state-dot" style="background:#78909c"></span>
+                                        SIDEWAYS</div>
+                                    <p>All velocity components near zero (|v| &lt; 0.2). CWC is low. MCS is flat. POC
+                                        spread is narrow. <em>No clear institutional direction — wait for a
+                                            breakout.</em></p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ═══════════════════════════════════════════════════ -->
+            <!-- SECTION 3 — CWC PANEL                              -->
+            <!-- ═══════════════════════════════════════════════════ -->
+            <div class="section" id="sec-cwc">
+                <div class="section-header">
+                    <span class="section-icon">🔗</span>
+                    <h2>Cross-Window Coherence (CWC) Panel</h2>
+                </div>
+                <p class="section-intro">Measures how consistently delivery cohorts across all four anchor windows move
+                    together. High coherence confirms trends are real; low coherence signals transitions or
+                    institutional repositioning.</p>
+
+                <!-- CWC -->
+                <div class="indicator-card">
+                    <div class="card-header" onclick="this.parentElement.classList.toggle('open')">
+                        <span class="color-swatch" style="background:#42a5f5"></span>
+                        <h3>CWC <span style="font-weight:400;color:#8b949e;font-size:12px;">— Cross-Window
+                                Coherence</span></h3>
+                        <span class="badge panel">Panel</span>
+                        <span class="chevron">▸</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="card-body-inner">
+                            <p><strong>Definition:</strong> The mean of all pairwise 10-bar rolling Pearson correlations
+                                between the day-over-day changes in DVL_rate across the four anchor windows. It answers:
+                                <em>"Are all delivery cohorts moving in the same direction?"</em>
+                            </p>
+                            <div class="info-row"><span class="label">Range:</span><span class="value">−1.0 to +1.0
+                                    (typically oscillates between 0 and 1)</span></div>
+                            <table class="threshold-table">
+                                <tr>
+                                    <th>Level</th>
+                                    <th>Signal</th>
+                                    <th>Interpretation</th>
+                                </tr>
+                                <tr>
+                                    <td><code>> 0.70</code></td>
+                                    <td class="signal-bull">Trend Aligned</td>
+                                    <td>All cohorts are moving together. The current trend (up or down) is genuine and
+                                        supported by delivery across all timeframes. High-confidence environment.</td>
+                                </tr>
+                                <tr>
+                                    <td><code>0.30 – 0.70</code></td>
+                                    <td class="signal-neutral">Transitioning</td>
+                                    <td>Mixed signals between cohorts. A regime change may be developing. Proceed with
+                                        caution.</td>
+                                </tr>
+                                <tr>
+                                    <td><code>< 0.30</code></td>
+                                    <td class="signal-bear">Diverging</td>
+                                    <td>Cohorts are moving in opposing directions — some are accumulating while others
+                                        are distributing. Classic sign of smart money repositioning.</td>
+                                </tr>
+                                <tr>
+                                    <td><code>Negative</code></td>
+                                    <td class="signal-bear">Opposing</td>
+                                    <td>Active counter-flow between cohorts — typically seen during accumulation or
+                                        distribution phases where short-term and long-term participants have opposing
+                                        interests.</td>
+                                </tr>
+                            </table>
+                            <p style="margin-top:6px;color:#8b949e;font-size:12px;">📐 <em>Reference lines are drawn at
+                                    0.7 (green, dashed) and 0.3 (red, dashed) on the chart.</em></p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Pairwise Coherence -->
+                <div class="indicator-card">
+                    <div class="card-header" onclick="this.parentElement.classList.toggle('open')">
+                        <span class="color-swatch" style="background:#9ccc65"></span>
+                        <h3>C1030 / C3060 / C60120 <span style="font-weight:400;color:#8b949e;font-size:12px;">—
+                                Pairwise Coherence</span></h3>
+                        <span class="badge panel">Panel</span>
+                        <span class="chevron">▸</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="card-body-inner">
+                            <p><strong>Definition:</strong> Pairwise rolling Pearson correlations between adjacent
+                                window pairs. These decompose the aggregate CWC into its component relationships for
+                                more granular trend analysis.</p>
+                            <table class="threshold-table">
+                                <tr>
+                                    <th>Pair</th>
+                                    <th>Color</th>
+                                    <th>What It Compares</th>
+                                    <th>Early Warning Use</th>
+                                </tr>
+                                <tr>
+                                    <td><code>C1030</code></td>
+                                    <td style="color:#9ccc65">Green</td>
+                                    <td>10-bar vs 30-bar cohorts</td>
+                                    <td>Fastest signal — first to diverge when short-term sentiment shifts. If C1030
+                                        drops while C60120 stays high, it's an early warning of trend change.</td>
+                                </tr>
+                                <tr>
+                                    <td><code>C3060</code></td>
+                                    <td style="color:#ffb74d">Orange</td>
+                                    <td>30-bar vs 60-bar cohorts</td>
+                                    <td>Mid-range confirmation. When this drops, the shift is propagating from
+                                        short-term into medium-term.</td>
+                                </tr>
+                                <tr>
+                                    <td><code>C60120</code></td>
+                                    <td style="color:#ef5350">Red</td>
+                                    <td>60-bar vs 120-bar cohorts</td>
+                                    <td>Slowest to change — when this diverges, the long-term institutional view is
+                                        shifting. Major trend changes confirmed.</td>
+                                </tr>
+                            </table>
+                            <p style="margin-top:8px"><strong>Key pattern:</strong> A "cascade breakdown" (C1030 drops →
+                                C3060 drops → C60120 drops) over several weeks is a powerful regime-change signal. The
+                                reverse cascade confirms a new trend is being institutionally adopted.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ═══════════════════════════════════════════════════ -->
+            <!-- SECTION 4 — MCS PANEL                              -->
+            <!-- ═══════════════════════════════════════════════════ -->
+            <div class="section" id="sec-mcs">
+                <div class="section-header">
+                    <span class="section-icon">💰</span>
+                    <h2>Money Composite Score (MCS) Panel</h2>
+                </div>
+                <p class="section-intro">Quantifies the alignment between price action and delivery participation.
+                    Answers the question: <em>"Is the money flow supporting the price move?"</em></p>
+
+                <!-- MCS Composite -->
+                <div class="indicator-card">
+                    <div class="card-header" onclick="this.parentElement.classList.toggle('open')">
+                        <span class="color-swatch" style="background:#ab47bc"></span>
+                        <h3>MCS Composite <span style="font-weight:400;color:#8b949e;font-size:12px;">— Primary
+                                Money-Flow Health Score</span></h3>
+                        <span class="badge panel">Panel</span>
+                        <span class="chevron">▸</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="card-body-inner">
+                            <p><strong>Definition:</strong> A blended correlation signal that measures how well price
+                                direction and delivery volume are aligned. Combines two Pearson correlations: typical
+                                price vs delivery (MCS) and money-flow-adjusted price vs delivery (MCS_MFM).</p>
+                            <div class="info-row"><span class="label">Formula:</span><span class="value">MCS_composite =
+                                    0.6 × MCS + 0.4 × MCS_MFM</span></div>
+                            <div class="info-row"><span class="label">Range:</span><span class="value">−1.0 to
+                                    +1.0</span></div>
+                            <table class="threshold-table">
+                                <tr>
+                                    <th>Level</th>
+                                    <th>Signal</th>
+                                    <th>Interpretation</th>
+                                </tr>
+                                <tr>
+                                    <td><code>> +0.5</code></td>
+                                    <td class="signal-bull">Strong Alignment</td>
+                                    <td>Price and delivery are highly correlated — the price trend is being supported by
+                                        real institutional participation.</td>
+                                </tr>
+                                <tr>
+                                    <td><code>+0.3 to +0.5</code></td>
+                                    <td class="signal-bull">Moderate Alignment</td>
+                                    <td>Positive relationship but not overwhelming. Look for confirming signals.</td>
+                                </tr>
+                                <tr>
+                                    <td><code>−0.3 to +0.3</code></td>
+                                    <td class="signal-neutral">Neutral</td>
+                                    <td>No clear relationship between price and delivery. Market is noise-driven.</td>
+                                </tr>
+                                <tr>
+                                    <td><code>< −0.3</code></td>
+                                    <td class="signal-bear">Divergent</td>
+                                    <td>Price and delivery are moving in opposite directions — a potential divergence
+                                        signal.</td>
+                                </tr>
+                            </table>
+                            <p style="margin-top:6px;color:#8b949e;font-size:12px;">📐 <em>A zero reference line is
+                                    drawn on the chart.</em></p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- MCS Raw -->
+                <div class="indicator-card">
+                    <div class="card-header" onclick="this.parentElement.classList.toggle('open')">
+                        <span class="color-swatch" style="background:rgba(171,71,188,0.35)"></span>
+                        <h3>MCS <span style="font-weight:400;color:#8b949e;font-size:12px;">— Rolling Pearson(TP,
+                                RDV)</span></h3>
+                        <span class="badge panel">Panel</span>
+                        <span class="chevron">▸</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="card-body-inner">
+                            <p><strong>Definition:</strong> 30-day rolling Pearson correlation between Typical Price and
+                                Relative Delivery Volume (RDV). Measures whether higher prices coincide with higher
+                                delivery or vice versa.</p>
+                            <div class="info-row"><span class="label">Range:</span><span class="value">−1.0 to
+                                    +1.0</span></div>
+                            <p><strong>Interpretation:</strong> Positive MCS = price going up as delivery rises (genuine
+                                buying). Negative MCS = price rising while delivery falls (hollow rally) or price
+                                falling while delivery rises (accumulation). Used as 60% weight in the MCS Composite.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- MFM -->
+                <div class="indicator-card">
+                    <div class="card-header" onclick="this.parentElement.classList.toggle('open')">
+                        <span class="color-swatch" style="background:#ec407a"></span>
+                        <h3>MFM <span style="font-weight:400;color:#8b949e;font-size:12px;">— MCS_MFM (Rolling Pearson
+                                of MFM_TP vs RDV)</span></h3>
+                        <span class="badge panel">Panel</span>
+                        <span class="chevron">▸</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="card-body-inner">
+                            <p><strong>Definition:</strong> 30-day rolling Pearson correlation between MFM-adjusted
+                                Typical Price and RDV. This variant incorporates <strong>intraday money flow
+                                    pressure</strong> — whether the close is in the upper or lower half of the day's
+                                range.</p>
+                            <div class="info-row"><span class="label">MFM formula:</span><span class="value">MFM =
+                                    ((close − true_low) − (true_high − close)) / (true_high − true_low)</span></div>
+                            <div class="info-row"><span class="label">Range:</span><span class="value">−1.0 to
+                                    +1.0</span></div>
+                            <p><strong>Interpretation:</strong> Positive MFM correlation = delivery is concentrated on
+                                days where price closes strong (upper half of range). Negative MFM = delivery happens on
+                                weak closes. This adds an intraday quality dimension that raw MCS doesn't capture. Used
+                                as 40% weight in MCS Composite.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Delta M -->
+                <div class="indicator-card">
+                    <div class="card-header" onclick="this.parentElement.classList.toggle('open')">
+                        <span class="color-swatch" style="background:#7e57c2"></span>
+                        <h3>ΔM <span style="font-weight:400;color:#8b949e;font-size:12px;">— MCS Delta
+                                (Histogram)</span></h3>
+                        <span class="badge panel">Panel</span>
+                        <span class="chevron">▸</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="card-body-inner">
+                            <p><strong>Definition:</strong> 5-bar rate of change in MCS — the "momentum of money flow
+                                alignment." Shows whether the price-delivery relationship is improving or deteriorating.
+                            </p>
+                            <div class="info-row"><span class="label">Formula:</span><span class="value">ΔM = MCS(today)
+                                    − MCS(5 days ago)</span></div>
+                            <div class="info-row"><span class="label">Color:</span><span class="value"><span
+                                        class="signal-bull">Green</span> = positive (improving) · <span
+                                        class="signal-bear">Red</span> = negative (deteriorating)</span></div>
+                            <p><strong>Interpretation:</strong> Even when MCS itself is negative, a positive (green) ΔM
+                                means it's getting <em>less negative</em> — things are improving. Conversely, a negative
+                                ΔM during a positive MCS warns that the alignment is weakening. ΔM often leads MCS by
+                                3-5 bars, making it a valuable early warning signal.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ═══════════════════════════════════════════════════ -->
+            <!-- SECTION 5 — VELOCITY PANEL                         -->
+            <!-- ═══════════════════════════════════════════════════ -->
+            <div class="section" id="sec-velocity">
+                <div class="section-header">
+                    <span class="section-icon">⚡</span>
+                    <h2>Velocity Panel</h2>
+                </div>
+                <p class="section-intro">Normalised rate-of-change (slope) of cumulative delivery volume for each anchor
+                    window. Velocity captures the <em>speed</em> of delivery accumulation — not just level but direction
+                    and strength.</p>
+
+                <div class="indicator-card">
+                    <div class="card-header" onclick="this.parentElement.classList.toggle('open')">
+                        <span class="color-swatch" style="background:#42a5f5"></span>
+                        <h3>V10 / V30 / V60 / V120 <span style="font-weight:400;color:#8b949e;font-size:12px;">—
+                                Normalised DVL Velocity</span></h3>
+                        <span class="badge panel">Panel</span>
+                        <span class="chevron">▸</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="card-body-inner">
+                            <p><strong>Definition:</strong> The rolling linear regression slope of cumulative delivery
+                                volume (DVL_n) over the last n/2 bars, normalised by the 60-bar mean of DVL_rate. This
+                                produces a directional and magnitude indicator that is comparable across stocks
+                                regardless of absolute delivery size.</p>
+                            <div class="info-row"><span class="label">Formula:</span><span class="value">V_n =
+                                    slope(DVL_n, n/2) / mean(DVL_rate_n, 60)</span></div>
+                            <div class="info-row"><span class="label">Range:</span><span class="value">Unbounded, but
+                                    typically ±2.0. Centred at 0.</span></div>
+                            <div class="info-row"><span class="label">Color:</span><span class="value"><span
+                                        class="signal-bull">Green</span> = positive · <span
+                                        class="signal-bear">Red</span> = negative (per bar)</span></div>
+                            <table class="threshold-table">
+                                <tr>
+                                    <th>Window</th>
+                                    <th>Color Opacity</th>
+                                    <th>Represents</th>
+                                </tr>
+                                <tr>
+                                    <td><code>V10</code></td>
+                                    <td>60% opacity</td>
+                                    <td>Short-term delivery velocity — first to react to new buying/selling.</td>
+                                </tr>
+                                <tr>
+                                    <td><code>V30</code></td>
+                                    <td>40% opacity</td>
+                                    <td>Medium-short — confirms whether V10 moves are sustaining.</td>
+                                </tr>
+                                <tr>
+                                    <td><code>V60</code></td>
+                                    <td>25% opacity</td>
+                                    <td>Medium-term — reflects positional/institutional flow.</td>
+                                </tr>
+                                <tr>
+                                    <td><code>V120</code></td>
+                                    <td>15% opacity</td>
+                                    <td>Long-term baseline — slow to change, but when it does, it's significant.</td>
+                                </tr>
+                            </table>
+                            <p style="margin-top:8px"><strong>Key pattern — Velocity Gradient Vector:</strong> The
+                                arrangement of [V10, V30, V60, V120] from short to long is the "Gradient Shape" — the
+                                foundation for trend classification. See the Gradient Shapes section below.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ═══════════════════════════════════════════════════ -->
+            <!-- SECTION 6 — SIDEBAR ANNOTATIONS                    -->
+            <!-- ═══════════════════════════════════════════════════ -->
+            <div class="section" id="sec-sidebar">
+                <div class="section-header">
+                    <span class="section-icon">📋</span>
+                    <h2>Sidebar Annotations</h2>
+                </div>
+                <p class="section-intro">The sidebar displays a concise summary of key metrics for the currently
+                    selected bar (or the latest bar). These are "at a glance" readings that synthesise the engine
+                    output.</p>
+
+                <!-- State & Confidence -->
+                <div class="indicator-card">
+                    <div class="card-header" onclick="this.parentElement.classList.toggle('open')">
+                        <span class="color-swatch" style="background:var(--accent)"></span>
+                        <h3>State &amp; Confidence <span style="font-weight:400;color:#8b949e;font-size:12px;">— Market
+                                State Classification</span></h3>
+                        <span class="badge sidebar">Sidebar</span>
+                        <span class="chevron">▸</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="card-body-inner">
+                            <p><strong>State</strong> is the predicted market state (UPTREND, DOWNTREND, ACCUMULATION,
+                                DISTRIBUTION, RECOVERY, or SIDEWAYS) — the winning label from the 6-state classifier.
+                            </p>
+                            <p><strong>Confidence</strong> is the probability assigned to the winning state (0–100%). It
+                                represents how dominant the evidence is for that state vs the others.</p>
+                            <table class="threshold-table">
+                                <tr>
+                                    <th>Confidence</th>
+                                    <th>Interpretation</th>
+                                </tr>
+                                <tr>
+                                    <td><code>> 65%</code></td>
+                                    <td>High conviction — the state marker is also displayed on the candlestick chart.
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td><code>40% – 65%</code></td>
+                                    <td>Moderate — the state label is suggestive but not dominant. Multiple states may
+                                        be competing.</td>
+                                </tr>
+                                <tr>
+                                    <td><code>< 40%</code></td>
+                                    <td>Low — ambiguous market conditions. The state label is not very reliable.</td>
+                                </tr>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- POC Spread -->
+                <div class="indicator-card">
+                    <div class="card-header" onclick="this.parentElement.classList.toggle('open')">
+                        <span class="color-swatch" style="background:var(--orange)"></span>
+                        <h3>POC Spread <span style="font-weight:400;color:#8b949e;font-size:12px;">— Distance Between
+                                CWVAP and CPOC</span></h3>
+                        <span class="badge sidebar">Sidebar</span>
+                        <span class="chevron">▸</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="card-body-inner">
+                            <p><strong>Definition:</strong> The distance between CWVAP and CPOC expressed in ATR₂₀
+                                units. Measures how far apart the "average delivery price" and the "peak delivery price"
+                                are.</p>
+                            <div class="info-row"><span class="label">Scale:</span><span class="value">ATR units (0 =
+                                    perfectly aligned)</span></div>
+                            <table class="threshold-table">
+                                <tr>
+                                    <th>Level</th>
+                                    <th>Signal</th>
+                                    <th>Interpretation</th>
+                                </tr>
+                                <tr>
+                                    <td><code>< 0.5</code></td>
+                                    <td class="signal-neutral">Tight</td>
+                                    <td>CWVAP and CPOC are close — strong consensus zone. Acts as a powerful
+                                        support/resistance level.</td>
+                                </tr>
+                                <tr>
+                                    <td><code>0.5 – 1.5</code></td>
+                                    <td class="signal-neutral">Normal</td>
+                                    <td>Moderate spread — typical market conditions.</td>
+                                </tr>
+                                <tr>
+                                    <td><code>> 1.5</code></td>
+                                    <td class="signal-bear">Wide</td>
+                                    <td>Delivery is dispersed — no clear institutional consensus. Often seen during
+                                        transitions or choppy markets.</td>
+                                </tr>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Divergence -->
+                <div class="indicator-card">
+                    <div class="card-header" onclick="this.parentElement.classList.toggle('open')">
+                        <span class="color-swatch" style="background:linear-gradient(135deg,#26a69a,#ef5350)"></span>
+                        <h3>Divergence <span style="font-weight:400;color:#8b949e;font-size:12px;">— Direction &amp;
+                                Probability</span></h3>
+                        <span class="badge sidebar">Sidebar</span>
+                        <span class="chevron">▸</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="card-body-inner">
+                            <p><strong>Definition:</strong> Shows the current divergence direction
+                                (bullish/bearish/none) and its probability score. This is the aggregate output of three
+                                divergence detection methods:</p>
+                            <table class="threshold-table">
+                                <tr>
+                                    <th>Detection Layer</th>
+                                    <th>What It Compares</th>
+                                </tr>
+                                <tr>
+                                    <td>Price vs RDV Divergence</td>
+                                    <td>Per-window sign mismatches between price momentum and relative delivery volume
+                                        momentum.</td>
+                                </tr>
+                                <tr>
+                                    <td>CWVAP Divergence</td>
+                                    <td>Price momentum outrunning or lagging the composite value line over 10 bars.</td>
+                                </tr>
+                                <tr>
+                                    <td>MCS Divergence</td>
+                                    <td>MCS crossover signals when price is above/below CWVAP — detects money-flow
+                                        crossovers against price positioning.</td>
+                                </tr>
+                            </table>
+                            <div style="margin-top:15px;">
+                                <strong>Divergence Probability Components:</strong>
+                                <table class="threshold-table" style="margin-top:8px;">
+                                    <tr>
+                                        <th>Component</th>
+                                        <th>Weight</th>
+                                        <th>Significance</th>
+                                    </tr>
+                                    <tr>
+                                        <td>Confluence Score</td>
+                                        <td>30%</td>
+                                        <td>Total windows (10, 30, 60, 120) agreeing on the divergence signal.</td>
+                                    </tr>
+                                    <tr>
+                                        <td>|MCS Composite|</td>
+                                        <td>30%</td>
+                                        <td>Magnitude of Money Flow momentum — higher scores increase conviction.</td>
+                                    </tr>
+                                    <tr>
+                                        <td>|PDD Weighted Avg|</td>
+                                        <td>20%</td>
+                                        <td>Intensity of delivery pressure across all timeframes.</td>
+                                    </tr>
+                                    <tr>
+                                        <td>(1 − CWC)</td>
+                                        <td>20%</td>
+                                        <td>Divergence is more reliable when Trend Coherence is low/broken.</td>
+                                    </tr>
+                                </table>
+                            </div>
+                            <p style="margin-top:8px"><strong>When probability > 50%</strong>, a divergence arrow is
+                                plotted on the price chart. The probability is calculated using a sigmoid function,
+                                ensuring that signals scale naturally with the underlying momentum trajectory.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Gradient Shape -->
+                <div class="indicator-card" id="sec-gradient">
+                    <div class="card-header" onclick="this.parentElement.classList.toggle('open')">
+                        <span class="color-swatch" style="background:var(--cyan)"></span>
+                        <h3>Gradient Shape <span style="font-weight:400;color:#8b949e;font-size:12px;">— Velocity
+                                Gradient Classification (9 Shapes)</span></h3>
+                        <span class="badge sidebar">Sidebar</span>
+                        <span class="chevron">▸</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="card-body-inner">
+                            <p><strong>Definition:</strong> Classifies the velocity gradient vector [V10, V30, V60,
+                                V120] into one of 9 distinct pattern shapes. Each shape describes the relationship
+                                between short-term and long-term delivery momentum.</p>
+                            <div class="state-grid">
+                                <div class="state-card">
+                                    <div class="state-name">🟢 uptrend_forming</div>
+                                    <p>V10 > 0, V30 > 0, V60 ≤ 0, V120 ≤ 0. Short-term delivery is accelerating but
+                                        longer windows haven't turned yet. <em>Early stage of a potential new
+                                            uptrend.</em></p>
+                                </div>
+                                <div class="state-card">
+                                    <div class="state-name">🟢 uptrend_mature</div>
+                                    <p>All velocities > 0, V10 ≥ V30 ≥ V60. Full delivery alignment across all
+                                        timeframes. <em>A strong, established uptrend with momentum cascading across all
+                                            windows.</em></p>
+                                </div>
+                                <div class="state-card">
+                                    <div class="state-name">🟡 uptrend_exhausting</div>
+                                    <p>V10 &lt; V30, V60 > 0, V120 > 0. Short-term velocity is fading while longer
+                                        windows remain positive. <em>The uptrend is losing its initial drive — watch for
+                                            follow-through failure.</em></p>
+                                </div>
+                                <div class="state-card">
+                                    <div class="state-name">🔴 distribution</div>
+                                    <p>V10 &lt; 0, V30 near 0, V60 > 0, V120 > 0. Short-term delivery is declining while
+                                        long-term is still trending up. <em>Classic distribution pattern — smart money
+                                            selling into long-term strength.</em></p>
+                                </div>
+                                <div class="state-card">
+                                    <div class="state-name">🔵 accumulation</div>
+                                    <p>V10 > 0 and rising, V30–V120 ≤ 0. Short-term delivery is picking up against a
+                                        negative longer-term backdrop. <em>Quiet buying into weakness — early
+                                            accumulation signal.</em></p>
+                                </div>
+                                <div class="state-card">
+                                    <div class="state-name">🔴 downtrend_forming</div>
+                                    <p>V10 &lt; 0, V30 &lt; 0, V60 ≥ 0. Short and medium windows declining, long-term
+                                        still positive. <em>The beginning of a potential downtrend.</em></p>
+                                </div>
+                                <div class="state-card">
+                                    <div class="state-name">🔴 downtrend_mature</div>
+                                    <p>All velocities &lt; 0. Complete delivery decline across all timeframes.
+                                        <em>Established downtrend with no window showing positive velocity.</em>
+                                    </p>
+                                </div>
+                                <div class="state-card">
+                                    <div class="state-name">🟢 recovering</div>
+                                    <p>V10 > 0, V30 slope turning positive, V60 &lt; 0. Short-term delivery is reviving
+                                        against a still-negative medium-term. <em>Earliest signal of potential trend
+                                            reversal.</em></p>
+                                </div>
+                                <div class="state-card">
+                                    <div class="state-name">⚪ sideways</div>
+                                    <p>All velocities near zero (|v| &lt; 0.2). No meaningful delivery direction.
+                                        <em>Range-bound — wait for a velocity breakout to signal the next
+                                            direction.</em>
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Price Location -->
+                <div class="indicator-card" id="sec-location">
+                    <div class="card-header" onclick="this.parentElement.classList.toggle('open')">
+                        <span class="color-swatch" style="background:var(--teal)"></span>
+                        <h3>Price Location <span style="font-weight:400;color:#8b949e;font-size:12px;">— 7
+                                Categories</span></h3>
+                        <span class="badge sidebar">Sidebar</span>
+                        <span class="chevron">▸</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="card-body-inner">
+                            <p><strong>Definition:</strong> Classifies the current close price relative to the composite
+                                delivery value lines (CWVAP, CPOC, CVAH, CVAL). Used internally by the state classifier
+                                and shown in the sidebar for context.</p>
+                            <table class="threshold-table">
+                                <tr>
+                                    <th>Location</th>
+                                    <th>Condition</th>
+                                    <th>Interpretation</th>
+                                </tr>
+                                <tr>
+                                    <td><code>extended_above</code></td>
+                                    <td>Price > CPOC > CWVAP</td>
+                                    <td class="signal-bear">Price has extended well above delivery consensus.
+                                        Distribution risk — institutions may begin taking profits.</td>
+                                </tr>
+                                <tr>
+                                    <td><code>above_value</code></td>
+                                    <td>Price > CWVAP and > CPOC</td>
+                                    <td class="signal-bull">Price is above both delivery lines — bullish positioning.
+                                        Trend is supported.</td>
+                                </tr>
+                                <tr>
+                                    <td><code>at_value</code></td>
+                                    <td>|Price − CWVAP| &lt; 0.3 ATR</td>
+                                    <td class="signal-neutral">Price is right at the delivery-weighted fair value. A
+                                        decision point — watch for direction.</td>
+                                </tr>
+                                <tr>
+                                    <td><code>in_value_area</code></td>
+                                    <td>CVAL ≤ Price ≤ CVAH</td>
+                                    <td class="signal-neutral">Trading within the normal delivery range. No extreme
+                                        positioning.</td>
+                                </tr>
+                                <tr>
+                                    <td><code>below_value</code></td>
+                                    <td>Price &lt; CWVAP and &lt; CPOC</td>
+                                    <td class="signal-bear">Below delivery consensus. Weakness or potential accumulation
+                                        zone.</td>
+                                </tr>
+                                <tr>
+                                    <td><code>reclaiming_value</code></td>
+                                    <td>Crossed above CWVAP in last 3 bars</td>
+                                    <td class="signal-bull">Just reclaimed the delivery value line — a bullish
+                                        inflection if sustained.</td>
+                                </tr>
+                                <tr>
+                                    <td><code>losing_value</code></td>
+                                    <td>Crossed below CWVAP in last 3 bars</td>
+                                    <td class="signal-bear">Just lost delivery support — bearish unless quickly
+                                        reclaimed.</td>
+                                </tr>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+        </main>
+    </div>
+
+    <!-- ════════════════ JAVASCRIPT ════════════════ -->
+    <script>
+        (function () {
+            "use strict";
+
+            // Accordion toggle (cards start collapsed)
+            document.querySelectorAll('.card-header').forEach(function (header) {
+                header.addEventListener('click', function () {
+                    // Already handled by onclick attribute, but ensure accessibility
+                });
+            });
+
+            // Active TOC highlighting on scroll
+            var tocLinks = document.querySelectorAll('.toc a');
+            var sections = [];
+            tocLinks.forEach(function (link) {
+                var id = link.getAttribute('href');
+                if (id && id.startsWith('#')) {
+                    var el = document.querySelector(id);
+                    if (el) sections.push({ el: el, link: link });
+                }
+            });
+
+            function updateActiveToc() {
+                var scrollTop = window.scrollY + 100;
+                var active = null;
+                for (var i = sections.length - 1; i >= 0; i--) {
+                    if (sections[i].el.offsetTop <= scrollTop) {
+                        active = sections[i].link;
+                        break;
+                    }
+                }
+                tocLinks.forEach(function (l) { l.classList.remove('active'); });
+                if (active) active.classList.add('active');
+            }
+
+            window.addEventListener('scroll', updateActiveToc, { passive: true });
+            updateActiveToc();
+
+            // Smooth scroll for TOC links
+            tocLinks.forEach(function (link) {
+                link.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    var target = document.querySelector(this.getAttribute('href'));
+                    if (target) {
+                        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }
+                });
+            });
+        })();
+    </script>
+
+</body>
+
+</html>

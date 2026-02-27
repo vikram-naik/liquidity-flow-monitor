@@ -36,19 +36,45 @@
 
     var chartInstances = [];
 
-    fetch(apiUrl)
-        .then(function (res) {
-            if (!res.ok) throw new Error("API error: " + res.status);
-            return res.json();
-        })
-        .then(function (data) {
-            loadingEl.style.display = "none";
-            chartInstances = buildCharts(data);
-            buildSidebarAnnotations(data.latest);
-        })
-        .catch(function (err) {
-            loadingEl.innerHTML = '<div class="err">Error: ' + err.message + "</div>";
-        });
+    function loadSymbol(targetSymbol) {
+        if (!targetSymbol) return;
+        symbol = targetSymbol.toUpperCase();
+        var apiUrl = "/lfm/api/divergence-engine/" + symbol;
+        if (params.get("start_date")) apiUrl += "?start_date=" + params.get("start_date");
+        if (params.get("end_date")) {
+            apiUrl += (apiUrl.includes("?") ? "&" : "?") + "end_date=" + params.get("end_date");
+        }
+
+        loadingEl.style.display = "flex";
+        loadingEl.innerHTML = "Loading Engine Data...";
+        document.title = "Divergence Engine \u2014 " + symbol;
+        document.getElementById("ticker-label").textContent = symbol;
+
+        fetch(apiUrl)
+            .then(function (res) {
+                if (!res.ok) throw new Error("API error: " + res.status);
+                return res.json();
+            })
+            .then(function (data) {
+                loadingEl.style.display = "none";
+                // Clear existing charts
+                ["p1", "p2", "p3", "p4"].forEach(id => {
+                    var el = document.getElementById(id);
+                    if (el) el.innerHTML = '<div id="leg' + id.slice(1) + '" class="legend"></div>';
+                });
+
+                chartInstances = buildCharts(data);
+                buildSidebarAnnotations(data.latest);
+                WatchlistManager.updateActiveState();
+                window.history.pushState({}, "", "/lfm/divergence-engine/" + symbol);
+            })
+            .catch(function (err) {
+                loadingEl.innerHTML = '<div class="err">Error: ' + err.message + "</div>";
+            });
+    }
+
+    // Initial load
+    loadSymbol(symbol);
 
     var STATE_MARKERS = {
         UPTREND: { shape: "arrowUp", color: "#26a69a", pos: "aboveBar", label: "\u25b2 Uptrend" },
@@ -153,16 +179,18 @@
                 timeScale: {
                     visible: !!showTimeScale,
                     borderColor: "#21262d",
-                    timeVisible: false,
-                    fixLeftEdge: true,
-                    fixRightEdge: true
+                    timeVisible: false
                 },
-                leftPriceScale: { visible: false },
+                leftPriceScale: {
+                    visible: false,
+                    width: 0,
+                    minimumWidth: 0
+                },
                 rightPriceScale: {
                     visible: true,
                     borderColor: "#21262d",
-                    minimumWidth: 100,
-                    width: 100
+                    width: 100,
+                    minimumWidth: 100
                 }
             };
         }
@@ -174,19 +202,34 @@
         var pc = LC.createChart(document.getElementById("p1"), mkOpts(containerWidth, Math.round(containerHeight * 0.60), false));
         var sVol = pc.addSeries(LC.HistogramSeries, { priceScaleId: "vol", priceLineVisible: false, lastValueVisible: false });
         sVol.setData(deliveryVol);
-        pc.priceScale("vol").applyOptions({ scaleMargins: { top: 0.75, bottom: 0 } });
+        pc.priceScale("vol").applyOptions({
+            visible: false,
+            scaleMargins: { top: 0.75, bottom: 0 }
+        });
+
+        // Value Area ghost lines: disabled by default as requested
+        var sVah = pc.addSeries(LC.LineSeries, {
+            color: "rgba(255,255,255,0.25)", lineWidth: 1, lineStyle: 2,
+            lastValueVisible: false, priceLineVisible: false, visible: false
+        });
+        sVah.setData(cvah);
+        var sVal = pc.addSeries(LC.LineSeries, {
+            color: "rgba(255,255,255,0.25)", lineWidth: 1, lineStyle: 2,
+            lastValueVisible: false, priceLineVisible: false, visible: false
+        });
+        sVal.setData(cval);
 
         var cs = pc.addSeries(LC.CandlestickSeries, { upColor: "#26a69a", downColor: "#ef5350", borderUpColor: "#26a69a", borderDownColor: "#ef5350", wickUpColor: "#26a69a", wickDownColor: "#ef5350", lastValueVisible: false });
         cs.setData(ohlc);
 
         var sCwvap = pc.addSeries(LC.LineSeries, { color: "#00bfa5", lineWidth: 2, lastValueVisible: false });
         sCwvap.setData(cwvap);
+
+        // CPOC: Simplified to a straight horizontal line across the chart at the latest value
         var sCpoc = pc.addSeries(LC.LineSeries, { color: "#ffab40", lineWidth: 1, lineStyle: 2, lastValueVisible: false });
-        sCpoc.setData(cpoc);
-        var sVah = pc.addSeries(LC.LineSeries, { color: "rgba(255,255,255,0.12)", lineWidth: 1, lastValueVisible: false, priceLineVisible: false });
-        sVah.setData(cvah);
-        var sVal = pc.addSeries(LC.LineSeries, { color: "rgba(255,255,255,0.12)", lineWidth: 1, lastValueVisible: false, priceLineVisible: false });
-        sVal.setData(cval);
+        var lastCpocVal = cpoc.length > 0 ? cpoc[cpoc.length - 1].value : null;
+        var cpocHorizontal = cpoc.map(d => ({ time: d.time, value: lastCpocVal }));
+        sCpoc.setData(cpocHorizontal);
 
         var sD10 = pc.addSeries(LC.LineSeries, { color: "rgba(100,181,246,0.5)", lineWidth: 1, lastValueVisible: false });
         sD10.setData(dvwap10);
@@ -209,6 +252,8 @@
         sC3060.setData(c3060);
         var sC60120 = cc.addSeries(LC.LineSeries, { color: "rgba(239,83,80,0.5)", lineWidth: 1, lastValueVisible: false });
         sC60120.setData(c60120);
+
+        // Explicit Threshold Lines
         sCwc.createPriceLine({ price: 0.7, color: "rgba(38,166,154,0.4)", lineWidth: 1, lineStyle: 2 });
         sCwc.createPriceLine({ price: 0.3, color: "rgba(239,83,80,0.4)", lineWidth: 1, lineStyle: 2 });
         cc.priceScale("right").applyOptions({ scaleMargins: { top: 0.1, bottom: 0.1 } });
@@ -221,9 +266,25 @@
         sMcsRaw.setData(mcsRaw);
         var sMcsMfm = mc.addSeries(LC.LineSeries, { color: "rgba(236,64,122,0.35)", lineWidth: 1, lastValueVisible: false });
         sMcsMfm.setData(mcsMfmRaw);
-        var sMcsDelta = mc.addSeries(LC.HistogramSeries, { priceScaleId: "delta", lastValueVisible: false });
+        var sMcsDelta = mc.addSeries(LC.HistogramSeries, {
+            priceScaleId: "delta",
+            lastValueVisible: false,
+            base: 0,
+            autoscaleInfoProvider: (original) => {
+                return {
+                    priceRange: { minValue: -1, maxValue: 1 }
+                };
+            }
+        });
         sMcsDelta.setData(mcsDelta);
-        mc.priceScale("delta").applyOptions({ scaleMargins: { top: 0.7, bottom: 0 } });
+        // Invisible price lines to force symmetric scale around zero
+        sMcsDelta.createPriceLine({ price: 1, color: 'rgba(0,0,0,0)', lineWidth: 0, lineStyle: 2, axisLabelVisible: false });
+        sMcsDelta.createPriceLine({ price: -1, color: 'rgba(0,0,0,0)', lineWidth: 0, lineStyle: 2, axisLabelVisible: false });
+        mc.priceScale("delta").applyOptions({
+            visible: false,
+            autoScale: true,
+            scaleMargins: { top: 0.55, bottom: 0.05 }
+        });
         sMcsComp.createPriceLine({ price: 0, color: "rgba(255,255,255,0.15)", lineWidth: 1, lineStyle: 2 });
         mc.priceScale("right").applyOptions({ scaleMargins: { top: 0.1, bottom: 0.1 } });
 
@@ -236,6 +297,8 @@
         sV60.setData(vel60);
         var sV120 = vc.addSeries(LC.HistogramSeries, { priceScaleId: "v120", lastValueVisible: false });
         sV120.setData(vel120);
+
+        ["v30", "v60", "v120"].forEach(id => vc.priceScale(id).applyOptions({ visible: false }));
 
         var allSeries = [
             {
@@ -374,18 +437,45 @@
             }
         }
 
-        [10, 30, 60, 120].forEach(n => document.getElementById("cb" + n).addEventListener("change", function () { winActive[n] = this.checked; syncVis(); }));
+        var winActive = {};
+        [10, 30, 60, 120].forEach(n => {
+            var cb = document.getElementById("cb" + n);
+            winActive[n] = cb ? cb.checked : false;
+            if (cb) cb.addEventListener("change", function () { winActive[n] = this.checked; syncVis(); });
+        });
 
-        var toggleMap = { cbCWVAP: [sCwvap], cbCPOC: [sCpoc], cbVA: [sVah, sVal], cbVol: [sVol], cbCWC: [sCwc], cbMCS: [sMcsComp, sMcsRaw], cbMFM: [sMcsMfm], cbMCSD: [sMcsDelta] };
-        Object.keys(toggleMap).forEach(id => document.getElementById(id).addEventListener("change", function () {
-            toggleMap[id].forEach(s => s.applyOptions({ visible: this.checked }));
-            syncVis();
-        }));
 
+        // Sync time scales using TIME-BASED ranges (not logical/bar-index ranges)
+        // This is critical because each chart may have different numbers of data points,
+        // so logical index N maps to different dates on different charts.
+        var isSyncing = false;
         [pc, cc, mc, vc].forEach(src => {
-            src.timeScale().subscribeVisibleLogicalRangeChange(r => {
-                if (!r) return;
-                [pc, cc, mc, vc].forEach(t => { if (t !== src) t.timeScale().setVisibleLogicalRange(r); });
+            src.timeScale().subscribeVisibleLogicalRangeChange(() => {
+                if (isSyncing) return;
+                isSyncing = true;
+                var timeRange = src.timeScale().getVisibleRange();
+                if (timeRange) {
+                    [pc, cc, mc, vc].forEach(t => {
+                        if (t !== src) t.timeScale().setVisibleRange(timeRange);
+                    });
+                }
+                isSyncing = false;
+            });
+        });
+
+        var toggleMap = {
+            cbCWVAP: [sCwvap], cbCPOC: [sCpoc], cbVA: [sVah, sVal], cbVol: [sVol],
+            cbCWC: [sCwc], cbMCS: [sMcsComp, sMcsRaw], cbMFM: [sMcsMfm], cbMCSD: [sMcsDelta]
+        };
+
+        // Initialize visibility from checkboxes on load
+        Object.keys(toggleMap).forEach(id => {
+            var cb = document.getElementById(id);
+            if (cb) toggleMap[id].forEach(s => s.applyOptions({ visible: cb.checked }));
+
+            cb.addEventListener("change", function () {
+                toggleMap[id].forEach(s => s.applyOptions({ visible: this.checked }));
+                syncVis();
             });
         });
 
@@ -412,17 +502,26 @@
             });
         });
 
-        var nTotal = ohlc.length, viewBars = Math.min(130, nTotal);
-        [pc, cc, mc, vc].forEach(c => c.timeScale().setVisibleLogicalRange({ from: nTotal - viewBars, to: nTotal }));
+        // Initial reflow and sync
+        syncVis();
+        reflowCharts();
 
-        // Implement ResizeObserver for automatic, robust resizing
+        // Auto-scroll to the latest data using TIME-BASED range
+        // This avoids the bar-index mismatch problem entirely
+        if (ohlc.length > 0) {
+            var viewBars = Math.min(130, ohlc.length);
+            var startTime = ohlc[ohlc.length - viewBars].time;
+            var endTime = ohlc[ohlc.length - 1].time;
+            [pc, cc, mc, vc].forEach(c => {
+                c.timeScale().setVisibleRange({ from: startTime, to: endTime });
+            });
+        }
+
+        // Restore ResizeObserver for automatic, robust resizing
         const ro = new ResizeObserver(() => {
             requestAnimationFrame(() => reflowCharts());
         });
         ro.observe(container);
-
-        // Initial reflow
-        reflowCharts();
 
         return [pc, cc, mc, vc];
     }
@@ -447,4 +546,185 @@
             "<tr><td>Gradient Shape</td><td class='val'>" + (l.gradient_shape || "\u2014") + "</td></tr>" +
             "</table>";
     }
+
+    // --- NEW: Search & Watchlist Logic ---
+
+    var allStocks = [];
+    function fetchAllStocks() {
+        fetch("/lfm/api/analysis/stocks")
+            .then(res => res.json())
+            .then(data => { allStocks = data; })
+            .catch(err => console.error("Error fetching stocks:", err));
+    }
+
+    var searchInput = document.getElementById("symbol-input");
+    var searchResults = document.getElementById("search-results");
+
+    searchInput.addEventListener("input", function () {
+        var val = this.value.toUpperCase();
+        if (!val) { searchResults.style.display = "none"; return; }
+
+        var matches = allStocks.filter(s => s.symbol.includes(val)).slice(0, 10);
+        if (matches.length === 0) { searchResults.style.display = "none"; return; }
+
+        searchResults.innerHTML = matches.map(m =>
+            `<div class="search-item" data-sym="${m.symbol}">
+                <span class="sym">${m.symbol}</span>
+             </div>`
+        ).join("");
+        searchResults.style.display = "block";
+    });
+
+    searchResults.addEventListener("click", function (e) {
+        var item = e.target.closest(".search-item");
+        if (item) {
+            searchResults.style.display = "none";
+            searchInput.value = "";
+            loadSymbol(item.dataset.sym);
+        }
+    });
+
+    document.addEventListener("click", function (e) {
+        if (!searchInput.contains(e.target)) searchResults.style.display = "none";
+    });
+
+    function formatDate(isoStr) {
+        if (!isoStr) return "";
+        var d = new Date(isoStr);
+        var months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+        return d.getDate().toString().padStart(2, '0') + "-" + months[d.getMonth()] + "-" + d.getFullYear();
+    }
+
+    var WatchlistManager = {
+        currentWlId: null,
+        currentItems: [],
+
+        init: function () {
+            this.fetchLists();
+            this.bindEvents();
+        },
+
+        bindEvents: function () {
+            var self = this;
+            document.getElementById("wl-select").addEventListener("change", function () {
+                self.currentWlId = this.value;
+                self.fetchItems();
+            });
+
+            document.getElementById("wl-add").onclick = () => {
+                var name = prompt("Enter Watchlist Name:");
+                if (name) this.api("/lfm/api/watchlists", "POST", { name }).then(() => this.fetchLists());
+            };
+
+            document.getElementById("wl-rename").onclick = () => {
+                if (!this.currentWlId) return;
+                var name = prompt("Enter New Name:");
+                if (name) this.api("/lfm/api/watchlists/" + this.currentWlId, "PATCH", { name }).then(() => this.fetchLists());
+            };
+
+            document.getElementById("wl-delete").onclick = () => {
+                if (!this.currentWlId || !confirm("Delete this watchlist?")) return;
+                this.api("/lfm/api/watchlists/" + this.currentWlId, "DELETE").then(() => {
+                    this.currentWlId = null;
+                    this.fetchLists();
+                });
+            };
+
+            document.getElementById("wl-import").onclick = () => {
+                if (!this.currentWlId) return alert("Select a watchlist first");
+                fetch("/lfm/api/watchlists/supported-indices").then(r => r.json()).then(indices => {
+                    var idx = prompt("Enter Index Name:\n" + indices.join(", "));
+                    if (idx && indices.includes(idx)) {
+                        this.api("/lfm/api/watchlists/import-index", "POST", { watchlist_id: parseInt(this.currentWlId), index_name: idx })
+                            .then(res => { alert("Imported " + res.imported + " symbols"); this.fetchItems(); });
+                    }
+                });
+            };
+
+            document.getElementById("wl-download").onclick = () => {
+                if (!this.currentWlId || this.currentItems.length === 0) return alert("Nothing to download");
+                var sel = document.getElementById("wl-select");
+                var wlName = sel.options[sel.selectedIndex].text;
+                var content = wlName + "\n" + this.currentItems.map(i => i.symbol).join("\n");
+                var blob = new Blob([content], { type: "text/plain" });
+                var url = URL.createObjectURL(blob);
+                var a = document.createElement("a");
+                a.href = url;
+                a.download = wlName.replace(/\s+/g, "_") + ".txt";
+                a.click();
+            };
+
+            document.getElementById("wl-sort").addEventListener("change", function () {
+                self.renderItems();
+            });
+
+            document.getElementById("wl-items").onclick = (e) => {
+                var item = e.target.closest(".wl-item");
+                if (!item) return;
+                var sym = item.dataset.sym;
+                if (e.target.classList.contains("remove-btn")) {
+                    this.api(`/lfm/api/watchlists/${this.currentWlId}/items/${sym}`, "DELETE").then(() => this.fetchItems());
+                } else {
+                    loadSymbol(sym);
+                }
+            };
+        },
+
+        api: function (url, method, body) {
+            return fetch(url, {
+                method: method,
+                headers: { "Content-Type": "application/json" },
+                body: body ? JSON.stringify(body) : null
+            }).then(r => r.json());
+        },
+
+        fetchLists: function () {
+            fetch("/lfm/api/watchlists").then(r => r.json()).then(lists => {
+                var sel = document.getElementById("wl-select");
+                var current = this.currentWlId;
+                sel.innerHTML = '<option value="">Select Watchlist</option>' +
+                    lists.map(l => `<option value="${l.id}" ${l.id == current ? 'selected' : ''}>${l.name}</option>`).join("");
+                if (current) this.fetchItems();
+                else document.getElementById("wl-items").innerHTML = "";
+            });
+        },
+
+        fetchItems: function () {
+            if (!this.currentWlId) return;
+            fetch(`/lfm/api/watchlists/${this.currentWlId}/items`).then(r => r.json()).then(items => {
+                this.currentItems = items;
+                this.renderItems();
+            });
+        },
+
+        renderItems: function () {
+            var sortMode = document.getElementById("wl-sort").value;
+            var sorted = [...this.currentItems];
+
+            if (sortMode === "name-asc") sorted.sort((a, b) => a.symbol.localeCompare(b.symbol));
+            else if (sortMode === "name-desc") sorted.sort((a, b) => b.symbol.localeCompare(a.symbol));
+            else if (sortMode === "date-asc") sorted.sort((a, b) => new Date(a.added_at) - new Date(b.added_at));
+            else if (sortMode === "date-desc") sorted.sort((a, b) => new Date(b.added_at) - new Date(a.added_at));
+
+            document.getElementById("wl-items").innerHTML = sorted.map(i =>
+                `<div class="wl-item ${i.symbol === symbol ? 'active' : ''}" data-sym="${i.symbol}">
+                        <div class="wl-item-info">
+                            <span class="sym">${i.symbol}</span>
+                            <span class="date">${formatDate(i.added_at)}</span>
+                        </div>
+                        <span class="remove-btn">×</span>
+                    </div>`
+            ).join("");
+        },
+
+        updateActiveState: function () {
+            document.querySelectorAll(".wl-item").forEach(item => {
+                if (item.dataset.sym === symbol) item.classList.add("active");
+                else item.classList.remove("active");
+            });
+        }
+    };
+
+    fetchAllStocks();
+    WatchlistManager.init();
 })();

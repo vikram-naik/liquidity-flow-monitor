@@ -1,0 +1,483 @@
+/* Help Guide — Professional Reference Page */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+:root {
+    --bg-primary: #0d1117;
+    --bg-secondary: #161b22;
+    --bg-tertiary: #21262d;
+    --bg-hover: #30363d;
+    --text-primary: #e6edf3;
+    --text-secondary: #c9d1d9;
+    --text-muted: #8b949e;
+    --border: #21262d;
+    --accent: #58a6ff;
+    --green: #26a69a;
+    --red: #ef5350;
+    --blue: #42a5f5;
+    --purple: #ab47bc;
+    --orange: #ffab40;
+    --cyan: #26c6da;
+    --teal: #00bfa5;
+    --content-max: 960px;
+}
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+body {
+    background: var(--bg-primary);
+    color: var(--text-secondary);
+    font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+    line-height: 1.7;
+    overflow-x: hidden;
+}
+
+/* ── Sticky Header ── */
+.guide-header {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border);
+    padding: 12px 32px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    backdrop-filter: blur(12px);
+}
+
+.guide-header h1 {
+    font-size: 18px;
+    color: var(--text-primary);
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.guide-header h1 .logo-icon {
+    font-size: 22px;
+}
+
+.guide-header .subtitle {
+    font-size: 12px;
+    color: var(--text-muted);
+    font-weight: 400;
+    margin-left: 4px;
+}
+
+.back-link {
+    color: var(--accent);
+    text-decoration: none;
+    font-size: 13px;
+    font-weight: 500;
+    padding: 6px 14px;
+    border: 1px solid var(--bg-hover);
+    border-radius: 6px;
+    transition: all 0.2s;
+}
+
+.back-link:hover {
+    background: var(--bg-hover);
+    border-color: var(--accent);
+}
+
+/* ── Layout: TOC + Content ── */
+.guide-wrapper {
+    display: flex;
+    max-width: 1280px;
+    margin: 0 auto;
+}
+
+/* ── TOC Sidebar ── */
+.toc {
+    position: sticky;
+    top: 60px;
+    align-self: flex-start;
+    width: 240px;
+    flex-shrink: 0;
+    padding: 24px 16px 24px 24px;
+    border-right: 1px solid var(--border);
+    height: calc(100vh - 60px);
+    overflow-y: auto;
+}
+
+.toc h2 {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-muted);
+    margin-bottom: 16px;
+    font-weight: 600;
+}
+
+.toc a {
+    display: block;
+    color: var(--text-muted);
+    text-decoration: none;
+    font-size: 13px;
+    padding: 5px 0 5px 12px;
+    border-left: 2px solid transparent;
+    transition: all 0.15s;
+}
+
+.toc a:hover {
+    color: var(--text-primary);
+    border-left-color: var(--bg-hover);
+}
+
+.toc a.active {
+    color: var(--accent);
+    border-left-color: var(--accent);
+}
+
+.toc a.sub {
+    padding-left: 24px;
+    font-size: 12px;
+}
+
+.toc::-webkit-scrollbar {
+    width: 4px;
+}
+
+.toc::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.toc::-webkit-scrollbar-thumb {
+    background: var(--bg-hover);
+    border-radius: 10px;
+}
+
+/* ── Main Content ── */
+.guide-content {
+    flex: 1;
+    min-width: 0;
+    padding: 32px 40px 80px;
+    max-width: var(--content-max);
+}
+
+/* Section */
+.section {
+    margin-bottom: 48px;
+}
+
+.section-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 8px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+}
+
+.section-icon {
+    font-size: 22px;
+}
+
+.section-header h2 {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.section-intro {
+    font-size: 14px;
+    color: var(--text-muted);
+    margin-bottom: 24px;
+    line-height: 1.6;
+}
+
+/* ── Indicator Card ── */
+.indicator-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin-bottom: 16px;
+    overflow: hidden;
+    transition: border-color 0.2s;
+}
+
+.indicator-card:hover {
+    border-color: var(--bg-hover);
+}
+
+.card-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 18px;
+    cursor: pointer;
+    user-select: none;
+    transition: background 0.15s;
+}
+
+.card-header:hover {
+    background: rgba(48, 54, 61, 0.4);
+}
+
+.color-swatch {
+    width: 14px;
+    height: 14px;
+    border-radius: 3px;
+    flex-shrink: 0;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.card-header h3 {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-primary);
+    flex: 1;
+}
+
+.card-header .badge {
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.badge.overlay {
+    background: rgba(0, 191, 165, 0.15);
+    color: #00bfa5;
+}
+
+.badge.marker {
+    background: rgba(88, 166, 255, 0.15);
+    color: #58a6ff;
+}
+
+.badge.panel {
+    background: rgba(171, 71, 188, 0.15);
+    color: #ce93d8;
+}
+
+.badge.sidebar {
+    background: rgba(255, 171, 64, 0.15);
+    color: #ffab40;
+}
+
+.chevron {
+    color: var(--text-muted);
+    font-size: 14px;
+    transition: transform 0.25s ease;
+}
+
+.indicator-card.open .chevron {
+    transform: rotate(90deg);
+}
+
+/* Card Body (expandable) */
+.card-body {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.35s ease;
+}
+
+.indicator-card.open .card-body {
+    max-height: 800px;
+}
+
+.card-body-inner {
+    padding: 0 18px 18px;
+}
+
+.card-body-inner p {
+    font-size: 13px;
+    margin-bottom: 10px;
+    line-height: 1.65;
+}
+
+.card-body-inner strong {
+    color: var(--text-primary);
+}
+
+/* Mini info rows */
+.info-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 6px;
+    font-size: 13px;
+}
+
+.info-row .label {
+    color: var(--text-muted);
+    flex-shrink: 0;
+    min-width: 100px;
+    font-weight: 500;
+}
+
+.info-row .value {
+    color: var(--text-secondary);
+}
+
+/* Threshold table */
+.threshold-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 12px 0 4px;
+    font-size: 12px;
+}
+
+.threshold-table th {
+    text-align: left;
+    padding: 8px 10px;
+    background: var(--bg-primary);
+    color: var(--text-muted);
+    font-weight: 600;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border-bottom: 1px solid var(--border);
+}
+
+.threshold-table td {
+    padding: 7px 10px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-secondary);
+}
+
+.threshold-table tr:last-child td {
+    border-bottom: none;
+}
+
+.threshold-table code {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    background: var(--bg-primary);
+    padding: 2px 6px;
+    border-radius: 3px;
+    color: var(--accent);
+}
+
+.signal-bull {
+    color: var(--green);
+    font-weight: 600;
+}
+
+.signal-bear {
+    color: var(--red);
+    font-weight: 600;
+}
+
+.signal-neutral {
+    color: var(--text-muted);
+    font-weight: 500;
+}
+
+/* ── State / Shape Grid ── */
+.state-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 12px;
+    margin-top: 8px;
+}
+
+.state-card {
+    background: var(--bg-primary);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 14px 16px;
+}
+
+.state-card .state-name {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+}
+
+.state-card .state-name .state-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.state-card .state-name .state-shape {
+    font-size: 16px;
+    line-height: 1;
+}
+
+.state-card p {
+    font-size: 12px;
+    color: var(--text-muted);
+    line-height: 1.55;
+}
+
+/* ── Intro Hero ── */
+.hero {
+    padding: 40px 0 24px;
+    margin-bottom: 32px;
+    border-bottom: 1px solid var(--border);
+}
+
+.hero h1 {
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 8px;
+}
+
+.hero p {
+    font-size: 15px;
+    color: var(--text-muted);
+    max-width: 680px;
+    line-height: 1.65;
+}
+
+/* ── Responsive ── */
+@media (max-width: 900px) {
+    .toc {
+        display: none;
+    }
+
+    .guide-content {
+        padding: 24px 16px 60px;
+    }
+
+    .guide-header {
+        padding: 12px 16px;
+    }
+
+    .state-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* ── Print ── */
+@media print {
+
+    .guide-header,
+    .toc {
+        display: none;
+    }
+
+    body {
+        background: #fff;
+        color: #222;
+    }
+
+    .indicator-card {
+        border: 1px solid #ddd;
+        break-inside: avoid;
+    }
+
+    .card-body {
+        max-height: none !important;
+    }
+
+    .guide-content {
+        padding: 0;
+        max-width: 100%;
+    }
+}

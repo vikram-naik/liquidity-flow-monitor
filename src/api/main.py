@@ -22,6 +22,26 @@ from src.cache import get_cache
 cache = get_cache()
 _registry = MarkerRegistry()
 
+NSE_INDICES = {
+    "NIFTY 50": "ind_nifty50list.csv",
+    "NIFTY NEXT 50": "ind_niftynext50list.csv",
+    "NIFTY 100": "ind_nifty100list.csv",
+    "NIFTY 200": "ind_nifty200list.csv",
+    "NIFTY 500": "ind_nifty500list.csv",
+    "NIFTY MIDCAP 50": "ind_niftymidcap50list.csv",
+    "NIFTY MIDCAP 100": "ind_niftymidcap100list.csv",
+    "NIFTY SMALLCAP 100": "ind_niftysmallcap100list.csv",
+    "NIFTY BANK": "ind_niftybanklist.csv",
+    "NIFTY FIN SERVICE": "ind_niftyfinancelist.csv",
+    "NIFTY IT": "ind_niftyitlist.csv",
+    "NIFTY PHARMA": "ind_niftypharmalist.csv",
+    "NIFTY FMCG": "ind_niftyfmcglist.csv",
+    "NIFTY METAL": "ind_niftymetallist.csv",
+    "NIFTY REALTY": "ind_niftyrealtylist.csv",
+    "NIFTY AUTO": "ind_niftyautolist.csv",
+    "NIFTY DEFENCE": "ind_niftyindiadefence_list.csv",
+}
+
 
 app = FastAPI(title="LFM API", docs_url="/lfm/api/docs", openapi_url="/lfm/api/openapi.json")
 
@@ -55,6 +75,20 @@ class NSEUpload(BaseModel):
     price_change_pct: Optional[float] = 0.0
     volume_change_pct: Optional[float] = 0.0
     delivery_change_pct: Optional[float] = 0.0
+
+class WatchlistCreate(BaseModel):
+    name: str
+    description: Optional[str] = None
+
+class WatchlistUpdate(BaseModel):
+    name: str
+
+class WatchlistItemAdd(BaseModel):
+    symbol: str
+
+class IndexImportRequest(BaseModel):
+    watchlist_id: int
+    index_name: str
 
 
 # --- Database Helpers ---
@@ -122,3 +156,128 @@ def divergence_engine_chart(symbol: str):
     if not os.path.isfile(html_path):
         raise HTTPException(status_code=404, detail="Chart page not found")
     return FileResponse(html_path, media_type="text/html")
+
+
+@app.get("/lfm/help")
+def help_guide():
+    """Serve the help guide page."""
+    html_path = os.path.join(_WEB_DIR, "help_guide.html")
+    if not os.path.isfile(html_path):
+        raise HTTPException(status_code=404, detail="Help guide not found")
+    return FileResponse(html_path, media_type="text/html")
+
+
+# --- Stock & Analysis Routes ---
+
+@app.get("/lfm/api/analysis/stocks")
+def get_all_stocks(db: sqlite3.Connection = Depends(get_db)):
+    """Return all unique symbols and their latest names/prices."""
+    query = """
+    SELECT symbol, MAX(record_date) as last_date
+    FROM nse_delivery_log
+    GROUP BY symbol
+    ORDER BY symbol ASC
+    """
+    try:
+        cursor = db.execute(query)
+        stocks = [dict(row) for row in cursor.fetchall()]
+        return stocks
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# --- Watchlist Routes ---
+
+@app.get("/lfm/api/watchlists")
+def list_watchlists(db: sqlite3.Connection = Depends(get_db)):
+    cursor = db.execute("SELECT id, name, description, created_at FROM watchlists ORDER BY name ASC")
+    return [dict(row) for row in cursor.fetchall()]
+
+@app.post("/lfm/api/watchlists")
+def create_watchlist(wl: WatchlistCreate, db: sqlite3.Connection = Depends(get_db)):
+    try:
+        cursor = db.execute("INSERT INTO watchlists (name, description) VALUES (?, ?)", (wl.name, wl.description))
+        db.commit()
+        return {"id": cursor.lastrowid, "name": wl.name}
+    except sqlite3.IntegrityError:
+        raise HTTPException(status_code=400, detail="Watchlist name already exists")
+
+@app.patch("/lfm/api/watchlists/{watchlist_id}")
+def rename_watchlist(watchlist_id: int, wl: WatchlistUpdate, db: sqlite3.Connection = Depends(get_db)):
+    cursor = db.execute("UPDATE watchlists SET name = ? WHERE id = ?", (wl.name, watchlist_id))
+    if cursor.rowcount == 0:
+        raise HTTPException(status_code=404, detail="Watchlist not found")
+    db.commit()
+    return {"status": "ok"}
+
+@app.delete("/lfm/api/watchlists/{watchlist_id}")
+def delete_watchlist(watchlist_id: int, db: sqlite3.Connection = Depends(get_db)):
+    db.execute("DELETE FROM watchlists WHERE id = ?", (watchlist_id,))
+    db.commit()
+    return {"status": "ok"}
+
+@app.get("/lfm/api/watchlists/{watchlist_id}/items")
+def get_watchlist_items(watchlist_id: int, db: sqlite3.Connection = Depends(get_db)):
+    query = """
+    SELECT symbol, display_order, added_at
+    FROM watchlist_items
+    WHERE watchlist_id = ?
+    ORDER BY display_order ASC, symbol ASC
+    """
+    cursor = db.execute(query, (watchlist_id,))
+    return [dict(row) for row in cursor.fetchall()]
+
+@app.post("/lfm/api/watchlists/{watchlist_id}/items")
+def add_watchlist_item(watchlist_id: int, item: WatchlistItemAdd, db: sqlite3.Connection = Depends(get_db)):
+    try:
+        db.execute("INSERT INTO watchlist_items (watchlist_id, symbol) VALUES (?, ?)", (watchlist_id, item.symbol.upper()))
+        db.commit()
+        return {"status": "ok"}
+    except sqlite3.IntegrityError:
+        return {"status": "already_exists"}
+
+@app.delete("/lfm/api/watchlists/{watchlist_id}/items/{symbol}")
+def remove_watchlist_item(watchlist_id: int, symbol: str, db: sqlite3.Connection = Depends(get_db)):
+    db.execute("DELETE FROM watchlist_items WHERE watchlist_id = ? AND symbol = ?", (watchlist_id, symbol.upper()))
+    db.commit()
+    return {"status": "ok"}
+
+@app.get("/lfm/api/watchlists/supported-indices")
+def get_supported_indices():
+    return list(NSE_INDICES.keys())
+
+@app.post("/lfm/api/watchlists/import-index")
+def import_index_constituents(req: IndexImportRequest, db: sqlite3.Connection = Depends(get_db)):
+    if req.index_name not in NSE_INDICES:
+        raise HTTPException(status_code=400, detail="Unsupported index")
+    
+    csv_filename = NSE_INDICES[req.index_name]
+    # Look for CSV in data/indices
+    csv_path = os.path.join(os.path.dirname(__file__), "../../data/indices", csv_filename)
+    
+    if not os.path.exists(csv_path):
+        raise HTTPException(status_code=404, detail=f"Constituent file {csv_filename} not found on server")
+    
+    try:
+        df = pd.read_csv(csv_path)
+        # Handle different CSV headers (Symbol, Ticker, etc.)
+        symbol_col = None
+        for col in ['Symbol', 'SYMBOL', 'symbol', 'Ticker']:
+            if col in df.columns:
+                symbol_col = col
+                break
+        
+        if not symbol_col:
+            raise HTTPException(status_code=500, detail="Could not find symbol column in CSV")
+        
+        symbols = df[symbol_col].dropna().unique().tolist()
+        
+        for sym in symbols:
+            try:
+                db.execute("INSERT OR IGNORE INTO watchlist_items (watchlist_id, symbol) VALUES (?, ?)", (req.watchlist_id, str(sym).strip().upper()))
+            except:
+                pass
+        db.commit()
+        return {"imported": len(symbols)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Import error: {e}")
