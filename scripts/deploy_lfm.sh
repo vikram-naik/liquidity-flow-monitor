@@ -2,7 +2,7 @@
 
 # Default values
 TAG="latest"
-DATA_PATH="./data"
+DATA_PATH="."
 
 # Help message
 usage() {

@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException, Depends, Query
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, PlainTextResponse
 from pydantic import BaseModel
 from datetime import datetime, timezone, date
 from typing import List, Optional
@@ -28,7 +28,8 @@ _registry = MarkerRegistry()
 app = FastAPI(title="LFM Data Ingestion API", docs_url="/lfm/api/docs", openapi_url="/lfm/api/openapi.json")
 
 # Mount static web assets
-_WEB_DIR = os.path.join(os.path.dirname(__file__), '..', 'web')
+_API_DIR = os.path.dirname(os.path.abspath(__file__))
+_WEB_DIR = os.path.abspath(os.path.join(_API_DIR, '..', 'web'))
 if os.path.isdir(_WEB_DIR):
     app.mount('/lfm/static', StaticFiles(directory=_WEB_DIR), name='static')
 
@@ -266,6 +267,45 @@ def remove_watchlist_item(id: int, symbol: str, conn: sqlite3.Connection = Depen
     cursor.execute("DELETE FROM watchlist_items WHERE watchlist_id = ? AND symbol = ?", (id, symbol.upper()))
     conn.commit()
     return {"status": "success", "message": f"Removed {symbol}"}
+
+@app.get("/lfm/api/watchlists/screeners/export", response_class=PlainTextResponse)
+def export_screener_watchlists(conn: sqlite3.Connection = Depends(get_db)):
+    """
+    Export all watchlists starting with 'SCR:' in a single plain text file.
+    Format:
+    Watchlist Name
+    SYMBOL1
+    SYMBOL2
+    ...
+    """
+    cursor = conn.cursor()
+    # 1. Get all screener watchlists
+    cursor.execute("SELECT id, name FROM watchlists WHERE name LIKE 'SCR:%' ORDER BY name ASC")
+    watchlists = cursor.fetchall()
+    
+    if not watchlists:
+        return "No screener watchlists found."
+        
+    output = []
+    for wl_id, wl_name in watchlists:
+        output.append(wl_name)
+        # 2. Get symbols for this watchlist
+        cursor.execute("""
+            SELECT symbol FROM watchlist_items 
+            WHERE watchlist_id = ? 
+            ORDER BY display_order ASC, added_at DESC
+        """, (wl_id,))
+        symbols = [row[0] for row in cursor.fetchall()]
+        output.extend(symbols)
+        output.append("") # Empty line between lists
+        
+    content = "\n".join(output)
+    filename = f"screeners_export_{datetime.now().strftime('%Y%m%d_%H%M')}.txt"
+    
+    return PlainTextResponse(
+        content=content,
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
 
 # Supported NSE Indices mapping to their CSV filenames
 NSE_INDICES = {

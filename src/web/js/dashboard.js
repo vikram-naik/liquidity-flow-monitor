@@ -605,6 +605,11 @@ class WatchlistManager {
         }
     }
 
+    downloadScreeners() {
+        window.location.href = '/lfm/api/watchlists/screeners/export';
+        if (typeof toggleWlMenu === 'function') toggleWlMenu();
+    }
+
     async addToCurrent(symbol) {
         if (!this.activeListId) return alert("Please select or create a watchlist first");
         if (!symbol) return;

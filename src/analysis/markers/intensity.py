@@ -57,7 +57,11 @@ class IntensityMarker(MarkerInterface):
         return df
 
     def screen(self, df: pd.DataFrame, latest: pd.Series, prev=None) -> bool:
-        # Intensity is not a screener signal.
+        # SCR: HH/HL - Captures 'High Conviction' row of the UI Power Matrix
+        # (Both HH and HL categories have Ledger Tilt >= 45)
+        angle = latest.get('ledger_angle')
+        if angle is not None:
+            return angle >= 45
         return False
 
     def metadata(self) -> dict:
@@ -66,7 +70,7 @@ class IntensityMarker(MarkerInterface):
             'label': 'Trend Intensity',
             'is_chart_marker': False,
             'marker_type': 'neutral',
-            'screener_name': None,
+            'screener_name': 'SCR: HH/HL',
         }
 
     def agg_rules(self) -> dict:
