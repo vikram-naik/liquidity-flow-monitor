@@ -31,7 +31,9 @@ def _clean(obj: Any) -> Any:
     if isinstance(obj, list):
         return [_clean(x) for x in obj]
     if isinstance(obj, (pd.Timestamp, np.datetime64)):
-        return str(obj)
+        if hasattr(obj, "strftime"):
+             return obj.strftime("%Y-%m-%d")
+        return str(obj)[:10]
     if isinstance(obj, (np.integer,)):
         return int(obj)
     if isinstance(obj, (np.floating, float)):

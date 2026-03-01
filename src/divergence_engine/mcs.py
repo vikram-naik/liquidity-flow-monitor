@@ -48,4 +48,16 @@ class MoneyCompositeScore:
         # 5.4 MCS_composite — blended signal
         df["mcs_composite"] = 0.6 * df["mcs"].fillna(0) + 0.4 * df["mcs_mfm"].fillna(0)
 
+        # 5.5 MCS_composite Slope (v2.0 requirement)
+        import numpy as np
+        mcs_vals = df["mcs_composite"].values.astype(float)
+        slopes = np.full(len(mcs_vals), np.nan)
+        x = np.arange(10, dtype=float)
+        for i in range(9, len(mcs_vals)):
+            y = mcs_vals[i-9:i+1]
+            if not np.any(np.isnan(y)):
+                coeffs = np.polyfit(x, y, 1)
+                slopes[i] = coeffs[0]
+        df["mcs_composite_slope"] = slopes
+
         return df

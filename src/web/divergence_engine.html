@@ -20,28 +20,16 @@
       <div class="pill-grp">
         <label class="pill ov-cwvap"><input type="checkbox" id="cbCWVAP" checked><span>CWVAP</span></label>
         <label class="pill ov-cpoc"><input type="checkbox" id="cbCPOC" checked><span>CPOC</span></label>
-        <label class="pill ov-va"><input type="checkbox" id="cbVA"><span>VA</span></label>
         <label class="pill ov-vol"><input type="checkbox" id="cbVol" checked><span>Vol</span></label>
       </div>
-      <div class="sep">|</div>
-      <!-- Windows -->
-      <div class="pill-grp">
-        <label class="pill p10"><input type="checkbox" id="cb10"><span>10</span></label>
-        <label class="pill p30"><input type="checkbox" id="cb30"><span>30</span></label>
-        <label class="pill p60"><input type="checkbox" id="cb60"><span>60</span></label>
-        <label class="pill p120"><input type="checkbox" id="cb120"><span>120</span></label>
-      </div>
-      <div class="sep">|</div>
-      <!-- Panel 2: CWC -->
-      <div class="pill-grp">
-        <label class="pill ov-cwc"><input type="checkbox" id="cbCWC" checked><span>CWC</span></label>
-      </div>
-      <div class="sep">|</div>
-      <!-- Panel 3: MCS -->
-      <div class="pill-grp">
-        <label class="pill ov-mcs"><input type="checkbox" id="cbMCS"><span>MCS</span></label>
-        <label class="pill ov-mfm"><input type="checkbox" id="cbMFM"><span>MFM</span></label>
-        <label class="pill ov-mcsd"><input type="checkbox" id="cbMCSD" checked><span>ΔM</span></label>
+      <!-- Marker Legend -->
+      <div class="marker-legend">
+        <div class="leg-item"><span class="dot up"></span><span>Up</span></div>
+        <div class="leg-item"><span class="dot down"></span><span>Down</span></div>
+        <div class="leg-item"><span class="dot acc"></span><span>Acc</span></div>
+        <div class="leg-item"><span class="dot dist"></span><span>Dist</span></div>
+        <div class="leg-item"><span class="dot div-up"></span><span>Div↑</span></div>
+        <div class="leg-item"><span class="dot div-down"></span><span>Div↓</span></div>
       </div>
     </div>
     <a href="/lfm/help" class="help-btn" title="Help Guide — Markers &amp; Trends Reference">?</a>
@@ -56,15 +44,6 @@
     <div class="chart-area" id="chart-container">
       <div id="p1" class="panel">
         <div id="leg1" class="legend"></div>
-      </div>
-      <div id="p2" class="panel">
-        <div id="leg2" class="legend"></div>
-      </div>
-      <div id="p3" class="panel">
-        <div id="leg3" class="legend"></div>
-      </div>
-      <div id="p4" class="panel">
-        <div id="leg4" class="legend"></div>
       </div>
     </div>
 
@@ -107,9 +86,11 @@
       </div>
 
       <div class="sidebar-section sidebar-bottom">
-        <h3>Current Engine State</h3>
+        <h3>Engine State</h3>
         <div id="sidebar-annotations">
-          <!-- Populated by JS -->
+          <table class="ann-table" id="state-table">
+            <!-- Populated by JS -->
+          </table>
         </div>
       </div>
     </aside>

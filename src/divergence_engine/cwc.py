@@ -81,6 +81,17 @@ class CrossWindowCoherence:
         # 4.3 CWC Trend
         df["cwc_delta"] = df["cwc"] - df["cwc"].shift(5)
 
+        # 4.4 CWC Slope (v2.0 requirement)
+        cwc_vals = df["cwc"].values.astype(float)
+        slopes = np.full(len(cwc_vals), np.nan)
+        x = np.arange(10, dtype=float)
+        for i in range(9, len(cwc_vals)):
+            y = cwc_vals[i - 9 : i + 1]
+            if not np.any(np.isnan(y)):
+                coeffs = np.polyfit(x, y, 1)
+                slopes[i] = coeffs[0]
+        df["cwc_slope"] = slopes
+
         # Clean up intermediate diff columns
         df.drop(columns=diff_cols, inplace=True)
 

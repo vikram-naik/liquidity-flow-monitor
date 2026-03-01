@@ -32,6 +32,7 @@ from src.divergence_engine.cwvap import CompositeVWAP
 from src.divergence_engine.divergence import DivergenceDetector
 from src.divergence_engine.dvl_ledger import DVLLedger
 from src.divergence_engine.mcs import MoneyCompositeScore
+from src.divergence_engine.analysis import compute_trend_participation
 from src.divergence_engine.utils import load_symbol_data, validate_dataframe, WINDOWS
 
 
@@ -82,6 +83,15 @@ class EngineResult:
                     "DISTRIBUTION", "SIDEWAYS", "RECOVERY",
                 ]
             },
+            "regime": row.get("regime", "NEUTRAL"),
+            "regime_conf": round(float(row.get("regime_conf", 0)), 4),
+            "coherence_raw": round(float(row.get("coherence_raw", 0)), 4),
+            "coherence": round(float(row.get("coherence", 0)), 4),
+            "score_slope": row.get("score_slope", "FLAT"),
+            "div_flag": row.get("div_flag", ""),
+            "div_conf": round(float(row.get("div_conf", 0)), 4),
+            "price_slope_z": round(float(row.get("price_slope_z", 0)), 4),
+            "rdv_slope_z": round(float(row.get("rdv_slope_z", 0)), 4),
         }
 
     def export(self, path: str | None = None) -> str:
@@ -176,6 +186,9 @@ class DivergenceEngine:
         # Module 7 — State Classification
         cls = StateClassifier()
         df = cls.compute_all(df)
+
+        # Module 8 — Trend Participation Analysis (v4.0)
+        df = compute_trend_participation(df)
 
         # Build state summary DataFrame
         state_cols = ["date", "state", "state_confidence"] + [

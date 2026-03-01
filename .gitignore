@@ -30,3 +30,6 @@ bajfinance_investigation.csv
 bajfin_verify.txt
 investigation_output.txt
 tactical_check.txt
+analysis*.txt
+analysis*.csv
+
