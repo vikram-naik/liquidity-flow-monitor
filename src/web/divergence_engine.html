@@ -24,23 +24,35 @@
       </div>
       <!-- Marker Legend -->
       <div class="marker-legend">
-        <div class="leg-item"><span class="dot st-vbtm"></span><span>V-Btm</span></div>
-        <div class="leg-item"><span class="dot st-brkout"></span><span>BrkOut</span></div>
-        <div class="leg-item"><span class="dot st-early"></span><span>Early</span></div>
-        <div class="leg-item"><span class="dot st-markup"></span><span>Markup</span></div>
-        <div class="leg-item"><span class="dot st-stealth"></span><span>Stealth Acc</span></div>
-        <div class="leg-item"><span class="dot st-exhaust"></span><span>Exhaust Warning</span></div>
-        <div class="leg-item"><span class="dot st-top"></span><span>Top</span></div>
-        <div class="leg-item"><span class="dot st-actdist"></span><span>Active Dist</span></div>
-        <div class="leg-item"><span class="dot st-brkdwn"></span><span>BrkDwn</span></div>
-        <div class="leg-item"><span class="dot st-mrkdwn"></span><span>MrkDwn</span></div>
-        <div class="leg-item"><span class="dot st-dcb"></span><span>DCB</span></div>
+        <div class="leg-group leg-bull">
+          <span class="grp-label">BULL</span>
+          <div class="leg-item"><span class="dot st-vbtm"></span><span>V-Btm</span></div>
+          <div class="leg-item"><span class="dot st-brkout"></span><span>BrkOut</span></div>
+          <div class="leg-item"><span class="dot st-early"></span><span>Early</span></div>
+          <div class="leg-item"><span class="dot st-markup"></span><span>Markup</span></div>
+          <div class="leg-item"><span class="dot st-stealth"></span><span>Stealth Acc</span></div>
+        </div>
+        <div class="leg-group leg-bear">
+          <span class="grp-label">BEAR</span>
+          <div class="leg-item"><span class="dot st-top"></span><span>Top</span></div>
+          <div class="leg-item"><span class="dot st-exhaust"></span><span>Exhaust Warning</span></div>
+          <div class="leg-item"><span class="dot st-actdist"></span><span>Active Dist</span></div>
+          <div class="leg-item"><span class="dot st-brkdwn"></span><span>BrkDwn</span></div>
+          <div class="leg-item"><span class="dot st-mrkdwn"></span><span>MrkDwn</span></div>
+        </div>
+        <div class="leg-group leg-neutral">
+          <span class="grp-label">MIXED</span>
+          <div class="leg-item"><span class="dot st-dcb"></span><span>DCB</span></div>
+        </div>
       </div>
     </div>
+    <button id="wl-add-active" class="settings-btn" title="Add Active Stock to Watchlist" disabled>+</button>
     <a href="/lfm/help" class="help-btn" title="Help Guide — Markers &amp; Trends Reference">?</a>
     <button id="open-settings" class="settings-btn" title="Engine Settings">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+        <circle cx="12" cy="12" r="3" />
+        <path
+          d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
       </svg>
     </button>
     <button id="toggle-sidebar" class="sidebar-btn" title="Toggle Sidebar Information">
@@ -77,25 +89,31 @@
       <div id="watchlist-manager" class="sidebar-section">
         <div class="wl-header">
           <h3>Watchlist</h3>
-          <div class="wl-actions">
+          <div class="wl-actions" style="position:relative">
+            <button id="wl-sort-menu-trigger" title="Sort Watchlist">⇅</button>
+            <div id="wl-sort-dropdown" class="search-dropdown wl-sort-dropdown"
+              style="right:0; left:auto; width:130px; font-size:12px">
+              <div class="search-item sort-btn active" data-sort="date-desc">Date (Newest)</div>
+              <div class="search-item sort-btn" data-sort="date-asc">Date (Oldest)</div>
+              <div class="search-item sort-btn" data-sort="name-asc">Name (A-Z)</div>
+              <div class="search-item sort-btn" data-sort="name-desc">Name (Z-A)</div>
+            </div>
             <button id="wl-add" title="Create New Watchlist">+</button>
             <button id="wl-rename" title="Rename Current Watchlist">✎</button>
             <button id="wl-delete" title="Delete Current Watchlist">🗑</button>
             <button id="wl-import" title="Import from Index">↓</button>
             <button id="wl-download" title="Download Watchlist">💾</button>
+            <div id="wl-import-dropdown" class="search-dropdown wl-sort-dropdown"
+              style="right:0; left:auto; width:220px; font-size:12px; max-height:400px; overflow-y:auto;">
+              <!-- Populated by JS -->
+            </div>
           </div>
         </div>
-        <div class="wl-sort-controls">
-          <select id="wl-sort">
-            <option value="date-desc">Date (Newest)</option>
-            <option value="date-asc">Date (Oldest)</option>
-            <option value="name-asc">Name (A-Z)</option>
-            <option value="name-desc">Name (Z-A)</option>
+        <div class="wl-selection-row" style="margin-bottom:8px">
+          <select id="wl-select">
+            <option value="">Select Watchlist</option>
           </select>
         </div>
-        <select id="wl-select">
-          <option value="">Select Watchlist</option>
-        </select>
         <div id="wl-items" class="wl-items-list">
           <!-- Populated by JS -->
         </div>

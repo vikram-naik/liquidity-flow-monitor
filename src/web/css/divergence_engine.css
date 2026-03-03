@@ -227,6 +227,38 @@ body {
   margin-left: 8px;
 }
 
+.leg-group {
+  display: flex;
+  gap: 8px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  align-items: center;
+  border: 1px solid transparent;
+}
+
+.leg-bull {
+  background-color: rgba(0, 230, 118, 0.05);
+  border-color: rgba(0, 230, 118, 0.15);
+}
+
+.leg-bear {
+  background-color: rgba(255, 82, 82, 0.05);
+  border-color: rgba(255, 82, 82, 0.15);
+}
+
+.leg-neutral {
+  background-color: rgba(158, 158, 158, 0.05);
+  border-color: rgba(158, 158, 158, 0.15);
+}
+
+.grp-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: #8b949e;
+  letter-spacing: 0.5px;
+  margin-right: 4px;
+}
+
 .leg-item {
   display: flex;
   align-items: center;
@@ -398,6 +430,54 @@ body {
 
 .search-item:hover {
   background: #30363d;
+}
+
+.wl-sort-dropdown {
+  border-top: 1px solid #30363d !important;
+  border-radius: 6px !important;
+  margin-top: 4px;
+}
+
+.mini-btn {
+  background: #238636;
+  border: 1px solid rgba(240, 246, 252, 0.1);
+  color: #fff;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  transition: background 0.2s;
+}
+
+.mini-btn:hover {
+  background: #2ea043;
+}
+
+.search-item.imported {
+  background: rgba(48, 54, 61, 0.3);
+  pointer-events: none;
+}
+
+#wl-import-dropdown::-webkit-scrollbar {
+  width: 6px;
+}
+
+#wl-import-dropdown::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+#wl-import-dropdown::-webkit-scrollbar-thumb {
+  background-color: #30363d;
+  border-radius: 10px;
+}
+
+#wl-import-dropdown::-webkit-scrollbar-thumb:hover {
+  background-color: #8b949e;
+}
+
+.search-item.active {
+  color: #58a6ff;
+  font-weight: 700;
 }
 
 .search-item .sym {
@@ -712,8 +792,13 @@ div[class*="apply-common-tooltip"] {
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; }
-  to   { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
 }
 
 .settings-modal {
@@ -729,8 +814,15 @@ div[class*="apply-common-tooltip"] {
 }
 
 @keyframes slideUp {
-  from { transform: translateY(20px); opacity: 0; }
-  to   { transform: translateY(0); opacity: 1; }
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
 }
 
 .settings-hdr {

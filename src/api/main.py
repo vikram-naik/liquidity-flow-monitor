@@ -96,8 +96,11 @@ class IndexImportRequest(BaseModel):
 def get_db():
     # Use environment variable if provided (for Docker)
     db_path = os.getenv("DB_PATH", DB_PATH)
-    conn = sqlite3.connect(db_path, check_same_thread=False)
+    conn = sqlite3.connect(db_path, check_same_thread=False, timeout=20)
     conn.row_factory = sqlite3.Row
+    # Enable Foreign Keys and WAL mode for every connection
+    conn.execute("PRAGMA foreign_keys = ON;")
+    conn.execute("PRAGMA journal_mode = WAL;")
     try:
         yield conn
     finally:
@@ -248,9 +251,11 @@ def rename_watchlist(watchlist_id: int, wl: WatchlistUpdate, db: sqlite3.Connect
 
 @app.delete("/lfm/api/watchlists/{watchlist_id}")
 def delete_watchlist(watchlist_id: int, db: sqlite3.Connection = Depends(get_db)):
-    db.execute("DELETE FROM watchlists WHERE id = ?", (watchlist_id,))
+    cursor = db.execute("DELETE FROM watchlists WHERE id = ?", (watchlist_id,))
+    if cursor.rowcount == 0:
+        raise HTTPException(status_code=404, detail="Watchlist not found")
     db.commit()
-    return {"status": "ok"}
+    return {"status": "ok", "deleted_id": watchlist_id}
 
 @app.get("/lfm/api/watchlists/{watchlist_id}/items")
 def get_watchlist_items(watchlist_id: int, db: sqlite3.Connection = Depends(get_db)):
@@ -283,37 +288,87 @@ def get_supported_indices():
     return list(NSE_INDICES.keys())
 
 @app.post("/lfm/api/watchlists/import-index")
-def import_index_constituents(req: IndexImportRequest, db: sqlite3.Connection = Depends(get_db)):
-    if req.index_name not in NSE_INDICES:
-        raise HTTPException(status_code=400, detail="Unsupported index")
-    
-    csv_filename = NSE_INDICES[req.index_name]
-    # Look for CSV in data/indices
-    csv_path = os.path.join(os.path.dirname(__file__), "../../data/indices", csv_filename)
-    
-    if not os.path.exists(csv_path):
-        raise HTTPException(status_code=404, detail=f"Constituent file {csv_filename} not found on server")
-    
+def import_index_constituents(req: IndexImportRequest, conn: sqlite3.Connection = Depends(get_db)):
+    """
+    Import constituents for a major index into a dedicated watchlist by fetching 
+    the current CSV list directly from NSE archives.
+    """
+    cursor = conn.cursor()
+    idx_name = req.index_name.strip().upper()
+
+    csv_file = None
+    # Flexible match (e.g. "Nifty 50" -> "NIFTY 50")
+    for name, filename in NSE_INDICES.items():
+        if name.upper() == idx_name:
+            csv_file = filename
+            idx_name = name # Use canonical name
+            break
+
+    if not csv_file:
+         raise HTTPException(
+             status_code=400, 
+             detail=f"Index '{req.index_name}' not supported. Call /lfm/api/watchlists/supported-indices for list."
+         )
+
+    url = f"https://nsearchives.nseindia.com/content/indices/{csv_file}"
+    print(f"[API] Fetching index constituents from {url}...")
+
     try:
-        df = pd.read_csv(csv_path)
-        # Handle different CSV headers (Symbol, Ticker, etc.)
-        symbol_col = None
-        for col in ['Symbol', 'SYMBOL', 'symbol', 'Ticker']:
-            if col in df.columns:
-                symbol_col = col
-                break
-        
-        if not symbol_col:
-            raise HTTPException(status_code=500, detail="Could not find symbol column in CSV")
-        
-        symbols = df[symbol_col].dropna().unique().tolist()
-        
-        for sym in symbols:
+        # NSE requires a User-Agent or it returns 403
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
+        response = requests.get(url, headers=headers, timeout=15)
+
+        if response.status_code != 200:
+            raise HTTPException(status_code=502, detail=f"Failed to fetch from NSE: {response.status_code}")
+
+        # Parse CSV
+        df = pd.read_csv(io.StringIO(response.text))
+
+        # Clean column names (strip whitespace and upper case)
+        df.columns = [c.strip().lower() for c in df.columns]
+
+        if 'symbol' not in df.columns:
+            raise HTTPException(status_code=500, detail="NSE CSV format changed: 'Symbol' column missing.")
+
+        symbols = df['symbol'].dropna().astype(str).tolist()
+        symbols = [s.strip().upper() for s in symbols]
+
+        if not symbols:
+            raise HTTPException(status_code=404, detail="No symbols found in index file.")
+
+        # 1. Get or Create Watchlist
+        cursor.execute("SELECT id FROM watchlists WHERE name = ?", (idx_name,))
+        row = cursor.fetchone()
+        if row:
+            wl_id = row[0]
+        else:
+            cursor.execute("INSERT INTO watchlists (name, description) VALUES (?, ?)", (idx_name, f"Auto-imported index constituents for {idx_name}"))
+            wl_id = cursor.lastrowid
+
+        # 2. Bulk Insert (Ignore duplicates)
+        count = 0
+        # Get current max order
+        cursor.execute("SELECT MAX(display_order) FROM watchlist_items WHERE watchlist_id = ?", (wl_id,))
+        max_order = cursor.fetchone()[0] or 0
+
+        for i, sym in enumerate(symbols):
             try:
-                db.execute("INSERT OR IGNORE INTO watchlist_items (watchlist_id, symbol) VALUES (?, ?)", (req.watchlist_id, str(sym).strip().upper()))
-            except:
-                pass
-        db.commit()
-        return {"imported": len(symbols)}
+                cursor.execute("""
+                    INSERT INTO watchlist_items (watchlist_id, symbol, display_order) 
+                    VALUES (?, ?, ?)
+                """, (wl_id, sym, max_order + i + 1))
+                count += 1
+            except sqlite3.IntegrityError:
+                continue # Already in list
+
+        conn.commit()
+        return {"status": "success", "index": idx_name, "watchlist_id": wl_id, "imported": count, "total_constituents": len(symbols)}
+
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Import error: {e}")
+        conn.rollback()
+        print(f"[API] Error importing index: {e}")
+        raise HTTPException(status_code=500, detail=f"Internal Error: {str(e)}")

@@ -409,26 +409,140 @@
     }
 
     var WatchlistManager = {
-        currentWlId: null, currentItems: [],
+        currentWlId: null, currentItems: [], activeSortMode: "date-desc",
         init: function () { this.fetchLists(); this.bindEvents(); },
         bindEvents: function () {
             var self = this;
-            document.getElementById("wl-select").addEventListener("change", function () { self.currentWlId = this.value; self.fetchItems(); });
-            document.getElementById("wl-add").onclick = () => { var name = prompt("Enter Watchlist Name:"); if (name) this.api("/lfm/api/watchlists", "POST", { name }).then(() => this.fetchLists()); };
-            document.getElementById("wl-rename").onclick = () => { if (!this.currentWlId) return; var name = prompt("Enter New Name:"); if (name) this.api("/lfm/api/watchlists/" + this.currentWlId, "PATCH", { name }).then(() => this.fetchLists()); };
-            document.getElementById("wl-delete").onclick = () => { if (!this.currentWlId || !confirm("Delete this watchlist?")) return; this.api("/lfm/api/watchlists/" + this.currentWlId, "DELETE").then(() => { this.currentWlId = null; this.fetchLists(); }); };
-            document.getElementById("wl-import").onclick = () => { if (!this.currentWlId) return alert("Select a watchlist first"); fetch("/lfm/api/watchlists/supported-indices").then(r => r.json()).then(indices => { var idx = prompt("Enter Index Name:\n" + indices.join(", ")); if (idx && indices.includes(idx)) { this.api("/lfm/api/watchlists/import-index", "POST", { watchlist_id: parseInt(this.currentWlId), index_name: idx }).then(res => { alert("Imported " + res.imported + " symbols"); this.fetchItems(); }); } }); };
+            document.getElementById("wl-select").addEventListener("change", function () {
+                self.currentWlId = this.value;
+                var addBtn = document.getElementById("wl-add-active");
+                if (addBtn) addBtn.disabled = !self.currentWlId;
+                self.fetchItems();
+            });
+            document.getElementById("wl-add").onclick = () => { var name = prompt("Enter Watchlist Name:"); if (name) this.api("/lfm/api/watchlists", "POST", { name }).then(() => this.fetchLists()).catch(err => alert("Error: " + err.message)); };
+            document.getElementById("wl-rename").onclick = () => { if (!this.currentWlId) return; var name = prompt("Enter New Name:"); if (name) this.api("/lfm/api/watchlists/" + this.currentWlId, "PATCH", { name }).then(() => this.fetchLists()).catch(err => alert("Error: " + err.message)); };
+            document.getElementById("wl-delete").onclick = () => { if (!this.currentWlId || !confirm("Delete this watchlist?")) return; this.api("/lfm/api/watchlists/" + this.currentWlId, "DELETE").then(() => { this.currentWlId = null; this.fetchLists(); }).catch(err => alert("Error deleting watchlist: " + err.message)); };
+            document.getElementById("wl-import").onclick = () => { if (!this.currentWlId) return alert("Select a watchlist first"); fetch("/lfm/api/watchlists/supported-indices").then(r => r.json()).then(indices => { var idx = prompt("Enter Index Name:\n" + indices.join(", ")); if (idx && indices.includes(idx)) { this.api("/lfm/api/watchlists/import-index", "POST", { watchlist_id: parseInt(this.currentWlId), index_name: idx }).then(res => { alert("Imported " + res.imported + " symbols"); this.fetchItems(); }).catch(err => alert("Error importing: " + err.message)); } }); };
             document.getElementById("wl-download").onclick = () => { if (!this.currentWlId || this.currentItems.length === 0) return alert("Nothing to download"); var sel = document.getElementById("wl-select"), wlName = sel.options[sel.selectedIndex].text; var content = wlName + "\n" + this.currentItems.map(i => i.symbol).join("\n"), blob = new Blob([content], { type: "text/plain" }), url = URL.createObjectURL(blob), a = document.createElement("a"); a.href = url; a.download = wlName.replace(/\s+/g, "_") + ".txt"; a.click(); };
-            document.getElementById("wl-sort").addEventListener("change", function () { self.renderItems(); });
+
+            // Handle Sort dropdown modal
+            var sortTrigger = document.getElementById("wl-sort-menu-trigger");
+            var sortDropdown = document.getElementById("wl-sort-dropdown");
+            if (sortTrigger && sortDropdown) {
+                sortTrigger.onclick = function (e) {
+                    e.stopPropagation();
+                    sortDropdown.style.display = sortDropdown.style.display === "block" ? "none" : "block";
+                };
+            }
+            document.addEventListener("click", (e) => {
+                if (sortDropdown && sortDropdown.style.display === "block") {
+                    if (!sortTrigger.contains(e.target) && !sortDropdown.contains(e.target)) {
+                        sortDropdown.style.display = "none";
+                    }
+                }
+                if (importDropdown && importDropdown.style.display === "block") {
+                    if (!importTrigger.contains(e.target) && !importDropdown.contains(e.target)) {
+                        importDropdown.style.display = "none";
+                    }
+                }
+            });
+
+            // Handle Import dropdown modal
+            var importTrigger = document.getElementById("wl-import");
+            var importDropdown = document.getElementById("wl-import-dropdown");
+            if (importTrigger && importDropdown) {
+                importTrigger.onclick = function (e) {
+                    e.stopPropagation();
+                    if (importDropdown.style.display === "block") {
+                        importDropdown.style.display = "none";
+                    } else {
+                        self.renderImportList();
+                        importDropdown.style.display = "block";
+                        if (sortDropdown) sortDropdown.style.display = "none";
+                    }
+                };
+            }
+
+            // Rewrite sorting binding over dynamic dropdown buttons
+            var sortBtns = sortDropdown ? sortDropdown.querySelectorAll(".sort-btn") : document.querySelectorAll(".sort-btn");
+            sortBtns.forEach(btn => {
+                btn.addEventListener("click", function () {
+                    sortBtns.forEach(b => b.classList.remove("active"));
+                    this.classList.add("active");
+                    self.activeSortMode = this.dataset.sort;
+                    self.renderItems();
+                    if (sortDropdown) sortDropdown.style.display = "none";
+                });
+            });
+
+            // Add Current active stock symbol action over API
+            var wlAddActive = document.getElementById("wl-add-active");
+            if (wlAddActive) {
+                wlAddActive.addEventListener("click", () => {
+                    if (!self.currentWlId) return alert("Select a watchlist first");
+                    self.api(`/lfm/api/watchlists/${self.currentWlId}/items`, "POST", { symbol: symbol }).then(res => {
+                        if (res.status === "already_exists") alert(symbol + " is already in the watchlist.");
+                        else self.fetchItems();
+                    });
+                });
+            }
+
             document.getElementById("wl-items").onclick = (e) => { var item = e.target.closest(".wl-item"); if (!item) return; var sym = item.dataset.sym; if (e.target.classList.contains("remove-btn")) { this.api(`/lfm/api/watchlists/${this.currentWlId}/items/${sym}`, "DELETE").then(() => this.fetchItems()); } else { loadSymbol(sym); } };
         },
-        api: function (url, method, body) { return fetch(url, { method, headers: { "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : null }).then(r => r.json()); },
-        fetchLists: function () { fetch("/lfm/api/watchlists").then(r => r.json()).then(lists => { var sel = document.getElementById("wl-select"), current = this.currentWlId; sel.innerHTML = '<option value="">Select Watchlist</option>' + lists.map(l => `<option value="${l.id}" ${l.id == current ? 'selected' : ''}>${l.name}</option>`).join(""); if (current) this.fetchItems(); else document.getElementById("wl-items").innerHTML = ""; }); },
+        api: function (url, method, body) {
+            return fetch(url, { method, headers: { "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : null })
+                .then(async r => {
+                    const data = await r.json();
+                    if (!r.ok) throw new Error(data.detail || "Request failed");
+                    return data;
+                });
+        },
+        fetchLists: function () {
+            fetch("/lfm/api/watchlists").then(r => r.json()).then(lists => {
+                this.allWatchlists = lists;
+                var sel = document.getElementById("wl-select"), current = this.currentWlId;
+                sel.innerHTML = '<option value="">Select Watchlist</option>' + lists.map(l => `<option value="${l.id}" ${l.id == current ? 'selected' : ''}>${l.name}</option>`).join("");
+                if (current) this.fetchItems();
+                else document.getElementById("wl-items").innerHTML = "";
+                var addBtn = document.getElementById("wl-add-active");
+                if (addBtn) addBtn.disabled = !current;
+                if (document.getElementById("wl-import-dropdown").style.display === "block") this.renderImportList();
+            });
+        },
+        renderImportList: function () {
+            var dropdown = document.getElementById("wl-import-dropdown");
+            fetch("/lfm/api/watchlists/supported-indices").then(r => r.json()).then(indices => {
+                var watchlistNames = (this.allWatchlists || []).map(l => l.name);
+                dropdown.innerHTML = indices.map(idx => {
+                    var isImported = watchlistNames.includes(idx);
+                    return `
+                        <div class="search-item ${isImported ? 'imported' : ''}" style="justify-content: space-between; padding: 6px 12px;">
+                            <span style="color: ${isImported ? '#8b949e' : '#58a6ff'}; font-weight: 500;">${idx}</span>
+                            ${isImported ?
+                            '<span style="color: #3fb950; font-size: 10px;">Imported</span>' :
+                            `<button class="mini-btn" onclick="WatchlistManager.handleAutoImport('${idx}')" style="width: 20px; height: 20px; padding: 0; line-height: 18px;">+</button>`
+                        }
+                        </div>
+                    `;
+                }).join("");
+            });
+        },
+        handleAutoImport: function (indexName) {
+            this.api("/lfm/api/watchlists", "POST", { name: indexName }).then(res => {
+                var wlId = res.id;
+                this.api("/lfm/api/watchlists/import-index", "POST", { watchlist_id: wlId, index_name: indexName }).then(importRes => {
+                    this.currentWlId = wlId;
+                    this.fetchLists();
+                    document.getElementById("wl-import-dropdown").style.display = "none";
+                });
+            });
+        },
         fetchItems: function () { if (!this.currentWlId) return; fetch(`/lfm/api/watchlists/${this.currentWlId}/items`).then(r => r.json()).then(items => { this.currentItems = items; this.renderItems(); }); },
         renderItems: function () {
-            var sortMode = document.getElementById("wl-sort").value, sorted = [...this.currentItems];
+            var sortMode = this.activeSortMode, sorted = [...this.currentItems];
             if (sortMode === "name-asc") sorted.sort((a, b) => a.symbol.localeCompare(b.symbol)); else if (sortMode === "name-desc") sorted.sort((a, b) => b.symbol.localeCompare(a.symbol)); else if (sortMode === "date-asc") sorted.sort((a, b) => new Date(a.added_at) - new Date(b.added_at)); else if (sortMode === "date-desc") sorted.sort((a, b) => new Date(b.added_at) - new Date(a.added_at));
             document.getElementById("wl-items").innerHTML = sorted.map(i => `<div class="wl-item ${i.symbol === symbol ? 'active' : ''}" data-sym="${i.symbol}"><div class="wl-item-info"><span class="sym">${i.symbol}</span><span class="date">${formatDate(i.added_at)}</span></div><span class="remove-btn">×</span></div>`).join("");
+            this.updateActiveState();
         },
         updateActiveState: function () { document.querySelectorAll(".wl-item").forEach(item => { if (item.dataset.sym === symbol) item.classList.add("active"); else item.classList.remove("active"); }); }
     };
@@ -437,14 +551,14 @@
 
     // --- Settings Panel Logic ---
     var THRESHOLD_META = {
-        angle_window:       { label: "Angle Window (days)",       min: 3,    max: 10,  step: 1,    fmt: v => v },
-        cwvap_chop_band:    { label: "CWVAP Chop Band (±%)",      min: 0.5,  max: 4.0, step: 0.1,  fmt: v => v.toFixed(1) },
-        premium_boundary:   { label: "Premium Boundary (%)",      min: 1.0,  max: 6.0, step: 0.5,  fmt: v => v.toFixed(1) },
-        discount_boundary:  { label: "Discount Boundary (%)",     min: -6.0, max: -1.0,step: 0.5,  fmt: v => v.toFixed(1) },
-        mfm_exhaustion:     { label: "MFM Exhaustion Threshold",  min: -0.5, max: 0.0, step: 0.05, fmt: v => v.toFixed(2) },
-        mfm_recovery_guard: { label: "MFM Recovery Guard",        min: 0.0,  max: 0.5, step: 0.05, fmt: v => v.toFixed(2) },
-        coherence_strong:   { label: "Coherence Strong (≥)",      min: 0.3,  max: 0.9, step: 0.05, fmt: v => v.toFixed(2) },
-        coherence_weak:     { label: "Coherence Weak (≤)",        min: 0.1,  max: 0.5, step: 0.05, fmt: v => v.toFixed(2) },
+        angle_window: { label: "Angle Window (days)", min: 3, max: 10, step: 1, fmt: v => v },
+        cwvap_chop_band: { label: "CWVAP Chop Band (±%)", min: 0.5, max: 4.0, step: 0.1, fmt: v => v.toFixed(1) },
+        premium_boundary: { label: "Premium Boundary (%)", min: 1.0, max: 6.0, step: 0.5, fmt: v => v.toFixed(1) },
+        discount_boundary: { label: "Discount Boundary (%)", min: -6.0, max: -1.0, step: 0.5, fmt: v => v.toFixed(1) },
+        mfm_exhaustion: { label: "MFM Exhaustion Threshold", min: -0.5, max: 0.0, step: 0.05, fmt: v => v.toFixed(2) },
+        mfm_recovery_guard: { label: "MFM Recovery Guard", min: 0.0, max: 0.5, step: 0.05, fmt: v => v.toFixed(2) },
+        coherence_strong: { label: "Coherence Strong (≥)", min: 0.3, max: 0.9, step: 0.05, fmt: v => v.toFixed(2) },
+        coherence_weak: { label: "Coherence Weak (≤)", min: 0.1, max: 0.5, step: 0.05, fmt: v => v.toFixed(2) },
     };
 
     var GROUPS = [
@@ -531,4 +645,5 @@
             });
     };
 
+    window.WatchlistManager = WatchlistManager;
 })();
