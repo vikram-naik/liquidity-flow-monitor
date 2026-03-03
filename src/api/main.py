@@ -166,6 +166,42 @@ def help_guide():
         raise HTTPException(status_code=404, detail="Help guide not found")
     return FileResponse(html_path, media_type="text/html")
 
+# --- State Rules Config Routes ---
+
+@app.get("/lfm/api/config/state-rules")
+def get_state_rules(db: sqlite3.Connection = Depends(get_db)):
+    """Return current state classification config (defaults + user overrides)."""
+    from src.divergence_engine import config_manager
+    config = config_manager.get_config(db)
+    defaults = config_manager.load_defaults()
+    return {
+        "thresholds": config["thresholds"],
+        "defaults": defaults["thresholds"],
+        "rules_count": len(config.get("rules", [])),
+    }
+
+
+class ThresholdUpdate(BaseModel):
+    thresholds: dict
+
+
+@app.put("/lfm/api/config/state-rules")
+def update_state_rules(body: ThresholdUpdate, db: sqlite3.Connection = Depends(get_db)):
+    """Save user threshold overrides. Only stores values that differ from defaults."""
+    from src.divergence_engine import config_manager
+    config = config_manager.save_user_config(db, body.thresholds)
+    cache.clear()  # Invalidate analysis cache so next load uses new thresholds
+    return {"status": "saved", "thresholds": config["thresholds"]}
+
+
+@app.post("/lfm/api/config/state-rules/reset")
+def reset_state_rules(db: sqlite3.Connection = Depends(get_db)):
+    """Factory reset — delete all user overrides and return defaults."""
+    from src.divergence_engine import config_manager
+    config = config_manager.factory_reset(db)
+    cache.clear()  # Invalidate analysis cache
+    return {"status": "reset", "thresholds": config["thresholds"]}
+
 
 # --- Stock & Analysis Routes ---
 

@@ -434,4 +434,101 @@
     };
     fetchAllStocks();
     WatchlistManager.init();
+
+    // --- Settings Panel Logic ---
+    var THRESHOLD_META = {
+        angle_window:       { label: "Angle Window (days)",       min: 3,    max: 10,  step: 1,    fmt: v => v },
+        cwvap_chop_band:    { label: "CWVAP Chop Band (±%)",      min: 0.5,  max: 4.0, step: 0.1,  fmt: v => v.toFixed(1) },
+        premium_boundary:   { label: "Premium Boundary (%)",      min: 1.0,  max: 6.0, step: 0.5,  fmt: v => v.toFixed(1) },
+        discount_boundary:  { label: "Discount Boundary (%)",     min: -6.0, max: -1.0,step: 0.5,  fmt: v => v.toFixed(1) },
+        mfm_exhaustion:     { label: "MFM Exhaustion Threshold",  min: -0.5, max: 0.0, step: 0.05, fmt: v => v.toFixed(2) },
+        mfm_recovery_guard: { label: "MFM Recovery Guard",        min: 0.0,  max: 0.5, step: 0.05, fmt: v => v.toFixed(2) },
+        coherence_strong:   { label: "Coherence Strong (≥)",      min: 0.3,  max: 0.9, step: 0.05, fmt: v => v.toFixed(2) },
+        coherence_weak:     { label: "Coherence Weak (≤)",        min: 0.1,  max: 0.5, step: 0.05, fmt: v => v.toFixed(2) },
+    };
+
+    var GROUPS = [
+        { title: "Trajectory", keys: ["angle_window"] },
+        { title: "Value Zones", keys: ["cwvap_chop_band", "premium_boundary", "discount_boundary"] },
+        { title: "Money Flow", keys: ["mfm_exhaustion", "mfm_recovery_guard"] },
+        { title: "Coherence", keys: ["coherence_strong", "coherence_weak"] },
+    ];
+
+    var settingsOverlay = document.getElementById("settings-overlay");
+    var settingsBody = document.getElementById("settings-body");
+    var settingsDefaults = {};
+    var settingsCurrent = {};
+
+    document.getElementById("open-settings").onclick = function () {
+        fetch("/lfm/api/config/state-rules").then(r => r.json()).then(function (data) {
+            settingsDefaults = data.defaults || {};
+            settingsCurrent = Object.assign({}, data.thresholds || {});
+            renderSettings();
+            settingsOverlay.classList.remove("hidden");
+        });
+    };
+
+    function closeSettings() { settingsOverlay.classList.add("hidden"); }
+    document.getElementById("settings-close").onclick = closeSettings;
+    document.getElementById("settings-cancel").onclick = closeSettings;
+    settingsOverlay.addEventListener("click", function (e) { if (e.target === settingsOverlay) closeSettings(); });
+
+    function renderSettings() {
+        var html = "";
+        GROUPS.forEach(function (grp) {
+            html += '<div class="setting-group"><h4>' + grp.title + '</h4>';
+            grp.keys.forEach(function (key) {
+                var meta = THRESHOLD_META[key];
+                if (!meta) return;
+                var val = settingsCurrent[key] != null ? settingsCurrent[key] : settingsDefaults[key];
+                var defVal = settingsDefaults[key];
+                var isModified = val !== defVal;
+                html += '<div class="setting-row">'
+                    + '<label>' + meta.label + '</label>'
+                    + '<input type="range" id="s-' + key + '" min="' + meta.min + '" max="' + meta.max + '" step="' + meta.step + '" value="' + val + '">'
+                    + '<span class="val-display' + (isModified ? ' modified' : '') + '" id="sv-' + key + '">' + meta.fmt(val) + '</span>'
+                    + '</div>';
+            });
+            html += '</div>';
+        });
+        settingsBody.innerHTML = html;
+
+        // Bind live update on sliders
+        Object.keys(THRESHOLD_META).forEach(function (key) {
+            var slider = document.getElementById("s-" + key);
+            if (!slider) return;
+            var display = document.getElementById("sv-" + key);
+            var meta = THRESHOLD_META[key];
+            slider.addEventListener("input", function () {
+                var v = parseFloat(this.value);
+                settingsCurrent[key] = v;
+                display.textContent = meta.fmt(v);
+                display.classList.toggle("modified", v !== settingsDefaults[key]);
+            });
+        });
+    }
+
+    document.getElementById("settings-save").onclick = function () {
+        fetch("/lfm/api/config/state-rules", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ thresholds: settingsCurrent })
+        }).then(r => r.json()).then(function () {
+            closeSettings();
+            loadSymbol(symbol);
+        });
+    };
+
+    document.getElementById("settings-reset").onclick = function () {
+        if (!confirm("Reset all thresholds to factory defaults?")) return;
+        fetch("/lfm/api/config/state-rules/reset", { method: "POST" })
+            .then(r => r.json())
+            .then(function (data) {
+                settingsCurrent = Object.assign({}, data.thresholds || settingsDefaults);
+                renderSettings();
+                closeSettings();
+                loadSymbol(symbol);
+            });
+    };
+
 })();

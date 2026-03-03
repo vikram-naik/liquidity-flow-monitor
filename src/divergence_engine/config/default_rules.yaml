@@ -1,0 +1,126 @@
+# Integrated State Matrix — Default Configuration
+#
+# This file defines the FACTORY DEFAULTS for the rule engine.
+# User overrides are stored in the database (user_settings table).
+# Editing this file changes the defaults for all users on factory reset.
+
+# ----------------------------------------------------------------
+# Tunable Thresholds
+# ----------------------------------------------------------------
+thresholds:
+  # Trajectory angle window (rolling regression)
+  angle_window: 5
+
+  # Value Zone boundaries (% distance from CWVAP/CPOC)
+  cwvap_chop_band: 1.5        # ±% for Fair Value (Chop)
+  premium_boundary: 3.0       # % above for High Premium
+  discount_boundary: -3.0     # % below for Deep Discount
+
+  # Money Flow Multiplier gates
+  mfm_exhaustion: -0.15       # MFM ≤ this → Exhaustion Warning
+  mfm_recovery_guard: 0.15    # MFM > this + rdv_z > 0 → V-Recovery override
+
+  # Coherence stamps
+  coherence_strong: 0.6
+  coherence_weak: 0.3
+
+# ----------------------------------------------------------------
+# Classification Rules (evaluated in priority order, first match wins)
+# ----------------------------------------------------------------
+# Each rule:
+#   name:       StateName enum key (must match StateName values exactly)
+#   priority:   lower = evaluated first
+#   conditions:
+#     trajectory:   enum key from Trajectory (both_rising, price_rising_only, etc.)
+#     value_zones:  list of ValueZone labels to match
+#     mfm:          { min: float, max: float } — optional range gate
+#     rdv_z:        { min: float, max: float } — optional range gate
+#     price_z:      { min: float, max: float } — optional range gate
+
+rules:
+  # ==================== BOTH RISING ====================
+  
+  - name: "V-Bottom Reversal"
+    priority: 10
+    conditions:
+      trajectory: both_rising
+      value_zones: ["Deep Discount"]
+
+  - name: "Value Breakout"
+    priority: 20
+    conditions:
+      trajectory: both_rising
+      value_zones: ["Slight Discount", "Fair Value (Mixed)", "Fair Value (Chop)"]
+
+  - name: "Exhaustion Warning"
+    priority: 25
+    conditions:
+      trajectory: both_rising
+      value_zones: ["Slight Premium", "High Premium"]
+      mfm: { max: -0.15 }
+
+  - name: "Confirmed Markup"
+    priority: 30
+    conditions:
+      trajectory: both_rising
+      value_zones: ["Slight Premium"]
+
+  - name: "Confirmed Markup"
+    priority: 31
+    conditions:
+      trajectory: both_rising
+      value_zones: ["High Premium"]
+      rdv_z: { min: 0.0 }
+
+  # ==================== PRICE RISING ONLY ====================
+
+  # V-Recovery Guard: delivery Z positive + healthy MFM → not distribution
+  - name: "Confirmed Markup"
+    priority: 39
+    conditions:
+      trajectory: price_rising_only
+      value_zones: ["High Premium"]
+      rdv_z: { min: 0.0 }
+      mfm: { min: 0.15 }
+
+  - name: "Distribution Top"
+    priority: 40
+    conditions:
+      trajectory: price_rising_only
+      value_zones: ["High Premium"]
+
+  - name: "Dead Cat Bounce"
+    priority: 45
+    conditions:
+      trajectory: price_rising_only
+      value_zones: ["Deep Discount"]
+
+  # ==================== RDV RISING ONLY ====================
+
+  - name: "Stealth Accumulation"
+    priority: 50
+    conditions:
+      trajectory: rdv_rising_only
+      value_zones: ["Deep Discount", "Slight Discount"]
+
+  - name: "Active Distribution"
+    priority: 55
+    conditions:
+      trajectory: rdv_rising_only
+      value_zones: ["Slight Premium", "High Premium"]
+
+  # ==================== BOTH FALLING ====================
+
+  - name: "Confirmed Markdown"
+    priority: 60
+    conditions:
+      trajectory: both_falling
+      value_zones: ["Deep Discount"]
+      price_z: { max: 0.0 }
+      rdv_z: { max: 0.0 }
+
+  - name: "Value Breakdown"
+    priority: 65
+    conditions:
+      trajectory: both_falling
+      value_zones: ["Slight Premium", "Fair Value (Mixed)", "Slight Discount"]
