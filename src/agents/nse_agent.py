@@ -290,7 +290,8 @@ def process_and_store_data(df, record_date):
     for s in df['SYMBOL'].unique():
         cache_key = f"lfm:raw_data:{s.upper()}"
         cache.delete(cache_key)
-    
+        cache_key = f"de:raw_data:{s.upper()}"
+        cache.delete(cache_key)
     print(f"[NSE] Invalidated cache for {len(df['SYMBOL'].unique())} symbols.")
     conn.close()
 

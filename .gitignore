@@ -33,3 +33,19 @@ tactical_check.txt
 analysis*.txt
 analysis*.csv
 
+api.log
+brit*.json
+cwvap_test.py
+divis.json
+.gitignore
+ema_test.py
+geship_log.txt
+test_loop.py
+test_geship.py
+test_geship_distances.py
+test_divis2.py
+test_divis.py
+test_britannia.py
+test_august.py
+test_august_full.py
+test_august_2024.py

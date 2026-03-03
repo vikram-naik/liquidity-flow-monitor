@@ -84,6 +84,7 @@
         var deliveryVol = [];
         var markerList = [];
         var timeToIndex = {};
+        var pZ = [], rZ = [], cRaw = [], cSmooth = [];
 
         for (var i = 0; i < ledger.length; i++) {
             var r = ledger[i];
@@ -96,8 +97,16 @@
             if (r.open != null && r.high != null && r.low != null && r.close != null) {
                 ohlc.push({ time: t, open: r.open, high: r.high, low: r.low, close: r.close });
             }
-            if (r.cwvap != null) cwvap.push({ time: t, value: r.cwvap });
-            if (r.cpoc != null) cpoc.push({ time: t, value: r.cpoc });
+            if (r.cwvap != null) cwvap.push({ time: t, value: r.cwvap }); else cwvap.push({ time: t });
+            if (r.cpoc != null) cpoc.push({ time: t, value: r.cpoc }); else cpoc.push({ time: t });
+
+            if (r.price_slope_z != null) pZ.push({ time: t, value: r.price_slope_z }); else pZ.push({ time: t, value: 0 });
+            if (r.rdv_slope_z != null) rZ.push({ time: t, value: r.rdv_slope_z }); else rZ.push({ time: t, value: 0 });
+
+            // For coherence, ensure we still push *something* (e.g. 0 or NaN/blank representation)
+            // LightweightCharts line series allows whitespace gaps using empty objects `{ time: t }`
+            if (r.coherence_raw != null) { cRaw.push({ time: t, value: r.coherence_raw }); } else { cRaw.push({ time: t }); }
+            if (r.coherence != null) { cSmooth.push({ time: t, value: r.coherence }); } else { cSmooth.push({ time: t }); }
 
             if (r.delivery_qty != null) {
                 var mfm = r.mfm != null ? r.mfm : 0;
@@ -108,64 +117,47 @@
             }
         }
 
-        // --- Marker Logic (v4.0 Regime & Divergence) ---
-        var regimeCfg = {
-            "ACCUMULATION": { color: "#42a5f5", shape: "circle", pos: "belowBar" },
-            "DISTRIBUTION": { color: "#ffb300", shape: "circle", pos: "aboveBar" }
-        };
-        var divCfg = {
-            "PRICE↑/RDV↓": { color: "#ef5350", shape: "arrowDown", pos: "aboveBar" },
-            "RDV↑/PRICE↓": { color: "#26a69a", shape: "arrowUp", pos: "belowBar" }
+        // --- Marker Logic (Integrated State) ---
+        var stateColorMap = {
+            "V-Bottom Reversal": "#00e676",    // Bright Green
+            "Value Breakout": "#00bfa5",       // Teal
+            "Early Markup": "#26c6da",         // Cyan
+            "Confirmed Markup": "#42a5f5",     // Blue
+            "Stealth Accumulation": "#81c784", // Light Green
+            "Exhaustion Warning": "#ffb300",   // Amber (same logic color as Top)
+            "Distribution Top": "#ffb300",     // Amber
+            "Active Distribution": "#f4511e",  // Deep Orange
+            "Value Breakdown": "#ff5252",      // Red
+            "Confirmed Markdown": "#d32f2f",   // Deep Red
+            "Dead Cat Bounce": "#ce93d8",      // Light Purple
+            "Neutral / Mixed": "#9e9e9e"       // Grey
         };
 
-        var markersByTime = {};
+        var markerList = [];
         for (var i = 0; i < ledger.length; i++) {
             var r = ledger[i];
             var t = r.date ? (r.date.includes(" ") ? r.date.split(" ")[0] : r.date) : null;
             if (!t) continue;
 
-            var marker = null;
-            var divConf = (r.div_flag && divCfg[r.div_flag]) ? (r.div_conf || 0) : 0;
-            var regConf = (regimeCfg[r.regime]) ? (r.regime_conf || 0) : 0;
+            var stateStr = r.integrated_state || "Neutral / Mixed";
+            // Strip the coherence [Stamp] to match the base color
+            var baseState = stateStr.split("[")[0].trim();
 
-            // 1. Divergence candidate (threshold >= 0.5)
-            var divCandidate = null;
-            if (divConf >= 0.5) {
-                var cfg = divCfg[r.div_flag];
-                divCandidate = {
-                    conf: divConf,
-                    data: {
-                        time: t, position: cfg.pos, color: cfg.color, shape: cfg.shape,
-                        text: (divConf * 100).toFixed(0)
-                    }
-                };
-            }
+            // For charting clarity, let's only draw markers when the state is NOT "Neutral / Mixed"
+            if (baseState !== "Neutral / Mixed") {
+                // Positional logic: Green/Blue states usually happen at bottoms or breakouts -> belowBar
+                var isBull = ["V-Bottom Reversal", "Value Breakout", "Early Markup", "Confirmed Markup", "Stealth Accumulation"].includes(baseState);
 
-            // 2. Regime candidate (ACC/DIST)
-            var regCandidate = null;
-            if (regimeCfg[r.regime]) {
-                var cfg = regimeCfg[r.regime];
-                regCandidate = {
-                    conf: regConf,
-                    data: {
-                        time: t, position: cfg.pos, color: cfg.color, shape: cfg.shape,
-                        text: (regConf >= 0.5) ? (regConf * 100).toFixed(0) : ""
-                    }
-                };
-            }
-
-            // 3. Select winner based on confidence
-            if (divCandidate && regCandidate) {
-                marker = (regCandidate.conf >= divCandidate.conf) ? regCandidate.data : divCandidate.data;
-            } else {
-                marker = divCandidate ? divCandidate.data : (regCandidate ? regCandidate.data : null);
-            }
-
-            if (marker) {
-                markersByTime[t] = marker;
+                markerList.push({
+                    time: t,
+                    position: isBull ? "belowBar" : "aboveBar",
+                    color: stateColorMap[baseState] || "#9e9e9e",
+                    shape: isBull ? "arrowUp" : "arrowDown",
+                    stateText: stateStr
+                });
             }
         }
-        markerList = Object.values(markersByTime).sort((a, b) => a.time - b.time);
+
 
         var LC = LightweightCharts;
 
@@ -190,12 +182,15 @@
         }
 
         var container = document.getElementById("chart-container");
-        var containerWidth = container.clientWidth || 800;
-        var containerHeight = container.clientHeight || (window.innerHeight - 50);
 
-        var pc = LC.createChart(document.getElementById("p1"), mkOpts(containerWidth, containerHeight, true));
+        function getW(id) { var el = document.getElementById(id); return el ? el.clientWidth : 800; }
+        function getH(id) { var el = document.getElementById(id); return el ? el.clientHeight : 300; }
 
-        // --- Series ---
+        var pc = LC.createChart(document.getElementById("p1"), mkOpts(getW("p1"), getH("p1"), false));
+        var pc2 = LC.createChart(document.getElementById("p2"), mkOpts(getW("p2"), getH("p2"), false));
+        var pc3 = LC.createChart(document.getElementById("p3"), mkOpts(getW("p3"), getH("p3"), true));
+
+        // --- Series p1 ---
         var sVol = pc.addSeries(LC.HistogramSeries, { priceScaleId: "vol", priceLineVisible: false, lastValueVisible: false });
         sVol.setData(deliveryVol);
         pc.priceScale("vol").applyOptions({ visible: false, scaleMargins: { top: 0.75, bottom: 0 } });
@@ -209,41 +204,75 @@
         var sCwvap = pc.addSeries(LC.LineSeries, { color: "#00bfa5", lineWidth: 2, lastValueVisible: false });
         sCwvap.setData(cwvap);
 
-        var sCpoc = pc.addSeries(LC.LineSeries, { color: "#ffab40", lineWidth: 1, lineStyle: 2, lastValueVisible: false, priceLineVisible: false });
-        var lastCpocVal = (cpoc.length > 0) ? cpoc[cpoc.length - 1].value : null;
+        var sCpoc = pc.addSeries(LC.LineSeries, { color: "#ffab40", lineWidth: 2, lineStyle: 2, lastValueVisible: false, priceLineVisible: false });
+        var lastCpocVal = null;
+        for (var i = cpoc.length - 1; i >= 0; i--) {
+            if (cpoc[i].value != null) { lastCpocVal = cpoc[i].value; break; }
+        }
         sCpoc.setData(cpoc.map(d => ({ time: d.time, value: lastCpocVal })));
 
         if (markerList.length > 0) LC.createSeriesMarkers(cs, markerList);
 
-        var allSeriesConfig = [
+        // --- Series p2 ---
+        var sPZ = pc2.addSeries(LC.LineSeries, { color: "#90caf9", lineWidth: 2, lastValueVisible: false, priceLineVisible: false });
+        sPZ.setData(pZ);
+        var sRZ = pc2.addSeries(LC.LineSeries, { color: "#f48fb1", lineStyle: 2, lineWidth: 2, lastValueVisible: false, priceLineVisible: false });
+        sRZ.setData(rZ);
+        var sZero2 = pc2.addSeries(LC.LineSeries, { color: "#424242", lineWidth: 1, lineStyle: 2, lastValueVisible: false, priceLineVisible: false });
+        sZero2.setData(pZ.map(d => ({ time: d.time, value: 0 })));
+
+        // --- Series p3 ---
+        var sCRaw = pc3.addSeries(LC.LineSeries, { color: "#b39ddb", lineWidth: 1, lineStyle: 2, lastValueVisible: false, priceLineVisible: false });
+        sCRaw.setData(cRaw);
+        var sCSmooth = pc3.addSeries(LC.LineSeries, { color: "#ce93d8", lineWidth: 2, lastValueVisible: false, priceLineVisible: false });
+        sCSmooth.setData(cSmooth);
+
+        var leg1Config = [
             { api: cs, label: "Price", col: "price", color: "#e6edf3" },
             { api: sCwvap, label: "CWVAP", col: "cwvap", color: "#00bfa5" },
-            { api: sCpoc, label: "CPOC", col: "cpoc", color: "#ffab40" }
+            { api: sCpoc, label: "CPOC", col: "cpoc", color: "#ffab40", dashed: true }
         ];
+        var leg2Config = [
+            { api: sPZ, label: "Price Z", col: "price_slope_z", color: "#90caf9" },
+            { api: sRZ, label: "RDV Z", col: "rdv_slope_z", color: "#f48fb1", dashed: true }
+        ];
+        var leg3Config = [
+            { api: sCRaw, label: "Coh Raw", col: "coherence_raw", color: "#b39ddb", dashed: true },
+            { api: sCSmooth, label: "Coh", col: "coherence", color: "#ce93d8" }
+        ];
+
+        function updateLegend(containerId, config, param, targetIdx) {
+            var container = document.getElementById(containerId);
+            if (!container) return;
+            var html = "";
+            config.forEach(function (s) {
+                if (!s.api.options().visible) return;
+                var val = null;
+                if (param && param.seriesData && param.seriesData.has(s.api)) {
+                    val = param.seriesData.get(s.api);
+                } else if (ledger[targetIdx]) {
+                    var row = ledger[targetIdx];
+                    if (s.col === "price") val = { close: row.close };
+                    else if (row[s.col] != null) val = { value: row[s.col] };
+                }
+                var price = val ? (val.value !== undefined ? val.value : val.close) : null;
+                var display = (price != null) ? price.toFixed(price > 10 ? 2 : 4) : "\u2014";
+                var dotStyle = s.dashed
+                    ? `background: repeating-linear-gradient(90deg, ${s.color}, ${s.color} 2px, transparent 2px, transparent 4px)`
+                    : `background:${s.color}`;
+                html += `<div class="legend-item"><span class="legend-dot" style="${dotStyle}"></span><span>${s.label}: ${display}</span></div>`;
+            });
+            container.innerHTML = html;
+        }
 
         function refreshUI(param) {
             var targetTime = param ? param.time : null;
             var targetIdx = targetTime ? timeToIndex[targetTime] : ledger.length - 1;
 
-            var container = document.getElementById("leg1");
-            if (container) {
-                var html = "";
-                allSeriesConfig.forEach(function (s) {
-                    if (!s.api.options().visible) return;
-                    var val = null;
-                    if (param && param.seriesData.has(s.api)) {
-                        val = param.seriesData.get(s.api);
-                    } else if (ledger[targetIdx]) {
-                        var row = ledger[targetIdx];
-                        if (s.col === "price") val = { close: row.close };
-                        else if (row[s.col] != null) val = { value: row[s.col] };
-                    }
-                    var price = val ? (val.value !== undefined ? val.value : val.close) : null;
-                    var display = (price != null) ? price.toFixed(price > 10 ? 2 : 4) : "\u2014";
-                    html += `<div class="legend-item"><span class="legend-dot" style="background:${s.color}"></span><span>${s.label}: ${display}</span></div>`;
-                });
-                container.innerHTML = html;
-            }
+            updateLegend("leg1", leg1Config, param, targetIdx);
+            updateLegend("leg2", leg2Config, param, targetIdx);
+            updateLegend("leg3", leg3Config, param, targetIdx);
+
             if (ledger[targetIdx]) buildSidebarAnnotations(ledger[targetIdx]);
         }
 
@@ -261,25 +290,66 @@
             }
         });
 
-        pc.subscribeCrosshairMove(p => {
-            refreshUI(p);
-            if (p.time) {
-                const marker = markerList.find(m => m.time === p.time);
-                if (marker && marker.customData) {
-                    tooltipEl.style.display = "block";
-                    tooltipEl.innerHTML = `<strong>${marker.customData.label}</strong><br>Conf: ${marker.customData.conf}`;
-                    tooltipEl.style.left = (p.point.x + 20) + "px";
-                    tooltipEl.style.top = (p.point.y + 60) + "px";
-                    return;
+        var charts = [pc, pc2, pc3];
+
+        function syncCrosshair(chart, series, param) {
+            if (param.point === undefined || !param.time || param.point.x < 0 || param.point.y < 0) {
+                chart.clearCrosshairPosition();
+            } else {
+                var data = param.seriesData && param.seriesData.get(series);
+                var price = data ? (data.value !== undefined ? data.value : data.close) : null;
+                if (price !== null) {
+                    chart.setCrosshairPosition(price, param.time, series);
+                } else {
+                    chart.setCrosshairPosition(0, param.time, series);
                 }
             }
-            tooltipEl.style.display = "none";
+        }
+
+        charts.forEach(c1 => {
+            c1.subscribeCrosshairMove(param => {
+                if (param.time === undefined || param.point === undefined || param.point.x < 0 || param.point.y < 0) {
+                    charts.forEach(c2 => { if (c1 !== c2) c2.clearCrosshairPosition(); });
+                    refreshUI();
+                } else {
+                    charts.forEach(c2 => {
+                        if (c1 !== c2) {
+                            var s2 = c2 === pc ? cs : (c2 === pc2 ? sPZ : sCRaw);
+                            syncCrosshair(c2, s2, param);
+                        }
+                    });
+                    refreshUI(param);
+                }
+
+                if (c1 === pc && param.time) {
+                    const marker = markerList.find(m => m.time === param.time);
+                    if (marker && marker.stateText) {
+                        tooltipEl.style.display = "block";
+                        tooltipEl.innerHTML = `<strong>${marker.stateText}</strong>`;
+                        tooltipEl.style.left = (param.point.x + 20) + "px";
+                        tooltipEl.style.top = (param.point.y + 60) + "px";
+                        return;
+                    }
+                }
+                tooltipEl.style.display = "none";
+            });
+
+            c1.timeScale().subscribeVisibleLogicalRangeChange(range => {
+                if (range !== null) {
+                    charts.forEach(c2 => {
+                        if (c1 !== c2) c2.timeScale().setVisibleLogicalRange(range);
+                    });
+                }
+            });
         });
 
         function reflowCharts() {
-            var cw = container.clientWidth;
-            var ch = container.clientHeight;
-            if (cw > 0 && ch > 0) pc.resize(cw, ch);
+            var mainContainer = document.getElementById("chart-container");
+            if (mainContainer && mainContainer.clientWidth > 0 && mainContainer.clientHeight > 0) {
+                pc.resize(getW("p1"), getH("p1"));
+                pc2.resize(getW("p2"), getH("p2"));
+                pc3.resize(getW("p3"), getH("p3"));
+            }
         }
 
         if (ohlc.length > 0) {
@@ -296,19 +366,19 @@
     function buildSidebarAnnotations(l) {
         if (!l) return;
         function fmt(v, d) { return (v != null && typeof v === "number" && !isNaN(v)) ? v.toFixed(d || 2) : (v || "\u2014"); }
-        var reg = l.regime || "NEUTRAL";
-        var rConf = (l.regime_conf != null) ? (l.regime_conf * 100).toFixed(1) + "%" : "\u2014";
-        var div = l.div_flag || "\u2014";
-        var dConf = (l.div_conf != null && l.div_flag) ? (l.div_conf * 100).toFixed(1) + "%" : "\u2014";
-        var coher = fmt(l.coherence, 3) + " (" + (l.score_slope || "FLAT") + ")";
+        // Simplify the sidebar down to the integrated marker and the pure numerical inputs
+        var intState = l.integrated_state || "N/A";
+        var coherStr = fmt(l.coherence, 3) + (l.coherence_stamp || "");
 
         document.getElementById("state-table").innerHTML =
+            "<tr><td colspan='2' style='text-align:center; padding: 10px; background: rgba(0,0,0,0.2);'><strong>" + intState + "</strong></td></tr>" +
             "<tr><td>Date</td><td class='val'>" + (l.date ? l.date.split("T")[0] : "\u2014") + "</td></tr>" +
-            "<tr><td>Regime</td><td class='val'><strong>" + reg + "</strong> [" + rConf + "]</td></tr>" +
-            "<tr><td>Coherence</td><td class='val'>" + coher + "</td></tr>" +
-            "<tr><td>Divergence</td><td class='val'>" + div + " [" + dConf + "]</td></tr>" +
-            "<tr><td>Price Slope Z</td><td class='val'>" + fmt(l.price_slope_z, 4) + "</td></tr>" +
-            "<tr><td>RDV Slope Z</td><td class='val'>" + fmt(l.rdv_slope_z, 4) + "</td></tr>" +
+            "<tr><td>Price Z</td><td class='val'>" + fmt(l.price_slope_z, 4) + "</td></tr>" +
+            "<tr><td>Price ∠</td><td class='val'>" + fmt(l.price_slope_angle, 4) + "</td></tr>" +
+            "<tr><td>RDV Z</td><td class='val'>" + fmt(l.rdv_slope_z, 4) + "</td></tr>" +
+            "<tr><td>RDV ∠</td><td class='val'>" + fmt(l.rdv_slope_angle, 4) + "</td></tr>" +
+            "<tr><td>Value Zone</td><td class='val'>" + (l.value_zone || "\u2014") + "</td></tr>" +
+            "<tr><td>Coherence</td><td class='val'>" + coherStr + "</td></tr>" +
             "<tr><td>Money Flow</td><td class='val'>" + fmt(l.mcs_composite, 4) + "</td></tr>";
     }
 

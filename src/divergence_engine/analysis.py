@@ -357,7 +357,7 @@ def compute_trend_participation(
     cwc_slope_col:  str = "cwc_slope",
     mcs_col:        str = "mcs_composite",
     mcs_slope_col:  str = "mcs_composite_slope",
-    slope_window:   int = 14,
+    slope_window:   int = 10,
 ) -> pd.DataFrame:
     """
     Trend Participation Engine v5.2

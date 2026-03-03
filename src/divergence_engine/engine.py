@@ -33,6 +33,7 @@ from src.divergence_engine.divergence import DivergenceDetector
 from src.divergence_engine.dvl_ledger import DVLLedger
 from src.divergence_engine.mcs import MoneyCompositeScore
 from src.divergence_engine.analysis import compute_trend_participation
+from src.divergence_engine.analysis_integrated import apply_integrated_matrix
 from src.divergence_engine.utils import load_symbol_data, validate_dataframe, WINDOWS
 
 
@@ -91,7 +92,12 @@ class EngineResult:
             "div_flag": row.get("div_flag", ""),
             "div_conf": round(float(row.get("div_conf", 0)), 4),
             "price_slope_z": round(float(row.get("price_slope_z", 0)), 4),
+            "price_slope_angle": round(float(row.get("price_slope_angle", 0)), 4),
             "rdv_slope_z": round(float(row.get("rdv_slope_z", 0)), 4),
+            "rdv_slope_angle": round(float(row.get("rdv_slope_angle", 0)), 4),
+            "value_zone": row.get("value_zone", "N/A"),
+            "coherence_stamp": row.get("coherence_stamp", ""),
+            "integrated_state": row.get("integrated_state", "N/A"),
         }
 
     def export(self, path: str | None = None) -> str:
@@ -189,6 +195,9 @@ class DivergenceEngine:
 
         # Module 8 — Trend Participation Analysis (v4.0)
         df = compute_trend_participation(df)
+
+        # Module 9 — Integrated State Matrix
+        df = apply_integrated_matrix(df)
 
         # Build state summary DataFrame
         state_cols = ["date", "state", "state_confidence"] + [

@@ -151,6 +151,18 @@ def _rolling_slope_z(series: pd.Series, window: int) -> pd.Series:
         .fillna(0.0)
     )
 
+def _macd_z(series: pd.Series, span: int) -> pd.Series:
+    """MACD-style momentum: fast EMA (span/2) - slow EMA (span)."""
+    fast = series.ewm(span=max(2, span // 2), adjust=False).mean()
+    slow = series.ewm(span=span, adjust=False).mean()
+    macd = fast - slow
+    
+    roll_std = macd.rolling(window=span * 2, min_periods=span).std()
+    roll_std = roll_std.bfill().replace(0.0, 1e-10)
+    
+    z_score = macd / roll_std
+    return z_score.fillna(0.0)
+
 
 def _logistic(x: float, k: float = 8.0, mid: float = 0.5) -> float:
     return 1.0 / (1.0 + np.exp(-k * (x - mid)))
@@ -625,7 +637,8 @@ def compute_trend_participation(
     cwc_slope_col:  str = "cwc_slope",
     mcs_col:        str = "mcs_composite",
     mcs_slope_col:  str = "mcs_composite_slope",
-    slope_window:   int = 14,
+    slope_window:   int = 10,
+    use_macd:       bool = False,
 ) -> pd.DataFrame:
     """
     Trend Participation Engine v4.0
@@ -662,8 +675,12 @@ def compute_trend_participation(
     mcs_slope_col = _resolve(mcs_slope_col)
 
     # ── Slopes ─────────────────────────────────────────────────────────────
-    df["price_slope_z"] = _rolling_slope_z(df[close_col], slope_window).round(4)
-    df["rdv_slope_z"]   = _rolling_slope_z(df[rdv_col],   slope_window).round(4)
+    if use_macd:
+        df["price_slope_z"] = _macd_z(df[close_col], slope_window).round(4)
+        df["rdv_slope_z"]   = _macd_z(df[rdv_col],   slope_window).round(4)
+    else:
+        df["price_slope_z"] = _rolling_slope_z(df[close_col], slope_window).round(4)
+        df["rdv_slope_z"]   = _rolling_slope_z(df[rdv_col],   slope_window).round(4)
 
     # ── Regime — dynamic deadband ─────────────────────────────────────────
     p_tol = _dynamic_deadband(df["price_slope_z"])
@@ -775,6 +792,7 @@ def build_display_df(df: pd.DataFrame, last_n: int) -> pd.DataFrame:
         "cps",
         "cps_flag",
         "cps_conf",
+        "gradient_shape",
     ]
     return df[[c for c in cols if c in df.columns]].tail(last_n).copy()
 
@@ -931,6 +949,7 @@ def run_analysis(
     slope_window: int,
     emit_json:    bool,
     emit_csv:     bool,
+    use_macd:     bool = False,
 ) -> None:
 
     print(f"\nInitializing Divergence Engine for {symbol}...")
@@ -950,9 +969,9 @@ def run_analysis(
         print(f"[ERROR] No price column. Available: {list(df.columns)}")
         return
 
-    print(f"  price='{price_col}'  window={slope_window}d  bars={days}")
+    print(f"  price='{price_col}'  window={slope_window}d  bars={days}  macd={use_macd}")
 
-    df = compute_trend_participation(df, close_col=price_col, slope_window=slope_window)
+    df = compute_trend_participation(df, close_col=price_col, slope_window=slope_window, use_macd=use_macd)
     df.attrs["symbol"] = symbol
 
     print_summary(df, symbol)
@@ -988,6 +1007,7 @@ def run_analysis(
             f"  →  {last['coherence']:.3f} smooth  {last['score_slope']}\n"
             f"  Price z   : {last['price_slope_z']:+.4f}\n"
             f"  RDV z     : {last['rdv_slope_z']:+.4f}\n"
+            f"  Gradient  : {last.get('gradient_shape', 'none')}\n"
         )
         if last.get("div_flag"):
             f.write(
@@ -1038,9 +1058,10 @@ Window guide:  10 = responsive   14 = default   20 = balanced   30 = smooth
     )
     parser.add_argument("symbol",         help="NSE stock symbol")
     parser.add_argument("--days",  "-d",  type=int, default=84)
-    parser.add_argument("--window", "-w", type=int, default=14)
+    parser.add_argument("--window", "-w", type=int, default=10)
     parser.add_argument("--json",  "-j",  action="store_true")
     parser.add_argument("--csv",   "-c",  action="store_true")
+    parser.add_argument("--macd",  "-m",  action="store_true", help="Use MACD momentum instead of linear regression")
 
     args = parser.parse_args()
     run_analysis(
@@ -1049,4 +1070,5 @@ Window guide:  10 = responsive   14 = default   20 = balanced   30 = smooth
         slope_window = args.window,
         emit_json    = args.json,
         emit_csv     = args.csv,
+        use_macd     = args.macd,
     )

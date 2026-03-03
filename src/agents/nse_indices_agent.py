@@ -140,6 +140,8 @@ def process_and_store_data(df, record_date):
     for s in df['Index Name'].unique():
         cache_key = f"lfm:raw_data:{s.upper().strip()}"
         cache.delete(cache_key)
+        cache_key = f"de:raw_data:{s.upper().strip()}"
+        cache.delete(cache_key)
     
     print(f"[NSE Indices] Invalidated cache for {len(df['Index Name'].unique())} symbols.")
     conn.close()

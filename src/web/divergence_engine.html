@@ -24,12 +24,17 @@
       </div>
       <!-- Marker Legend -->
       <div class="marker-legend">
-        <div class="leg-item"><span class="dot up"></span><span>Up</span></div>
-        <div class="leg-item"><span class="dot down"></span><span>Down</span></div>
-        <div class="leg-item"><span class="dot acc"></span><span>Acc</span></div>
-        <div class="leg-item"><span class="dot dist"></span><span>Dist</span></div>
-        <div class="leg-item"><span class="dot div-up"></span><span>Div↑</span></div>
-        <div class="leg-item"><span class="dot div-down"></span><span>Div↓</span></div>
+        <div class="leg-item"><span class="dot st-vbtm"></span><span>V-Btm</span></div>
+        <div class="leg-item"><span class="dot st-brkout"></span><span>BrkOut</span></div>
+        <div class="leg-item"><span class="dot st-early"></span><span>Early</span></div>
+        <div class="leg-item"><span class="dot st-markup"></span><span>Markup</span></div>
+        <div class="leg-item"><span class="dot st-stealth"></span><span>Stealth Acc</span></div>
+        <div class="leg-item"><span class="dot st-exhaust"></span><span>Exhaust Warning</span></div>
+        <div class="leg-item"><span class="dot st-top"></span><span>Top</span></div>
+        <div class="leg-item"><span class="dot st-actdist"></span><span>Active Dist</span></div>
+        <div class="leg-item"><span class="dot st-brkdwn"></span><span>BrkDwn</span></div>
+        <div class="leg-item"><span class="dot st-mrkdwn"></span><span>MrkDwn</span></div>
+        <div class="leg-item"><span class="dot st-dcb"></span><span>DCB</span></div>
       </div>
     </div>
     <a href="/lfm/help" class="help-btn" title="Help Guide — Markers &amp; Trends Reference">?</a>
@@ -42,8 +47,14 @@
 
   <div class="main-wrapper">
     <div class="chart-area" id="chart-container">
-      <div id="p1" class="panel">
+      <div id="p1" class="panel p-main">
         <div id="leg1" class="legend"></div>
+      </div>
+      <div id="p2" class="panel p-sub">
+        <div id="leg2" class="legend"></div>
+      </div>
+      <div id="p3" class="panel p-sub">
+        <div id="leg3" class="legend"></div>
       </div>
     </div>
 
