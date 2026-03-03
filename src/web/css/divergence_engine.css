@@ -64,6 +64,15 @@ body {
   flex-shrink: 0;
 }
 
+.data-date-display {
+  color: #8b949e;
+  font-size: 11px;
+  font-weight: 500;
+  margin: 0 10px;
+  white-space: nowrap;
+  opacity: 0.8;
+}
+
 .help-btn:hover {
   color: #e6edf3;
   border-color: #58a6ff;

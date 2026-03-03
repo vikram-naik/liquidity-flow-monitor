@@ -43,17 +43,17 @@ NSE_INDICES = {
 }
 
 
-app = FastAPI(title="LFM API", docs_url="/lfm/api/docs", openapi_url="/lfm/api/openapi.json")
+app = FastAPI(title="LFM Divergence Engine", docs_url="/de/api/docs", openapi_url="/de/api/openapi.json")
 
 # Mount static web assets
 _WEB_DIR = os.path.join(os.path.dirname(__file__), '..', 'web')
 if os.path.isdir(_WEB_DIR):
-    app.mount('/lfm/static', StaticFiles(directory=_WEB_DIR), name='static')
+    app.mount('/de/static', StaticFiles(directory=_WEB_DIR), name='static')
 
 from fastapi.responses import RedirectResponse
 @app.get("/")
 def root_redirect():
-    return RedirectResponse(url="/lfm/dashboard")
+    return RedirectResponse(url="/de/dashboard/RELIANCE")
 
 @app.on_event("startup")
 def startup_event():
@@ -110,7 +110,7 @@ def get_db():
 
 # --- Routes ---
 
-@app.get("/lfm/api/health")
+@app.get("/de/api/health")
 def health_check():
     return {"status": "healthy", "service": "lfm-api"}
 
@@ -119,7 +119,7 @@ def health_check():
 
 from fastapi.responses import HTMLResponse
 
-@app.get("/lfm/api/divergence-engine/{symbol}")
+@app.get("/de/api/divergence-engine/{symbol}")
 def divergence_engine_data(
     symbol: str,
     start_date: Optional[str] = Query(None, description="ISO date YYYY-MM-DD"),
@@ -136,10 +136,21 @@ def divergence_engine_data(
             end_date=end_date,
         )
         result = engine.run()
+        
+        # Get the latest date from the last row of the ledger
+        # Note: result.ledger can be a DataFrame or list; len() is safe for both.
+        last_date = None
+        if result.ledger is not None and len(result.ledger) > 0:
+            # If it's a DataFrame, use .iloc[-1].date, if it's a list/namedtuple, use [-1].date
+            try:
+                last_date = result.ledger.iloc[-1].date if hasattr(result.ledger, 'iloc') else result.ledger[-1].date
+            except:
+                pass
 
         return {
             "ticker": result.ticker,
             "bars": len(result.ledger),
+            "last_data_date": last_date,
             "latest": state_summary_to_json(result),
             "ledger": ledger_to_json(result.ledger),
         }
@@ -149,11 +160,11 @@ def divergence_engine_data(
         raise HTTPException(status_code=500, detail=f"Engine error: {e}")
 
 
-@app.get("/lfm/divergence-engine/{symbol}")
+@app.get("/de/dashboard/{symbol}")
 def divergence_engine_chart(symbol: str):
-    """Serve the static divergence engine chart page.
-
-    The HTML page loads data via fetch() from /lfm/api/divergence-engine/{symbol}.
+    """
+    Serve the main chart UI for a given symbol.
+    The HTML page loads data via fetch() from /de/api/divergence-engine/{symbol}.
     """
     html_path = os.path.join(_WEB_DIR, "divergence_engine.html")
     if not os.path.isfile(html_path):
@@ -161,7 +172,7 @@ def divergence_engine_chart(symbol: str):
     return FileResponse(html_path, media_type="text/html")
 
 
-@app.get("/lfm/help")
+@app.get("/de/help", response_class=HTMLResponse)
 def help_guide():
     """Serve the help guide page."""
     html_path = os.path.join(_WEB_DIR, "help_guide.html")
@@ -171,7 +182,7 @@ def help_guide():
 
 # --- State Rules Config Routes ---
 
-@app.get("/lfm/api/config/state-rules")
+@app.get("/de/api/config/state-rules")
 def get_state_rules(db: sqlite3.Connection = Depends(get_db)):
     """Return current state classification config (defaults + user overrides)."""
     from src.divergence_engine import config_manager
@@ -188,7 +199,7 @@ class ThresholdUpdate(BaseModel):
     thresholds: dict
 
 
-@app.put("/lfm/api/config/state-rules")
+@app.put("/de/api/config/state-rules")
 def update_state_rules(body: ThresholdUpdate, db: sqlite3.Connection = Depends(get_db)):
     """Save user threshold overrides. Only stores values that differ from defaults."""
     from src.divergence_engine import config_manager
@@ -197,7 +208,7 @@ def update_state_rules(body: ThresholdUpdate, db: sqlite3.Connection = Depends(g
     return {"status": "saved", "thresholds": config["thresholds"]}
 
 
-@app.post("/lfm/api/config/state-rules/reset")
+@app.post("/de/api/config/state-rules/reset")
 def reset_state_rules(db: sqlite3.Connection = Depends(get_db)):
     """Factory reset — delete all user overrides and return defaults."""
     from src.divergence_engine import config_manager
@@ -208,7 +219,7 @@ def reset_state_rules(db: sqlite3.Connection = Depends(get_db)):
 
 # --- Stock & Analysis Routes ---
 
-@app.get("/lfm/api/analysis/stocks")
+@app.get("/de/api/analysis/stocks")
 def get_all_stocks(db: sqlite3.Connection = Depends(get_db)):
     """Return all unique symbols and their latest names/prices."""
     query = """
@@ -227,12 +238,12 @@ def get_all_stocks(db: sqlite3.Connection = Depends(get_db)):
 
 # --- Watchlist Routes ---
 
-@app.get("/lfm/api/watchlists")
+@app.get("/de/api/watchlists")
 def list_watchlists(db: sqlite3.Connection = Depends(get_db)):
     cursor = db.execute("SELECT id, name, description, created_at FROM watchlists ORDER BY name ASC")
     return [dict(row) for row in cursor.fetchall()]
 
-@app.post("/lfm/api/watchlists")
+@app.post("/de/api/watchlists")
 def create_watchlist(wl: WatchlistCreate, db: sqlite3.Connection = Depends(get_db)):
     try:
         cursor = db.execute("INSERT INTO watchlists (name, description) VALUES (?, ?)", (wl.name, wl.description))
@@ -241,7 +252,7 @@ def create_watchlist(wl: WatchlistCreate, db: sqlite3.Connection = Depends(get_d
     except sqlite3.IntegrityError:
         raise HTTPException(status_code=400, detail="Watchlist name already exists")
 
-@app.patch("/lfm/api/watchlists/{watchlist_id}")
+@app.patch("/de/api/watchlists/{watchlist_id}")
 def rename_watchlist(watchlist_id: int, wl: WatchlistUpdate, db: sqlite3.Connection = Depends(get_db)):
     cursor = db.execute("UPDATE watchlists SET name = ? WHERE id = ?", (wl.name, watchlist_id))
     if cursor.rowcount == 0:
@@ -249,7 +260,7 @@ def rename_watchlist(watchlist_id: int, wl: WatchlistUpdate, db: sqlite3.Connect
     db.commit()
     return {"status": "ok"}
 
-@app.delete("/lfm/api/watchlists/{watchlist_id}")
+@app.delete("/de/api/watchlists/{watchlist_id}")
 def delete_watchlist(watchlist_id: int, db: sqlite3.Connection = Depends(get_db)):
     cursor = db.execute("DELETE FROM watchlists WHERE id = ?", (watchlist_id,))
     if cursor.rowcount == 0:
@@ -257,7 +268,7 @@ def delete_watchlist(watchlist_id: int, db: sqlite3.Connection = Depends(get_db)
     db.commit()
     return {"status": "ok", "deleted_id": watchlist_id}
 
-@app.get("/lfm/api/watchlists/{watchlist_id}/items")
+@app.get("/de/api/watchlists/{watchlist_id}/items")
 def get_watchlist_items(watchlist_id: int, db: sqlite3.Connection = Depends(get_db)):
     query = """
     SELECT symbol, display_order, added_at
@@ -268,7 +279,7 @@ def get_watchlist_items(watchlist_id: int, db: sqlite3.Connection = Depends(get_
     cursor = db.execute(query, (watchlist_id,))
     return [dict(row) for row in cursor.fetchall()]
 
-@app.post("/lfm/api/watchlists/{watchlist_id}/items")
+@app.post("/de/api/watchlists/{watchlist_id}/items")
 def add_watchlist_item(watchlist_id: int, item: WatchlistItemAdd, db: sqlite3.Connection = Depends(get_db)):
     try:
         db.execute("INSERT INTO watchlist_items (watchlist_id, symbol) VALUES (?, ?)", (watchlist_id, item.symbol.upper()))
@@ -277,17 +288,17 @@ def add_watchlist_item(watchlist_id: int, item: WatchlistItemAdd, db: sqlite3.Co
     except sqlite3.IntegrityError:
         return {"status": "already_exists"}
 
-@app.delete("/lfm/api/watchlists/{watchlist_id}/items/{symbol}")
+@app.delete("/de/api/watchlists/{watchlist_id}/items/{symbol}")
 def remove_watchlist_item(watchlist_id: int, symbol: str, db: sqlite3.Connection = Depends(get_db)):
     db.execute("DELETE FROM watchlist_items WHERE watchlist_id = ? AND symbol = ?", (watchlist_id, symbol.upper()))
     db.commit()
     return {"status": "ok"}
 
-@app.get("/lfm/api/watchlists/supported-indices")
+@app.get("/de/api/watchlists/supported-indices")
 def get_supported_indices():
     return list(NSE_INDICES.keys())
 
-@app.post("/lfm/api/watchlists/import-index")
+@app.post("/de/api/watchlists/import-index")
 def import_index_constituents(req: IndexImportRequest, conn: sqlite3.Connection = Depends(get_db)):
     """
     Import constituents for a major index into a dedicated watchlist by fetching 
@@ -307,7 +318,7 @@ def import_index_constituents(req: IndexImportRequest, conn: sqlite3.Connection 
     if not csv_file:
          raise HTTPException(
              status_code=400, 
-             detail=f"Index '{req.index_name}' not supported. Call /lfm/api/watchlists/supported-indices for list."
+             detail=f"Index '{req.index_name}' not supported. Call /de/api/watchlists/supported-indices for list."
          )
 
     url = f"https://nsearchives.nseindia.com/content/indices/{csv_file}"

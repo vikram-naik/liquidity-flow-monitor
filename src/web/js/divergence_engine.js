@@ -14,7 +14,7 @@
     var symbol = parts[parts.length - 1] || "RELIANCE";
 
     var params = new URLSearchParams(window.location.search);
-    var apiUrl = "/lfm/api/divergence-engine/" + symbol;
+    var apiUrl = "/de/api/divergence-engine/" + symbol;
     if (params.get("start_date")) apiUrl += "?start_date=" + params.get("start_date");
     if (params.get("end_date")) {
         apiUrl += (apiUrl.includes("?") ? "&" : "?") + "end_date=" + params.get("end_date");
@@ -39,7 +39,7 @@
     function loadSymbol(targetSymbol) {
         if (!targetSymbol) return;
         symbol = targetSymbol.toUpperCase();
-        var apiUrl = "/lfm/api/divergence-engine/" + symbol;
+        var apiUrl = "/de/api/divergence-engine/" + symbol;
         if (params.get("start_date")) apiUrl += "?start_date=" + params.get("start_date");
         if (params.get("end_date")) {
             apiUrl += (apiUrl.includes("?") ? "&" : "?") + "end_date=" + params.get("end_date");
@@ -57,6 +57,13 @@
             })
             .then(function (data) {
                 loadingEl.style.display = "none";
+
+                // Display Last Data Date
+                const dateDisplay = document.getElementById("last-data-date");
+                if (dateDisplay && data.last_data_date) {
+                    dateDisplay.textContent = formatDate(data.last_data_date);
+                }
+
                 // Clear existing charts
                 ["p1", "p2", "p3"].forEach(id => {
                     var el = document.getElementById(id);
@@ -67,7 +74,7 @@
                 refreshUI(); // Ensure legends and sidebar are populated immediately
                 buildSidebarAnnotations(data.latest);
                 WatchlistManager.updateActiveState();
-                window.history.pushState({}, "", "/lfm/divergence-engine/" + symbol);
+                window.history.pushState({}, "", "/de/dashboard/" + symbol);
             })
             .catch(function (err) {
                 loadingEl.innerHTML = '<div class="err">Error: ' + err.message + "</div>";
@@ -385,7 +392,7 @@
     // --- Search & Watchlist Logic ---
     var allStocks = [];
     function fetchAllStocks() {
-        fetch("/lfm/api/analysis/stocks").then(res => res.json()).then(data => { allStocks = data; }).catch(err => console.error("Error fetching stocks:", err));
+        fetch("/de/api/analysis/stocks").then(res => res.json()).then(data => { allStocks = data; }).catch(err => console.error("Error fetching stocks:", err));
     }
     var searchInput = document.getElementById("symbol-input"), searchResults = document.getElementById("search-results");
     searchInput.addEventListener("input", function () {
@@ -404,8 +411,11 @@
 
     function formatDate(isoStr) {
         if (!isoStr) return "";
-        var d = new Date(isoStr), months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-        return d.getDate().toString().padStart(2, '0') + "-" + months[d.getMonth()] + "-" + d.getFullYear();
+        var d = new Date(isoStr);
+        var day = d.getDate().toString().padStart(2, '0');
+        var month = (d.getMonth() + 1).toString().padStart(2, '0');
+        var year = d.getFullYear();
+        return day + "-" + month + "-" + year;
     }
 
     var WatchlistManager = {
@@ -419,10 +429,10 @@
                 if (addBtn) addBtn.disabled = !self.currentWlId;
                 self.fetchItems();
             });
-            document.getElementById("wl-add").onclick = () => { var name = prompt("Enter Watchlist Name:"); if (name) this.api("/lfm/api/watchlists", "POST", { name }).then(() => this.fetchLists()).catch(err => alert("Error: " + err.message)); };
-            document.getElementById("wl-rename").onclick = () => { if (!this.currentWlId) return; var name = prompt("Enter New Name:"); if (name) this.api("/lfm/api/watchlists/" + this.currentWlId, "PATCH", { name }).then(() => this.fetchLists()).catch(err => alert("Error: " + err.message)); };
-            document.getElementById("wl-delete").onclick = () => { if (!this.currentWlId || !confirm("Delete this watchlist?")) return; this.api("/lfm/api/watchlists/" + this.currentWlId, "DELETE").then(() => { this.currentWlId = null; this.fetchLists(); }).catch(err => alert("Error deleting watchlist: " + err.message)); };
-            document.getElementById("wl-import").onclick = () => { if (!this.currentWlId) return alert("Select a watchlist first"); fetch("/lfm/api/watchlists/supported-indices").then(r => r.json()).then(indices => { var idx = prompt("Enter Index Name:\n" + indices.join(", ")); if (idx && indices.includes(idx)) { this.api("/lfm/api/watchlists/import-index", "POST", { watchlist_id: parseInt(this.currentWlId), index_name: idx }).then(res => { alert("Imported " + res.imported + " symbols"); this.fetchItems(); }).catch(err => alert("Error importing: " + err.message)); } }); };
+            document.getElementById("wl-add").onclick = () => { var name = prompt("Enter Watchlist Name:"); if (name) this.api("/de/api/watchlists", "POST", { name }).then(() => this.fetchLists()).catch(err => alert("Error: " + err.message)); };
+            document.getElementById("wl-rename").onclick = () => { if (!this.currentWlId) return; var name = prompt("Enter New Name:"); if (name) this.api("/de/api/watchlists/" + this.currentWlId, "PATCH", { name }).then(() => this.fetchLists()).catch(err => alert("Error: " + err.message)); };
+            document.getElementById("wl-delete").onclick = () => { if (!this.currentWlId || !confirm("Delete this watchlist?")) return; this.api("/de/api/watchlists/" + this.currentWlId, "DELETE").then(() => { this.currentWlId = null; this.fetchLists(); }).catch(err => alert("Error deleting watchlist: " + err.message)); };
+            document.getElementById("wl-import").onclick = () => { if (!this.currentWlId) return alert("Select a watchlist first"); fetch("/de/api/watchlists/supported-indices").then(r => r.json()).then(indices => { var idx = prompt("Enter Index Name:\n" + indices.join(", ")); if (idx && indices.includes(idx)) { this.api("/de/api/watchlists/import-index", "POST", { watchlist_id: parseInt(this.currentWlId), index_name: idx }).then(res => { alert("Imported " + res.imported + " symbols"); this.fetchItems(); }).catch(err => alert("Error importing: " + err.message)); } }); };
             document.getElementById("wl-download").onclick = () => { if (!this.currentWlId || this.currentItems.length === 0) return alert("Nothing to download"); var sel = document.getElementById("wl-select"), wlName = sel.options[sel.selectedIndex].text; var content = wlName + "\n" + this.currentItems.map(i => i.symbol).join("\n"), blob = new Blob([content], { type: "text/plain" }), url = URL.createObjectURL(blob), a = document.createElement("a"); a.href = url; a.download = wlName.replace(/\s+/g, "_") + ".txt"; a.click(); };
 
             // Handle Sort dropdown modal
@@ -480,14 +490,14 @@
             if (wlAddActive) {
                 wlAddActive.addEventListener("click", () => {
                     if (!self.currentWlId) return alert("Select a watchlist first");
-                    self.api(`/lfm/api/watchlists/${self.currentWlId}/items`, "POST", { symbol: symbol }).then(res => {
+                    self.api(`/de/api/watchlists/${self.currentWlId}/items`, "POST", { symbol: symbol }).then(res => {
                         if (res.status === "already_exists") alert(symbol + " is already in the watchlist.");
                         else self.fetchItems();
                     });
                 });
             }
 
-            document.getElementById("wl-items").onclick = (e) => { var item = e.target.closest(".wl-item"); if (!item) return; var sym = item.dataset.sym; if (e.target.classList.contains("remove-btn")) { this.api(`/lfm/api/watchlists/${this.currentWlId}/items/${sym}`, "DELETE").then(() => this.fetchItems()); } else { loadSymbol(sym); } };
+            document.getElementById("wl-items").onclick = (e) => { var item = e.target.closest(".wl-item"); if (!item) return; var sym = item.dataset.sym; if (e.target.classList.contains("remove-btn")) { this.api(`/de/api/watchlists/${this.currentWlId}/items/${sym}`, "DELETE").then(() => this.fetchItems()); } else { loadSymbol(sym); } };
         },
         api: function (url, method, body) {
             return fetch(url, { method, headers: { "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : null })
@@ -498,7 +508,7 @@
                 });
         },
         fetchLists: function () {
-            fetch("/lfm/api/watchlists").then(r => r.json()).then(lists => {
+            fetch("/de/api/watchlists").then(r => r.json()).then(lists => {
                 this.allWatchlists = lists;
                 var sel = document.getElementById("wl-select"), current = this.currentWlId;
                 sel.innerHTML = '<option value="">Select Watchlist</option>' + lists.map(l => `<option value="${l.id}" ${l.id == current ? 'selected' : ''}>${l.name}</option>`).join("");
@@ -511,7 +521,7 @@
         },
         renderImportList: function () {
             var dropdown = document.getElementById("wl-import-dropdown");
-            fetch("/lfm/api/watchlists/supported-indices").then(r => r.json()).then(indices => {
+            fetch("/de/api/watchlists/supported-indices").then(r => r.json()).then(indices => {
                 var watchlistNames = (this.allWatchlists || []).map(l => l.name);
                 dropdown.innerHTML = indices.map(idx => {
                     var isImported = watchlistNames.includes(idx);
@@ -528,16 +538,16 @@
             });
         },
         handleAutoImport: function (indexName) {
-            this.api("/lfm/api/watchlists", "POST", { name: indexName }).then(res => {
+            this.api("/de/api/watchlists", "POST", { name: indexName }).then(res => {
                 var wlId = res.id;
-                this.api("/lfm/api/watchlists/import-index", "POST", { watchlist_id: wlId, index_name: indexName }).then(importRes => {
+                this.api("/de/api/watchlists/import-index", "POST", { watchlist_id: wlId, index_name: indexName }).then(importRes => {
                     this.currentWlId = wlId;
                     this.fetchLists();
                     document.getElementById("wl-import-dropdown").style.display = "none";
                 });
             });
         },
-        fetchItems: function () { if (!this.currentWlId) return; fetch(`/lfm/api/watchlists/${this.currentWlId}/items`).then(r => r.json()).then(items => { this.currentItems = items; this.renderItems(); }); },
+        fetchItems: function () { if (!this.currentWlId) return; fetch(`/de/api/watchlists/${this.currentWlId}/items`).then(r => r.json()).then(items => { this.currentItems = items; this.renderItems(); }); },
         renderItems: function () {
             var sortMode = this.activeSortMode, sorted = [...this.currentItems];
             if (sortMode === "name-asc") sorted.sort((a, b) => a.symbol.localeCompare(b.symbol)); else if (sortMode === "name-desc") sorted.sort((a, b) => b.symbol.localeCompare(a.symbol)); else if (sortMode === "date-asc") sorted.sort((a, b) => new Date(a.added_at) - new Date(b.added_at)); else if (sortMode === "date-desc") sorted.sort((a, b) => new Date(b.added_at) - new Date(a.added_at));
@@ -574,7 +584,7 @@
     var settingsCurrent = {};
 
     document.getElementById("open-settings").onclick = function () {
-        fetch("/lfm/api/config/state-rules").then(r => r.json()).then(function (data) {
+        fetch("/de/api/config/state-rules").then(r => r.json()).then(function (data) {
             settingsDefaults = data.defaults || {};
             settingsCurrent = Object.assign({}, data.thresholds || {});
             renderSettings();
@@ -623,7 +633,7 @@
     }
 
     document.getElementById("settings-save").onclick = function () {
-        fetch("/lfm/api/config/state-rules", {
+        fetch("/de/api/config/state-rules", {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ thresholds: settingsCurrent })
@@ -635,7 +645,7 @@
 
     document.getElementById("settings-reset").onclick = function () {
         if (!confirm("Reset all thresholds to factory defaults?")) return;
-        fetch("/lfm/api/config/state-rules/reset", { method: "POST" })
+        fetch("/de/api/config/state-rules/reset", { method: "POST" })
             .then(r => r.json())
             .then(function (data) {
                 settingsCurrent = Object.assign({}, data.thresholds || settingsDefaults);
