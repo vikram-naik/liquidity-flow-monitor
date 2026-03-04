@@ -18,11 +18,15 @@ import pandas as pd
 
 # Columns the UI actually reads — trim everything else before serialising
 UI_COLUMNS = [
+    # Chart panels (OHLC, overlays, slopes, coherence)
     "date", "open", "high", "low", "close",
     "cwvap", "cpoc", "delivery_qty", "mfm",
     "price_slope_z", "rdv_slope_z",
     "coherence_raw", "coherence",
     "integrated_state",
+    # Sidebar annotations (shown on hover)
+    "price_slope_angle", "rdv_slope_angle",
+    "value_zone", "coherence_stamp", "mcs_composite",
 ]
 
 
