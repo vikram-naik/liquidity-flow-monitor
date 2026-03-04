@@ -124,8 +124,11 @@ def divergence_engine_data(
     symbol: str,
     start_date: Optional[str] = Query(None, description="ISO date YYYY-MM-DD"),
     end_date: Optional[str] = Query(None, description="ISO date YYYY-MM-DD"),
+    agg_mode: str = Query("daily", description="Aggregation mode: daily, weekly, monthly"),
 ):
     """Run the divergence engine and return JSON ledger + state summary."""
+    if agg_mode not in ("daily", "weekly", "monthly"):
+        raise HTTPException(status_code=400, detail=f"Invalid agg_mode '{agg_mode}'. Must be daily, weekly, or monthly.")
     try:
         from src.divergence_engine.engine import DivergenceEngine
         from src.divergence_engine.chart import ledger_to_json, state_summary_to_json
@@ -134,6 +137,7 @@ def divergence_engine_data(
             ticker=symbol.upper(),
             start_date=start_date,
             end_date=end_date,
+            agg_mode=agg_mode,
         )
         result = engine.run()
         

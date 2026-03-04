@@ -35,6 +35,7 @@ from src.divergence_engine.mcs import MoneyCompositeScore
 from src.divergence_engine.analysis import compute_trend_participation
 from src.divergence_engine.analysis_integrated import apply_integrated_matrix
 from src.divergence_engine.utils import load_symbol_data, validate_dataframe, WINDOWS
+from src.divergence_engine.aggregator import resample_ohlc_delivery, VALID_MODES
 from src.cache import get_cache
 
 logger = logging.getLogger(__name__)
@@ -132,11 +133,15 @@ class DivergenceEngine:
         df: pd.DataFrame | None = None,
         start_date: str | None = None,
         end_date: str | None = None,
+        agg_mode: str = "daily",
     ) -> None:
+        if agg_mode not in VALID_MODES:
+            raise ValueError(f"Invalid agg_mode '{agg_mode}'. Must be one of {sorted(VALID_MODES)}.")
         self.ticker = ticker
         self._df = df
         self._start_date = start_date
         self._end_date = end_date
+        self._agg_mode = agg_mode
 
     # ------------------------------------------------------------------
     # Public API
@@ -162,7 +167,7 @@ class DivergenceEngine:
         cache_key = None
         if use_cache:
             cache = get_cache()
-            cache_key = f"de:result:{self.ticker}:{self._start_date or 'all'}:{self._end_date or 'all'}"
+            cache_key = f"de:result:{self.ticker}:{self._start_date or 'all'}:{self._end_date or 'all'}:{self._agg_mode}"
             cached_df = cache.get(cache_key)
             if cached_df is not None:
                 logger.info("Engine cache HIT for %s", cache_key)
@@ -174,6 +179,9 @@ class DivergenceEngine:
             validate_dataframe(df, symbol=self.ticker)
         else:
             df = load_symbol_data(self.ticker, self._start_date, self._end_date)
+
+        # --- Aggregation (weekly / monthly) ---
+        df = resample_ohlc_delivery(df, self._agg_mode)
 
         # Reset index for clean row-based access
         df = df.reset_index(drop=True)

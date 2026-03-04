@@ -12,12 +12,13 @@
 
     var parts = window.location.pathname.split("/");
     var symbol = parts[parts.length - 1] || "RELIANCE";
+    var aggMode = "daily";
 
     var params = new URLSearchParams(window.location.search);
-    var apiUrl = "/de/api/divergence-engine/" + symbol;
-    if (params.get("start_date")) apiUrl += "?start_date=" + params.get("start_date");
+    var apiUrl = "/de/api/divergence-engine/" + symbol + "?agg_mode=" + aggMode;
+    if (params.get("start_date")) apiUrl += "&start_date=" + params.get("start_date");
     if (params.get("end_date")) {
-        apiUrl += (apiUrl.includes("?") ? "&" : "?") + "end_date=" + params.get("end_date");
+        apiUrl += "&end_date=" + params.get("end_date");
     }
 
     document.title = "Divergence Engine \u2014 " + symbol;
@@ -36,13 +37,23 @@
 
     var chartInstances = [];
 
+    // --- Aggregation Mode Toggle ---
+    document.querySelectorAll(".agg-btn").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+            document.querySelectorAll(".agg-btn").forEach(function (b) { b.classList.remove("active"); });
+            this.classList.add("active");
+            aggMode = this.dataset.mode;
+            loadSymbol(symbol);
+        });
+    });
+
     function loadSymbol(targetSymbol) {
         if (!targetSymbol) return;
         symbol = targetSymbol.toUpperCase();
-        var apiUrl = "/de/api/divergence-engine/" + symbol;
-        if (params.get("start_date")) apiUrl += "?start_date=" + params.get("start_date");
+        var apiUrl = "/de/api/divergence-engine/" + symbol + "?agg_mode=" + aggMode;
+        if (params.get("start_date")) apiUrl += "&start_date=" + params.get("start_date");
         if (params.get("end_date")) {
-            apiUrl += (apiUrl.includes("?") ? "&" : "?") + "end_date=" + params.get("end_date");
+            apiUrl += "&end_date=" + params.get("end_date");
         }
 
         loadingEl.style.display = "flex";
