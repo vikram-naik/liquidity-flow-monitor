@@ -1,5 +1,5 @@
 """
-High Score Marker — 90+ Score Detection (Screener-only).
+High Score Marker — 70+ Score Detection (Screener-only).
 
 Detects when any scored marker (Ignition or Coil) has a score exceeding 90.
 Used to surface the highest-conviction setups in a dedicated screener list.
@@ -29,8 +29,8 @@ class HighScoreMarker(MarkerInterface):
     def screen(self, df: pd.DataFrame, latest: pd.Series,
                prev: Optional[pd.Series] = None) -> bool:
         return (
-            latest.get('ignition_score', 0) > 90 or
-            latest.get('coil_score', 0) > 90
+            latest.get('ignition_score', 0) >= 70 or
+            latest.get('coil_score', 0) >= 70
         )
 
     def metadata(self) -> dict:
