@@ -114,6 +114,16 @@ def get_db():
 def health_check():
     return {"status": "healthy", "service": "lfm-api"}
 
+@app.get("/lfm/api/system/latest-date")
+def get_latest_data_date(conn: sqlite3.Connection = Depends(get_db)):
+    """Returns the most recent record_date available in the database."""
+    cursor = conn.cursor()
+    cursor.execute("SELECT MAX(record_date) as latest_date FROM nse_delivery_log")
+    row = cursor.fetchone()
+    if row and row[0]:
+        return {"latest_date": row[0]}
+    return {"latest_date": None}
+
 
 @app.get('/lfm/api/markers')
 def get_markers():

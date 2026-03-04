@@ -20,9 +20,14 @@ def init_db():
     cursor.execute("PRAGMA foreign_keys = ON;")
     cursor.execute("PRAGMA journal_mode = WAL;")
 
-
-    
-
+    # Table: nse_trading_holidays
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS nse_trading_holidays (
+        holiday_date DATE PRIMARY KEY,
+        description TEXT,
+        segment TEXT
+    );
+    """)
 
     # --- NEW: NSE Delivery Monitor ---
     

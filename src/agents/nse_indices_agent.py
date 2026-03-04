@@ -15,6 +15,7 @@ import numpy as np
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
 from src.database import get_db_connection
 from src.cache import get_cache
+from src.agents.nse_agent import is_trading_holiday
 
 cache = get_cache()
 
@@ -230,6 +231,11 @@ def backfill_data(days=0, start_date=None, force=False):
         if d.weekday() >= 5:
             continue
             
+        is_holiday, h_desc = is_trading_holiday(d)
+        if is_holiday:
+            print(f"[NSE Indices] Skipping {d_str} (Trading Holiday: {h_desc})")
+            continue
+            
         if not force and d_str in existing_dates:
             print(f"[NSE Indices] Skipping {d_str} (already in DB). Use --force to overwrite.")
             continue
@@ -271,6 +277,11 @@ def smart_sync():
             if d <= last_date:
                 continue
             if d.weekday() >= 5:
+                continue
+            
+            is_holiday, h_desc = is_trading_holiday(d)
+            if is_holiday:
+                print(f"[NSE Indices] Skipping {d} (Trading Holiday: {h_desc})")
                 continue
             
             print(f"\n[NSE Indices] Processing {d}...")

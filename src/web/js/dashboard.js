@@ -795,9 +795,41 @@ window.loadSymbol = function (sym) {
 };
 
 
+// Fetch the latest data date on load
+(async function fetchLatestDataDate() {
+    try {
+        const res = await fetch('/lfm/api/system/latest-date');
+        const data = await res.json();
+        const dateEl = document.getElementById('latest-data-date');
+        if (dateEl) {
+            if (data.latest_date) {
+                // Parse "YYYY-MM-DD" safely, avoiding local timezone shift
+                const parts = data.latest_date.split('-');
+                if (parts.length === 3) {
+                    const d = new Date(parts[0], parts[1] - 1, parts[2]);
+                    if (!isNaN(d)) {
+                        dateEl.textContent = d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+                    } else {
+                        dateEl.textContent = data.latest_date;
+                    }
+                } else {
+                    dateEl.textContent = data.latest_date;
+                }
+            } else {
+                dateEl.textContent = 'No Data';
+            }
+        }
+    } catch (e) {
+        console.error("Failed to fetch latest data date", e);
+        const dateEl = document.getElementById('latest-data-date');
+        if (dateEl) dateEl.textContent = 'Error';
+    }
+})();
+
 // ─── Metrics Update ───────────────────────────────────────────
 function updateMetrics(meta) {
     const sym = meta.symbol || '—';
+
     document.getElementById('symbol-display').textContent = sym;
 
     document.getElementById('m-price-val').textContent = `₹${meta.last_price?.toLocaleString() ?? '—'}`;

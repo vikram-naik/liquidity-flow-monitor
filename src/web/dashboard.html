@@ -103,14 +103,17 @@
                             Smart Money</h2>
                     </div>
 
-                    <div class="controls">
+                    <div class="controls" style="display: flex; gap: 16px;">
                         <div class="ctrl-group">
-                            <label>Agg</label>
                             <div class="btn-group" id="ctrl-agg">
                                 <button class="tbtn active" data-val="daily" onclick="switchTbtn(this)">D</button>
                                 <button class="tbtn" data-val="weekly" onclick="switchTbtn(this)">W</button>
                                 <button class="tbtn" data-val="monthly" onclick="switchTbtn(this)">M</button>
                             </div>
+                        </div>
+                        <div class="ctrl-group">
+                            <span id="latest-data-date"
+                                style="font-size: 12px; font-weight: 600; color: var(--blue); margin-top: auto; margin-bottom: 2px;">--</span>
                         </div>
                     </div>
 
