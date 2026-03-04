@@ -1,13 +1,11 @@
 """
 Shared utilities for the Divergence Engine.
 
-Provides data validation, loading helpers, and the sigmoid function used
-by the divergence probability scorer.
+Provides data validation and loading helpers.
 """
 
 from __future__ import annotations
 
-import math
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -96,34 +94,3 @@ def validate_dataframe(df: pd.DataFrame, *, symbol: str = "unknown") -> None:
     ohlc = ["open", "high", "low", "close"]
     df[ohlc] = df[ohlc].ffill()
 
-
-def sigmoid(x: float | np.ndarray, k: float = 5.0, x0: float = 0.5) -> float | np.ndarray:
-    """
-    Compute the sigmoid function used for divergence probability scoring.
-
-    .. math::
-
-        \\sigma(x) = \\frac{1}{1 + e^{-k \\cdot (x - x_0)}}
-
-    Parameters
-    ----------
-    x : float or array-like
-        Input value(s).
-    k : float
-        Steepness parameter (default ``5.0``).
-    x0 : float
-        Centre/midpoint (default ``0.5``).
-
-    Returns
-    -------
-    float or np.ndarray
-        Output in ``(0, 1)``.
-    """
-    exponent = -k * (x - x0)
-    # Clip to prevent overflow in exp for very large negative exponents
-    if isinstance(exponent, np.ndarray):
-        exponent = np.clip(exponent, -500, 500)
-        return 1.0 / (1.0 + np.exp(exponent))
-    else:
-        exponent = max(-500.0, min(500.0, exponent))
-        return 1.0 / (1.0 + math.exp(exponent))

@@ -16,6 +16,15 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+# Columns the UI actually reads — trim everything else before serialising
+UI_COLUMNS = [
+    "date", "open", "high", "low", "close",
+    "cwvap", "cpoc", "delivery_qty", "mfm",
+    "price_slope_z", "rdv_slope_z",
+    "coherence_raw", "coherence",
+    "integrated_state",
+]
+
 
 def _nan_safe(val: Any) -> Any:
     """Convert NaN / Inf to None for JSON serialisation."""
@@ -44,13 +53,33 @@ def _clean(obj: Any) -> Any:
 
 
 def ledger_to_json(df: pd.DataFrame) -> list[dict]:
-    """Convert the full ledger DataFrame to a JSON-serialisable list."""
-    records = []
-    for _, row in df.iterrows():
-        records.append(_clean(row.to_dict()))
-    return records
+    """Convert the ledger DataFrame to a JSON-serialisable list.
+
+    Trims to UI_COLUMNS and uses vectorised conversion for performance.
+    """
+    # Trim to only the columns the UI needs
+    cols = [c for c in UI_COLUMNS if c in df.columns]
+    slim = df[cols].copy()
+
+    # Pre-convert datetime columns to strings
+    for col in slim.select_dtypes(include=["datetime64"]).columns:
+        slim[col] = slim[col].dt.strftime("%Y-%m-%d")
+
+    # Round float columns for cleaner output
+    float_cols = slim.select_dtypes(include=["float64", "float32"]).columns
+    slim[float_cols] = slim[float_cols].round(6)
+
+    # Vectorised dict conversion
+    records = slim.to_dict(orient="records")
+
+    # Single-pass NaN → None cleanup
+    return [
+        {k: (None if isinstance(v, float) and v != v else v) for k, v in r.items()}
+        for r in records
+    ]
 
 
 def state_summary_to_json(result) -> dict:
     """Convert the EngineResult.latest into API-friendly JSON."""
     return _clean(result.latest)
+
