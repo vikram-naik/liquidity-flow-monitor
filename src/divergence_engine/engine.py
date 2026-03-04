@@ -70,21 +70,30 @@ class EngineResult:
     @property
     def latest(self) -> dict:
         """Return the most recent bar's full state summary."""
+        import math
+
+        def _safe(val, default=0, decimals=4):
+            """Round a numeric value; return None if NaN/Inf."""
+            v = float(val) if val is not None else default
+            if math.isnan(v) or math.isinf(v):
+                return None
+            return round(v, decimals)
+
         row = self.ledger.iloc[-1]
         return {
             "date": str(row["date"]),
-            "mcs_composite": round(float(row.get("mcs_composite", 0)), 4),
-            "cwc": round(float(row.get("cwc", 0)), 4),
-            "cwvap": round(float(row.get("cwvap", 0)), 2),
-            "cpoc": round(float(row.get("cpoc", 0)), 2),
-            "poc_spread": round(float(row.get("poc_spread", 0)), 2),
+            "mcs_composite": _safe(row.get("mcs_composite", 0), decimals=4),
+            "cwc": _safe(row.get("cwc", 0), decimals=4),
+            "cwvap": _safe(row.get("cwvap", 0), decimals=2),
+            "cpoc": _safe(row.get("cpoc", 0), decimals=2),
+            "poc_spread": _safe(row.get("poc_spread", 0), decimals=2),
             "gradient_shape": row.get("gradient_shape", ""),
-            "coherence_raw": round(float(row.get("coherence_raw", 0)), 4),
-            "coherence": round(float(row.get("coherence", 0)), 4),
-            "price_slope_z": round(float(row.get("price_slope_z", 0)), 4),
-            "price_slope_angle": round(float(row.get("price_slope_angle", 0)), 4),
-            "rdv_slope_z": round(float(row.get("rdv_slope_z", 0)), 4),
-            "rdv_slope_angle": round(float(row.get("rdv_slope_angle", 0)), 4),
+            "coherence_raw": _safe(row.get("coherence_raw", 0), decimals=4),
+            "coherence": _safe(row.get("coherence", 0), decimals=4),
+            "price_slope_z": _safe(row.get("price_slope_z", 0), decimals=4),
+            "price_slope_angle": _safe(row.get("price_slope_angle", 0), decimals=4),
+            "rdv_slope_z": _safe(row.get("rdv_slope_z", 0), decimals=4),
+            "rdv_slope_angle": _safe(row.get("rdv_slope_angle", 0), decimals=4),
             "value_zone": row.get("value_zone", "N/A"),
             "coherence_stamp": row.get("coherence_stamp", ""),
             "integrated_state": row.get("integrated_state", "N/A"),

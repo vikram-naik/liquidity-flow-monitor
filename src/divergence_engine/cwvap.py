@@ -159,8 +159,9 @@ class CompositeVWAP:
 
             weight = dvl_rate * (1.0 / (1.0 + np.where(atr > 0, distance / atr, 0.0)))
 
-            numerator += dvwap * weight
-            denominator += weight
+            valid = dvwap.notna()
+            numerator += (dvwap * weight).fillna(0)
+            denominator += weight.where(valid, 0)
 
         df["cwvap"] = np.where(denominator > 0, numerator / denominator, close)
 
@@ -195,8 +196,10 @@ class CompositeVWAP:
             poc = df[f"poc_{n}"]
             dvl_rate = df[f"dvl_rate_{n}"]
             weight = dvl_rate  # simplified: delivery_qty_at_POC_n ≈ DVL_rate_n
-            numerator += poc * weight
-            denominator += weight
+
+            valid = poc.notna()
+            numerator += (poc * weight).fillna(0)
+            denominator += weight.where(valid, 0)
 
         df["cpoc"] = np.where(denominator > 0, numerator / denominator, df["close"])
 

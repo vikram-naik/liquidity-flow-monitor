@@ -42,7 +42,19 @@ def apply_integrated_matrix(df: pd.DataFrame, db_conn=None) -> pd.DataFrame:
         If provided, loads user-tuned thresholds from the database.
     """
     # Load config (factory defaults + any user overrides)
-    config = config_manager.get_config(db_conn)
+    # When no db_conn is provided (common case from engine.py),
+    # open a short-lived connection so user overrides are still loaded.
+    if db_conn is None:
+        import sqlite3
+        from src.database import DB_PATH
+        _conn = sqlite3.connect(DB_PATH, timeout=10)
+        _conn.row_factory = sqlite3.Row
+        try:
+            config = config_manager.get_config(_conn)
+        finally:
+            _conn.close()
+    else:
+        config = config_manager.get_config(db_conn)
     thresholds = config["thresholds"]
 
     # Build the rule engine from config

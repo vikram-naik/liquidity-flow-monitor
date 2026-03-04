@@ -216,7 +216,14 @@
         for (var i = cpoc.length - 1; i >= 0; i--) {
             if (cpoc[i].value != null) { lastCpocVal = cpoc[i].value; break; }
         }
-        sCpoc.setData(cpoc.map(d => ({ time: d.time, value: lastCpocVal })));
+        if (lastCpocVal != null) {
+            sCpoc.setData(cpoc.map(d => ({ time: d.time, value: lastCpocVal })));
+        } else {
+            // No valid CPOC data — hide the series and its toggle
+            sCpoc.applyOptions({ visible: false });
+            var cpocCb = document.getElementById("cbCPOC");
+            if (cpocCb) cpocCb.closest("label").style.display = "none";
+        }
 
         if (markerList.length > 0) LC.createSeriesMarkers(cs, markerList);
 
