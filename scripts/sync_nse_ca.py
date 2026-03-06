@@ -4,8 +4,9 @@ import requests
 import sqlite3
 import pandas as pd
 from tabulate import tabulate
-from datetime import datetime
+from datetime import datetime, timedelta
 import re
+import argparse
 
 # Add project root to sys.path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -17,6 +18,7 @@ def parse_nse_description(subject):
     Examples:
     - "Bonus 4:1" -> factor 5.0 (1 share becomes 5)
     - "Face Value Split (Sub-Division) - From Rs 2/- Per Share To Re 1/- Per Share" -> factor 2.0
+    - "Demerger" -> flag for ESTIMATE_RATIO
     """
     subject = subject.lower()
     total_factor = 1.0
@@ -39,12 +41,55 @@ def parse_nse_description(subject):
         total_factor *= old_fv / new_fv
         types.append("SPLIT")
 
+    # Demerger / Amalgamation Parsing (No explicit ratio in string usually)
     if not types:
+        if any(kw in subject for kw in ["demerger", "amalgamation", "arrangement", "capital reduction", "spin-off"]):
+            return 'ESTIMATE_RATIO', 'DEMERGER_OR_SIMILAR'
         return None, None
     
     return total_factor, "+".join(sorted(types))
 
-def get_nse_data(symbol):
+def estimate_ratio_factor(symbol, ex_date_str):
+    """
+    Estimates the ratio factor by looking at the price drop in the DB.
+    Factor = Close(Ex-Date - 1) / Open(Ex-Date)
+    """
+    conn = get_db_connection()
+    try:
+        # Get the row on or immediately after the ex-date
+        query_after = """
+            SELECT record_date, price_open 
+            FROM nse_delivery_log 
+            WHERE symbol = ? AND record_date >= ?
+            ORDER BY record_date ASC LIMIT 1
+        """
+        row_after = conn.execute(query_after, (symbol, ex_date_str)).fetchone()
+        
+        # Get the row immediately before the ex-date
+        query_before = """
+            SELECT record_date, price_close 
+            FROM nse_delivery_log 
+            WHERE symbol = ? AND record_date < ?
+            ORDER BY record_date DESC LIMIT 1
+        """
+        row_before = conn.execute(query_before, (symbol, ex_date_str)).fetchone()
+        
+        if row_after and row_before:
+            open_after = row_after[1]
+            close_before = row_before[1]
+            if open_after and open_after > 0:
+                est_factor = close_before / open_after
+                return round(est_factor, 4)
+    finally:
+        conn.close()
+        
+    print(f"  [Warning] Could not estimate DB ratio for {symbol} on {ex_date_str}. Defaulting to 1.0.")
+    return 1.0
+
+def get_nse_data(symbol, overrides=None):
+    if overrides is None:
+        overrides = {}
+        
     headers = {
         'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Accept': '*/*',
@@ -76,9 +121,26 @@ def get_nse_data(symbol):
                 # ex_date usually "16-Jun-2025"
                 dt = datetime.strptime(ex_date_str, '%d-%b-%Y')
                 iso_date = dt.strftime('%Y-%m-%d')
+                
+                final_factor = 1.0
+                source = ""
+                
+                # Check for CLI overrides first
+                if iso_date in overrides:
+                    final_factor = overrides[iso_date]
+                    source = "(CLI Override)"
+                elif factor == 'ESTIMATE_RATIO':
+                    final_factor = estimate_ratio_factor(symbol, iso_date)
+                    source = "(DB Estimate)"
+                else:
+                    final_factor = factor
+                    
+                if source:
+                    print(f"Parsed {ca_type} on {iso_date}: Factor {final_factor} {source}")
+                
                 parsed_actions.append({
                     'ex_date': iso_date,
-                    'factor': factor,
+                    'factor': final_factor,
                     'type': ca_type,
                     'subject': subject
                 })
@@ -88,11 +150,11 @@ def get_nse_data(symbol):
         print(f"Exception during NSE fetch: {e}")
         return []
 
-def sync_symbol(symbol):
+def sync_symbol(symbol, ca_overrides=None):
     symbol = symbol.upper()
     print(f"\n--- Investigating NSE Corporate Actions for {symbol} ---", flush=True)
     
-    nse_raw = get_nse_data(symbol)
+    nse_raw = get_nse_data(symbol, overrides=ca_overrides)
     if not nse_raw:
         print("No parsable corporate actions found on NSE.", flush=True)
         # We might still want to proceed to delete if user wants to clear? 
@@ -155,8 +217,29 @@ def sync_symbol(symbol):
     else:
         print("Update cancelled.")
 
+def parse_overrides(override_str):
+    overrides = {}
+    if not override_str:
+        return overrides
+    try:
+        pairs = override_str.split(',')
+        for pair in pairs:
+            date_str, factor_str = pair.split(':')
+            # Validate date
+            datetime.strptime(date_str, '%Y-%m-%d')
+            overrides[date_str.strip()] = float(factor_str)
+    except Exception as e:
+        print(f"Error parsing overrides '{override_str}': {e}")
+        print("Format should be 'YYYY-MM-DD:FACTOR,YYYY-MM-DD:FACTOR'")
+        sys.exit(1)
+    return overrides
+
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("Usage: python sync_nse_ca.py <SYMBOL>")
-    else:
-        sync_symbol(sys.argv[1])
+    parser = argparse.ArgumentParser(description="Sync corporate actions from NSE")
+    parser.add_argument("symbol", type=str, help="Stock symbol (e.g., ABFRL)")
+    parser.add_argument("--ca-override", type=str, help="Manual ratio factor overrides in format 'YYYY-MM-DD:FACTOR,YYYY-MM-DD:FACTOR'")
+    
+    args = parser.parse_args()
+    overrides = parse_overrides(args.ca_override)
+    
+    sync_symbol(args.symbol, ca_overrides=overrides)

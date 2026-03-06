@@ -1,0 +1,7 @@
+## Data Pipeline Dependencies
+## Not needed for the Docker image — only for offline training scripts.
+## Install with: pip install -r requirements-pipeline.txt
+tqdm
+pyarrow
+xgboost
+scikit-learn
