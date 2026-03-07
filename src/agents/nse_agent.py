@@ -20,12 +20,80 @@ from src.cache import get_cache
 
 cache = get_cache()
 
+# API for holidays
+HOLIDAYS_URL = "https://www.nseindia.com/api/holiday-master?type=trading"
+
 # Archives URL structure
 BASE_URL = "https://nsearchives.nseindia.com/products/content/sec_bhavdata_full_{date_str}.csv"
 HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
     'Referer': 'https://www.nseindia.com/'
 }
+
+def fetch_and_store_holidays():
+    """
+    Fetches the trading holidays from NSE API and stores them in the database.
+    """
+    print(f"[NSE] Fetching trading holidays from {HOLIDAYS_URL}...")
+    try:
+        s = requests.Session()
+        s.headers.update(HEADERS)
+        s.get("https://www.nseindia.com", timeout=10) # Get cookies first
+        response = s.get(HOLIDAYS_URL, timeout=15)
+        
+        if response.status_code == 200:
+            data = response.json()
+            # typically {"CBM": [...], "CM": [...], "FO": [...], ...} where CM = Capital Market (Equities)
+            # Let's use CM branch (Equities) for holidays.
+            cm_holidays = data.get("CM", [])
+            
+            records = []
+            for h in cm_holidays:
+                date_str = h.get("tradingDate")  # e.g., "26-Jan-2026" or "14-Apr-2026"
+                description = h.get("description")
+                if date_str:
+                    try:
+                        # Parse "26-Jan-2026"
+                        dt = datetime.strptime(date_str, "%d-%b-%Y").date()
+                        records.append((dt.strftime("%Y-%m-%d"), description, "CM"))
+                    except ValueError:
+                        print(f"[NSE] Could not parse holiday date: {date_str}")
+            
+            if records:
+                conn = get_db_connection()
+                cursor = conn.cursor()
+                cursor.executemany("""
+                    INSERT OR REPLACE INTO nse_trading_holidays (holiday_date, description, segment)
+                    VALUES (?, ?, ?)
+                """, records)
+                conn.commit()
+                conn.close()
+                print(f"[NSE] Successfully stored {len(records)} trading holidays.")
+            else:
+                print(f"[NSE] No valid holiday records found in response.")
+        else:
+            print(f"[NSE] Failed to fetch holidays: {response.status_code}")
+    except Exception as e:
+        print(f"[NSE] Error fetching holidays: {e}")
+
+def is_trading_holiday(check_date):
+    """
+    Checks the database if the given date is a trading holiday.
+    """
+    conn = get_db_connection()
+    date_str = check_date.strftime("%Y-%m-%d") if isinstance(check_date, (datetime, pd.Timestamp)) else check_date
+    if hasattr(date_str, 'strftime'):  # handle datetime.date
+         date_str = date_str.strftime("%Y-%m-%d")
+    
+    res = conn.execute(
+        "SELECT description FROM nse_trading_holidays WHERE holiday_date = ?", 
+        (date_str,)
+    ).fetchone()
+    conn.close()
+    
+    if res:
+        return True, res[0]
+    return False, None
 
 
 def fetch_legacy_data(date_obj):
@@ -381,6 +449,11 @@ def backfill_data(days=0, start_date=None, force=False):
         if d.weekday() >= 5:
             continue
             
+        is_holiday, h_desc = is_trading_holiday(d)
+        if is_holiday:
+            print(f"[NSE] Skipping {d_str} (Trading Holiday: {h_desc})")
+            continue
+            
         if not force and d_str in existing_dates:
             print(f"[NSE] Skipping {d_str} (already in DB). Use --force to overwrite.")
             continue
@@ -422,6 +495,11 @@ def smart_sync():
             if d <= last_date:
                 continue
             if d.weekday() >= 5:
+                continue
+                
+            is_holiday, h_desc = is_trading_holiday(d)
+            if is_holiday:
+                print(f"[NSE] Skipping {d} (Trading Holiday: {h_desc})")
                 continue
             
             print(f"\n[NSE] Processing {d}...")
@@ -468,6 +546,7 @@ if __name__ == "__main__":
     parser.add_argument("--start-date", type=str, help="Start date to backfill from (YYYY-MM-DD)")
     parser.add_argument("--force", action="store_true", help="Force refill even if data exists")
     parser.add_argument("--sync", action="store_true", help="Smart sync: fetch from last available date to today")
+    parser.add_argument("--sync-holidays", action="store_true", help="Fetch and store trading holidays for the current year")
     parser.add_argument("--info", action="store_true", help="Show database status (date range, records)")
     args = parser.parse_args()
     
@@ -475,6 +554,8 @@ if __name__ == "__main__":
         show_db_status()
     elif args.backfill > 0 or args.start_date:
         backfill_data(days=args.backfill, start_date=args.start_date, force=args.force)
+    elif args.sync_holidays:
+        fetch_and_store_holidays()
     elif args.sync:
         smart_sync()
     else:

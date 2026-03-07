@@ -316,48 +316,12 @@ body {
   flex-shrink: 0;
 }
 
-.leg-item .dot.st-vbtm {
+.leg-item .dot.st-demand {
   background: #00e676;
 }
 
-.leg-item .dot.st-brkout {
-  background: #00bfa5;
-}
-
-.leg-item .dot.st-early {
-  background: #26c6da;
-}
-
-.leg-item .dot.st-markup {
-  background: #42a5f5;
-}
-
-.leg-item .dot.st-stealth {
-  background: #81c784;
-}
-
-.leg-item .dot.st-exhaust {
-  background: #ffb300;
-}
-
-.leg-item .dot.st-top {
-  background: #ffb300;
-}
-
-.leg-item .dot.st-actdist {
-  background: #f4511e;
-}
-
-.leg-item .dot.st-brkdwn {
-  background: #ff5252;
-}
-
-.leg-item .dot.st-mrkdwn {
-  background: #d32f2f;
-}
-
-.leg-item .dot.st-dcb {
-  background: #ce93d8;
+.leg-item .dot.st-supply {
+  background: #ef5350;
 }
 
 /* Sidebar */
@@ -1015,4 +979,79 @@ div[class*="apply-common-tooltip"] {
 
 .btn-danger:hover {
   background: #f8514922;
+}
+
+/* Verification Panel */
+.verif-section {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid #21262d;
+}
+
+.verif-section h3 {
+  font-size: 13px;
+  color: #8b949e;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+}
+
+.verif-stats {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+
+.verif-counts {
+  font-size: 11px;
+  color: #8b949e;
+}
+
+.verif-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.badge-hit {
+  background: rgba(0, 230, 118, 0.15);
+  color: #00e676;
+  border: 1px solid rgba(0, 230, 118, 0.3);
+}
+
+.badge-miss {
+  background: rgba(239, 83, 80, 0.15);
+  color: #ef5350;
+  border: 1px solid rgba(239, 83, 80, 0.3);
+}
+
+.badge-pending {
+  background: rgba(255, 179, 0, 0.15);
+  color: #ffb300;
+  border: 1px solid rgba(255, 179, 0, 0.3);
+}
+
+.verif-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+
+.verif-table th {
+  color: #8b949e;
+  font-weight: 600;
+  text-align: left;
+  padding: 4px 6px;
+  border-bottom: 1px solid #21262d;
+}
+
+.verif-table td {
+  padding: 4px 6px;
+  color: #c9d1d9;
+  border-bottom: 1px solid rgba(48, 54, 61, 0.3);
+  font-family: 'JetBrains Mono', monospace;
 }

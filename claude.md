@@ -1,4 +1,4 @@
-# Project: ML Data Pipeline
+# Project: Liquidity Flow Monitor
 
 ## Core Directives for Claude CLI
 1. **Token Efficiency First:** Assume strict context limits. Provide concise, direct answers without unnecessary pleasantries or filler text.
@@ -14,3 +14,5 @@
 ## Workflow Commands
 * **Handoff Generation:** When the user types "Generate handoff", create a concise summary of the current working state, unresolved bugs, and the exact next step, and output it to a file named `handoff.md`.
 * **venv:** `source venv/bin/activate`
+* **web-app start:** `uvicorn src.api.main:app --host 0.0.0.0 --port 8000 --reload`
+* **web-app URL:** `http://localhost:8000/de/dashboard/{symbol}`

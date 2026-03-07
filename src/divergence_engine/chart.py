@@ -24,9 +24,9 @@ UI_COLUMNS = [
     "price_slope_z", "rdv_slope_z",
     "coherence_raw", "coherence",
     "integrated_state",
-    # Sidebar annotations (shown on hover)
-    "price_slope_angle", "rdv_slope_angle",
-    "value_zone", "coherence_stamp", "mcs_composite",
+    # Conviction marker data
+    "conviction_score", "cwvap_dist", "rdv", "cwc",
+    "rdv_consistency", "delivery_pct", "atr_20",
 ]
 
 

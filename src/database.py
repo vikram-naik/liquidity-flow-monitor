@@ -7,8 +7,7 @@ DB_PATH = os.getenv("DB_PATH", "liquidity_monitor.db")
 def get_db_connection():
     # Add timeout to handle concurrent writes better (default is 5s)
     conn = sqlite3.connect(DB_PATH, timeout=20)
-    # Enable Foreign Keys and WAL mode for every connection
-    conn.execute("PRAGMA foreign_keys = ON;")
+    # Use WAL mode for better concurrency (multiple readers, one writer)
     conn.execute("PRAGMA journal_mode=WAL;")
     return conn
 
@@ -21,9 +20,14 @@ def init_db():
     cursor.execute("PRAGMA foreign_keys = ON;")
     cursor.execute("PRAGMA journal_mode = WAL;")
 
-
-    
-
+    # Table: nse_trading_holidays
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS nse_trading_holidays (
+        holiday_date DATE PRIMARY KEY,
+        description TEXT,
+        segment TEXT
+    );
+    """)
 
     # --- NEW: NSE Delivery Monitor ---
     

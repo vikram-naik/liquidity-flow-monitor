@@ -16,11 +16,9 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../'
 
 # Import DB path from analytics or database if possible
 from src.database import DB_PATH, init_db
-from src.analysis.markers import MarkerRegistry
 from src.cache import get_cache
 
 cache = get_cache()
-_registry = MarkerRegistry()
 
 NSE_INDICES = {
     "NIFTY 50": "ind_nifty50list.csv",
@@ -162,6 +160,42 @@ def divergence_engine_data(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Engine error: {e}")
+
+
+@app.get("/de/api/verification/{symbol}")
+def verification_data(
+    symbol: str,
+    horizon: Optional[int] = Query(None, description="Verification horizon in trading days"),
+    atr_mult: Optional[float] = Query(None, description="ATR multiplier for target barrier"),
+):
+    """Run verification on Demand/Supply signals for a symbol."""
+    try:
+        from src.divergence_engine.engine import DivergenceEngine
+        from src.divergence_engine.analysis_integrated import compute_verification
+        from src.divergence_engine import config_manager
+
+        engine = DivergenceEngine(ticker=symbol.upper())
+        result = engine.run()
+
+        # Get thresholds for defaults
+        import sqlite3
+        from src.database import DB_PATH
+        conn = sqlite3.connect(DB_PATH, timeout=10)
+        conn.row_factory = sqlite3.Row
+        try:
+            cfg = config_manager.get_config(conn)
+        finally:
+            conn.close()
+        thresholds = cfg.get("thresholds", {})
+
+        h = horizon if horizon is not None else int(thresholds.get("verification_horizon", 5))
+        am = atr_mult if atr_mult is not None else float(thresholds.get("verification_atr_mult", 2.0))
+
+        return compute_verification(result.ledger, horizon=h, atr_mult=am)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Verification error: {e}")
 
 
 @app.get("/de/dashboard/{symbol}")

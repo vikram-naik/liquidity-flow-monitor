@@ -83,21 +83,20 @@ class EngineResult:
         row = self.ledger.iloc[-1]
         return {
             "date": str(row["date"]),
-            "mcs_composite": _safe(row.get("mcs_composite", 0), decimals=4),
+            "integrated_state": row.get("integrated_state", "No Signal"),
+            "conviction_score": _safe(row.get("conviction_score"), decimals=1),
             "cwc": _safe(row.get("cwc", 0), decimals=4),
+            "rdv": _safe(row.get("rdv", 0), decimals=4),
+            "rdv_consistency": int(row.get("rdv_consistency", 0)),
+            "cwvap_dist": _safe(row.get("cwvap_dist", 0), decimals=4),
+            "delivery_pct": _safe(row.get("delivery_pct", 0), decimals=2),
             "cwvap": _safe(row.get("cwvap", 0), decimals=2),
             "cpoc": _safe(row.get("cpoc", 0), decimals=2),
             "poc_spread": _safe(row.get("poc_spread", 0), decimals=2),
-            "gradient_shape": row.get("gradient_shape", ""),
             "coherence_raw": _safe(row.get("coherence_raw", 0), decimals=4),
             "coherence": _safe(row.get("coherence", 0), decimals=4),
             "price_slope_z": _safe(row.get("price_slope_z", 0), decimals=4),
-            "price_slope_angle": _safe(row.get("price_slope_angle", 0), decimals=4),
             "rdv_slope_z": _safe(row.get("rdv_slope_z", 0), decimals=4),
-            "rdv_slope_angle": _safe(row.get("rdv_slope_angle", 0), decimals=4),
-            "value_zone": row.get("value_zone", "N/A"),
-            "coherence_stamp": row.get("coherence_stamp", ""),
-            "integrated_state": row.get("integrated_state", "N/A"),
         }
 
     def export(self, path: str | None = None) -> str:

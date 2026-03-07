@@ -135,20 +135,10 @@
             }
         }
 
-        // --- Marker Logic (Integrated State) ---
+        // --- Marker Logic (Demand/Supply Conviction Markers) ---
         var stateColorMap = {
-            "V-Bottom Reversal": "#00e676",    // Bright Green
-            "Value Breakout": "#00bfa5",       // Teal
-            "Early Markup": "#26c6da",         // Cyan
-            "Confirmed Markup": "#42a5f5",     // Blue
-            "Stealth Accumulation": "#81c784", // Light Green
-            "Exhaustion Warning": "#ffb300",   // Amber (same logic color as Top)
-            "Distribution Top": "#ffb300",     // Amber
-            "Active Distribution": "#f4511e",  // Deep Orange
-            "Value Breakdown": "#ff5252",      // Red
-            "Confirmed Markdown": "#d32f2f",   // Deep Red
-            "Dead Cat Bounce": "#ce93d8",      // Light Purple
-            "Neutral / Mixed": "#9e9e9e"       // Grey
+            "Demand": "#00e676",
+            "Supply": "#ef5350"
         };
 
         var markerList = [];
@@ -157,21 +147,16 @@
             var t = r.date ? (r.date.includes(" ") ? r.date.split(" ")[0] : r.date) : null;
             if (!t) continue;
 
-            var stateStr = r.integrated_state || "Neutral / Mixed";
-            // Strip the coherence [Stamp] to match the base color
-            var baseState = stateStr.split("[")[0].trim();
-
-            // For charting clarity, let's only draw markers when the state is NOT "Neutral / Mixed"
-            if (baseState !== "Neutral / Mixed") {
-                // Positional logic: Green/Blue states usually happen at bottoms or breakouts -> belowBar
-                var isBull = ["V-Bottom Reversal", "Value Breakout", "Early Markup", "Confirmed Markup", "Stealth Accumulation"].includes(baseState);
-
+            var stateStr = r.integrated_state || "No Signal";
+            if (stateStr === "Demand" || stateStr === "Supply") {
+                var isDemand = stateStr === "Demand";
+                var convScore = r.conviction_score != null ? r.conviction_score : "";
                 markerList.push({
                     time: t,
-                    position: isBull ? "belowBar" : "aboveBar",
-                    color: stateColorMap[baseState] || "#9e9e9e",
-                    shape: isBull ? "arrowUp" : "arrowDown",
-                    stateText: stateStr
+                    position: isDemand ? "belowBar" : "aboveBar",
+                    color: stateColorMap[stateStr],
+                    shape: isDemand ? "arrowUp" : "arrowDown",
+                    stateText: stateStr + (convScore !== "" ? " (" + convScore + ")" : "")
                 });
             }
         }
@@ -391,20 +376,19 @@
     function buildSidebarAnnotations(l) {
         if (!l) return;
         function fmt(v, d) { return (v != null && typeof v === "number" && !isNaN(v)) ? v.toFixed(d || 2) : (v || "\u2014"); }
-        // Simplify the sidebar down to the integrated marker and the pure numerical inputs
-        var intState = l.integrated_state || "N/A";
-        var coherStr = fmt(l.coherence, 3) + (l.coherence_stamp || "");
+        var intState = l.integrated_state || "No Signal";
+        var convScore = l.conviction_score != null ? " (" + fmt(l.conviction_score, 1) + ")" : "";
+        var stateColor = intState === "Demand" ? "#00e676" : (intState === "Supply" ? "#ef5350" : "#8b949e");
 
         document.getElementById("state-table").innerHTML =
-            "<tr><td colspan='2' style='text-align:center; padding: 10px; background: rgba(0,0,0,0.2);'><strong>" + intState + "</strong></td></tr>" +
+            "<tr><td colspan='2' style='text-align:center; padding: 10px; background: rgba(0,0,0,0.2);'><strong style='color:" + stateColor + "'>" + intState + convScore + "</strong></td></tr>" +
             "<tr><td>Date</td><td class='val'>" + (l.date ? l.date.split("T")[0] : "\u2014") + "</td></tr>" +
-            "<tr><td>Price Z</td><td class='val'>" + fmt(l.price_slope_z, 4) + "</td></tr>" +
-            "<tr><td>Price ∠</td><td class='val'>" + fmt(l.price_slope_angle, 4) + "</td></tr>" +
-            "<tr><td>RDV Z</td><td class='val'>" + fmt(l.rdv_slope_z, 4) + "</td></tr>" +
-            "<tr><td>RDV ∠</td><td class='val'>" + fmt(l.rdv_slope_angle, 4) + "</td></tr>" +
-            "<tr><td>Value Zone</td><td class='val'>" + (l.value_zone || "\u2014") + "</td></tr>" +
-            "<tr><td>Coherence</td><td class='val'>" + coherStr + "</td></tr>" +
-            "<tr><td>Money Flow</td><td class='val'>" + fmt(l.mcs_composite, 4) + "</td></tr>";
+            "<tr><td>CWC</td><td class='val'>" + fmt(l.cwc, 4) + "</td></tr>" +
+            "<tr><td>RDV</td><td class='val'>" + fmt(l.rdv, 4) + "</td></tr>" +
+            "<tr><td>RDV Consistency</td><td class='val'>" + fmt(l.rdv_consistency, 0) + "</td></tr>" +
+            "<tr><td>CWVAP Dist</td><td class='val'>" + fmt(l.cwvap_dist, 4) + "</td></tr>" +
+            "<tr><td>Delivery %</td><td class='val'>" + fmt(l.delivery_pct, 2) + "</td></tr>" +
+            "<tr><td>Coherence</td><td class='val'>" + fmt(l.coherence, 3) + "</td></tr>";
     }
 
     // --- Search & Watchlist Logic ---
@@ -579,21 +563,16 @@
 
     // --- Settings Panel Logic ---
     var THRESHOLD_META = {
-        angle_window: { label: "Angle Window (days)", min: 3, max: 10, step: 1, fmt: v => v },
-        cwvap_chop_band: { label: "CWVAP Chop Band (±%)", min: 0.5, max: 4.0, step: 0.1, fmt: v => v.toFixed(1) },
-        premium_boundary: { label: "Premium Boundary (%)", min: 1.0, max: 6.0, step: 0.5, fmt: v => v.toFixed(1) },
-        discount_boundary: { label: "Discount Boundary (%)", min: -6.0, max: -1.0, step: 0.5, fmt: v => v.toFixed(1) },
-        mfm_exhaustion: { label: "MFM Exhaustion Threshold", min: -0.5, max: 0.0, step: 0.05, fmt: v => v.toFixed(2) },
-        mfm_recovery_guard: { label: "MFM Recovery Guard", min: 0.0, max: 0.5, step: 0.05, fmt: v => v.toFixed(2) },
-        coherence_strong: { label: "Coherence Strong (≥)", min: 0.3, max: 0.9, step: 0.05, fmt: v => v.toFixed(2) },
-        coherence_weak: { label: "Coherence Weak (≤)", min: 0.1, max: 0.5, step: 0.05, fmt: v => v.toFixed(2) },
+        cwc_gate: { label: "CWC Gate (\u2264)", min: 0.3, max: 1.0, step: 0.05, fmt: v => v.toFixed(2) },
+        rdv_gate: { label: "RDV Gate (\u2265)", min: 0.2, max: 2.0, step: 0.1, fmt: v => v.toFixed(1) },
+        rdv_consistency_gate: { label: "RDV Consistency (\u2265)", min: 0, max: 5, step: 1, fmt: v => v },
+        verification_horizon: { label: "Verification Horizon (days)", min: 1, max: 20, step: 1, fmt: v => v },
+        verification_atr_mult: { label: "ATR Multiplier", min: 0.5, max: 4.0, step: 0.5, fmt: v => v.toFixed(1) },
     };
 
     var GROUPS = [
-        { title: "Trajectory", keys: ["angle_window"] },
-        { title: "Value Zones", keys: ["cwvap_chop_band", "premium_boundary", "discount_boundary"] },
-        { title: "Money Flow", keys: ["mfm_exhaustion", "mfm_recovery_guard"] },
-        { title: "Coherence", keys: ["coherence_strong", "coherence_weak"] },
+        { title: "Conviction Gates", keys: ["cwc_gate", "rdv_gate", "rdv_consistency_gate"] },
+        { title: "Verification", keys: ["verification_horizon", "verification_atr_mult"] },
     ];
 
     var settingsOverlay = document.getElementById("settings-overlay");
@@ -672,6 +651,52 @@
                 loadSymbol(symbol);
             });
     };
+
+    // --- Verification Panel ---
+    function loadVerification() {
+        var panel = document.getElementById("verification-panel");
+        if (!panel) return;
+        fetch("/de/api/verification/" + symbol)
+            .then(r => r.json())
+            .then(function (data) {
+                var stats = data.stats || {};
+                var signals = (data.signals || []).slice(-20).reverse();
+                var hitRate = stats.hit_rate_pct != null ? stats.hit_rate_pct : 0;
+                var badgeClass = hitRate >= 60 ? "badge-hit" : (hitRate >= 40 ? "badge-pending" : "badge-miss");
+
+                var html = '<div class="verif-stats">'
+                    + '<span class="verif-badge ' + badgeClass + '">' + hitRate + '% hit rate</span>'
+                    + '<span class="verif-counts">' + stats.hits + 'H / ' + stats.misses + 'M / ' + stats.pending + 'P (' + stats.total + ' total)</span>'
+                    + '</div>';
+
+                if (signals.length > 0) {
+                    html += '<table class="verif-table"><tr><th>Date</th><th>Signal</th><th>Conv</th><th>Result</th></tr>';
+                    signals.forEach(function (s) {
+                        var resClass = s.result === "hit" ? "badge-hit" : (s.result === "miss" ? "badge-miss" : "badge-pending");
+                        var stateCol = s.state === "Demand" ? "#00e676" : "#ef5350";
+                        html += '<tr>'
+                            + '<td>' + s.date + '</td>'
+                            + '<td style="color:' + stateCol + '">' + s.state + '</td>'
+                            + '<td>' + (s.conviction_score || '-') + '</td>'
+                            + '<td><span class="verif-badge ' + resClass + '">' + s.result + '</span></td>'
+                            + '</tr>';
+                    });
+                    html += '</table>';
+                }
+                panel.innerHTML = html;
+            })
+            .catch(function () {
+                panel.innerHTML = '<span class="placeholder">Verification unavailable</span>';
+            });
+    }
+
+    // Load verification after initial symbol load
+    var origLoadSymbol = loadSymbol;
+    loadSymbol = function (sym) {
+        origLoadSymbol(sym);
+        setTimeout(loadVerification, 1500);
+    };
+    setTimeout(loadVerification, 2000);
 
     window.WatchlistManager = WatchlistManager;
 })();
