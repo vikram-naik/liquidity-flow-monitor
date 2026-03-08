@@ -40,3 +40,5 @@ class MarketContext:
     delivery_pct: float     # scoring input
     pdd_30: float           # scoring input
     coherence: float        # kept for display
+    price_slope_z: float = 0.0  # gate: trend strength z-score
+    psz_delta_3d: float = 0.0   # gate: 3-bar change in price_slope_z (inflection)

@@ -40,6 +40,7 @@
     </div>
     <div id="last-data-date" class="data-date-display" title="Last NSE Data Download Date"></div>
     <button id="wl-add-active" class="settings-btn" title="Add Active Stock to Watchlist" disabled>+</button>
+    <a href="/de/signal-quality" class="help-btn" title="Signal Quality Explorer" style="font-size:11px; font-weight:600;">SQ</a>
     <a href="/de/help" class="help-btn" title="Help Guide — Markers &amp; Trends Reference">?</a>
     <button id="open-settings" class="settings-btn" title="Engine Settings">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -60,16 +61,11 @@
       <div id="p1" class="panel p-main">
         <div id="leg1" class="legend"></div>
       </div>
-      <div id="p2" class="panel p-sub">
-        <div id="leg2" class="legend"></div>
-      </div>
-      <div id="p3" class="panel p-sub">
-        <div id="leg3" class="legend"></div>
-      </div>
+      <!-- Dynamic sub-panels will be injected here by JS -->
     </div>
 
     <aside class="sidebar" id="sidebar">
-      <!-- NEW: Symbol Search & Typeahead -->
+      <!-- Symbol Search -->
       <div class="sidebar-section">
         <h3>Symbol Search</h3>
         <div class="search-container">
@@ -78,28 +74,42 @@
         </div>
       </div>
 
-      <!-- NEW: Watchlist Management -->
+      <!-- Engine State (moved above watchlist) -->
+      <div class="sidebar-section sidebar-bottom">
+        <h3>Engine State</h3>
+        <div id="sidebar-annotations">
+          <table class="ann-table" id="state-table">
+            <!-- Populated by JS -->
+          </table>
+          <div id="gate-diagnostics">
+            <!-- Gate pass/fail diagnostics populated by JS -->
+          </div>
+        </div>
+      </div>
+
+      <!-- Watchlist Management -->
       <div id="watchlist-manager" class="sidebar-section">
-        <div class="wl-header">
+        <div class="wl-header" style="margin-bottom: 4px;">
           <h3>Watchlist</h3>
-          <div class="wl-actions" style="position:relative">
-            <button id="wl-sort-menu-trigger" title="Sort Watchlist">⇅</button>
-            <div id="wl-sort-dropdown" class="search-dropdown wl-sort-dropdown"
-              style="right:0; left:auto; width:130px; font-size:12px">
-              <div class="search-item sort-btn active" data-sort="date-desc">Date (Newest)</div>
-              <div class="search-item sort-btn" data-sort="date-asc">Date (Oldest)</div>
-              <div class="search-item sort-btn" data-sort="name-asc">Name (A-Z)</div>
-              <div class="search-item sort-btn" data-sort="name-desc">Name (Z-A)</div>
-            </div>
-            <button id="wl-add" title="Create New Watchlist">+</button>
-            <button id="wl-rename" title="Rename Current Watchlist">✎</button>
-            <button id="wl-delete" title="Delete Current Watchlist">🗑</button>
-            <button id="wl-import" title="Import from Index">↓</button>
-            <button id="wl-download" title="Download Watchlist">💾</button>
-            <div id="wl-import-dropdown" class="search-dropdown wl-sort-dropdown"
-              style="right:0; left:auto; width:220px; font-size:12px; max-height:400px; overflow-y:auto;">
-              <!-- Populated by JS -->
-            </div>
+        </div>
+        <div class="wl-actions" style="position:relative; margin-bottom: 8px;">
+          <button id="wl-sort-menu-trigger" title="Sort Watchlist">⇅</button>
+          <div id="wl-sort-dropdown" class="search-dropdown wl-sort-dropdown"
+            style="right:auto; left:0; width:130px; font-size:12px">
+            <div class="search-item sort-btn active" data-sort="date-desc">Date (Newest)</div>
+            <div class="search-item sort-btn" data-sort="date-asc">Date (Oldest)</div>
+            <div class="search-item sort-btn" data-sort="name-asc">Name (A-Z)</div>
+            <div class="search-item sort-btn" data-sort="name-desc">Name (Z-A)</div>
+          </div>
+          <button id="wl-add" title="Create New Watchlist">+</button>
+          <button id="wl-rename" title="Rename Current Watchlist">✎</button>
+          <button id="wl-set-default" title="Set as Default Watchlist">★</button>
+          <button id="wl-delete" title="Delete Current Watchlist">🗑</button>
+          <button id="wl-import" title="Import from Index">↓</button>
+          <button id="wl-download" title="Download Watchlist">💾</button>
+          <div id="wl-import-dropdown" class="search-dropdown wl-sort-dropdown"
+            style="right:auto; left:0; width:220px; font-size:12px; max-height:400px; overflow-y:auto;">
+            <!-- Populated by JS -->
           </div>
         </div>
         <div class="wl-selection-row" style="margin-bottom:8px">
@@ -109,21 +119,6 @@
         </div>
         <div id="wl-items" class="wl-items-list">
           <!-- Populated by JS -->
-        </div>
-      </div>
-
-      <div class="sidebar-section sidebar-bottom">
-        <h3>Engine State</h3>
-        <div id="sidebar-annotations">
-          <table class="ann-table" id="state-table">
-            <!-- Populated by JS -->
-          </table>
-        </div>
-        <div class="verif-section">
-          <h3>Verification</h3>
-          <div id="verification-panel">
-            <span class="placeholder">Loading...</span>
-          </div>
         </div>
       </div>
     </aside>
@@ -139,8 +134,26 @@
         <h2>⚙ Engine Settings</h2>
         <button id="settings-close" class="settings-close-btn">&times;</button>
       </div>
-      <div class="settings-body" id="settings-body">
-        <!-- Populated by JS -->
+      <div class="settings-tabs">
+        <button class="settings-tab active" data-target="settings-thresholds">Thresholds</button>
+        <button class="settings-tab" data-target="settings-panels">Panels</button>
+      </div>
+      <div class="settings-body" id="settings-thresholds">
+        <!-- Populated by JS (Thresholds) -->
+      </div>
+      <div class="settings-body hidden" id="settings-panels">
+        <div class="setting-group">
+          <h4>Active Panels</h4>
+          <div id="active-panels-list" class="panels-list">
+            <!-- Populated by JS -->
+          </div>
+          <div class="add-panel-controls">
+            <select id="add-panel-select">
+              <!-- Populated by JS -->
+            </select>
+            <button id="add-panel-btn" class="btn btn-secondary">Add Panel</button>
+          </div>
+        </div>
       </div>
       <div class="settings-footer">
         <button id="settings-reset" class="btn btn-danger">Factory Reset</button>

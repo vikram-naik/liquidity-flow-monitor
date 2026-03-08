@@ -14,6 +14,25 @@
     var symbol = parts[parts.length - 1] || "RELIANCE";
     var aggMode = "daily";
 
+    var PANEL_DEFINITIONS = {
+        "slopes": { label: "Price / RDV Z-Scores" },
+        "coherence": { label: "Coherence" },
+        "rdv": { label: "RDV" },
+        "cwc": { label: "CWC" },
+        "rdv_consistency": { label: "RDV Consistency" },
+        "atr_20": { label: "ATR (20)" },
+        "cwvap_dist": { label: "CWVAP Dist %" },
+        "delivery_pct": { label: "Delivery %" }
+    };
+
+    function getActivePanels() {
+        try {
+            var conf = JSON.parse(localStorage.getItem("de_panel_config"));
+            if (Array.isArray(conf) && conf.length > 0) return conf;
+        } catch (e) {}
+        return ["slopes", "coherence"]; // defaults
+    }
+
     var params = new URLSearchParams(window.location.search);
     var apiUrl = "/de/api/divergence-engine/" + symbol + "?agg_mode=" + aggMode;
     if (params.get("start_date")) apiUrl += "&start_date=" + params.get("start_date");
@@ -103,6 +122,7 @@
         var markerList = [];
         var timeToIndex = {};
         var pZ = [], rZ = [], cRaw = [], cSmooth = [];
+        var rdvArr = [], cwcArr = [], rdvConsArr = [], atrArr = [], distArr = [], delPctArr = [];
 
         for (var i = 0; i < ledger.length; i++) {
             var r = ledger[i];
@@ -118,13 +138,18 @@
             if (r.cwvap != null) cwvap.push({ time: t, value: r.cwvap }); else cwvap.push({ time: t });
             if (r.cpoc != null) cpoc.push({ time: t, value: r.cpoc }); else cpoc.push({ time: t });
 
-            if (r.price_slope_z != null) pZ.push({ time: t, value: r.price_slope_z }); else pZ.push({ time: t, value: 0 });
-            if (r.rdv_slope_z != null) rZ.push({ time: t, value: r.rdv_slope_z }); else rZ.push({ time: t, value: 0 });
+            if (r.price_slope_z != null) pZ.push({ time: t, value: r.price_slope_z }); else pZ.push({ time: t });
+            if (r.rdv_slope_z != null) rZ.push({ time: t, value: r.rdv_slope_z }); else rZ.push({ time: t });
 
-            // For coherence, ensure we still push *something* (e.g. 0 or NaN/blank representation)
-            // LightweightCharts line series allows whitespace gaps using empty objects `{ time: t }`
-            if (r.coherence_raw != null) { cRaw.push({ time: t, value: r.coherence_raw }); } else { cRaw.push({ time: t }); }
-            if (r.coherence != null) { cSmooth.push({ time: t, value: r.coherence }); } else { cSmooth.push({ time: t }); }
+            if (r.coherence_raw != null) cRaw.push({ time: t, value: r.coherence_raw }); else cRaw.push({ time: t });
+            if (r.coherence != null) cSmooth.push({ time: t, value: r.coherence }); else cSmooth.push({ time: t });
+
+            if (r.rdv != null) rdvArr.push({ time: t, value: r.rdv }); else rdvArr.push({ time: t });
+            if (r.cwc != null) cwcArr.push({ time: t, value: r.cwc }); else cwcArr.push({ time: t });
+            if (r.rdv_consistency != null) rdvConsArr.push({ time: t, value: r.rdv_consistency }); else rdvConsArr.push({ time: t });
+            if (r.atr_20 != null) atrArr.push({ time: t, value: r.atr_20 }); else atrArr.push({ time: t });
+            if (r.cwvap_dist != null) distArr.push({ time: t, value: r.cwvap_dist }); else distArr.push({ time: t });
+            if (r.delivery_pct != null) delPctArr.push({ time: t, value: r.delivery_pct }); else delPctArr.push({ time: t });
 
             if (r.delivery_qty != null) {
                 var mfm = r.mfm != null ? r.mfm : 0;
@@ -185,13 +210,16 @@
         }
 
         var container = document.getElementById("chart-container");
+        var existingSubs = container.querySelectorAll(".p-sub");
+        existingSubs.forEach(function (node) { node.remove(); });
 
         function getW(id) { var el = document.getElementById(id); return el ? el.clientWidth : 800; }
         function getH(id) { var el = document.getElementById(id); return el ? el.clientHeight : 300; }
 
-        var pc = LC.createChart(document.getElementById("p1"), mkOpts(getW("p1"), getH("p1"), false));
-        var pc2 = LC.createChart(document.getElementById("p2"), mkOpts(getW("p2"), getH("p2"), false));
-        var pc3 = LC.createChart(document.getElementById("p3"), mkOpts(getW("p3"), getH("p3"), true));
+        var activePanels = getActivePanels();
+        var pc = LC.createChart(document.getElementById("p1"), mkOpts(getW("p1"), getH("p1"), activePanels.length === 0));
+        var charts = [pc];
+        var allLegConfigs = [];
 
         // --- Series p1 ---
         var sVol = pc.addSeries(LC.HistogramSeries, { priceScaleId: "vol", priceLineVisible: false, lastValueVisible: false });
@@ -223,33 +251,79 @@
 
         if (markerList.length > 0) LC.createSeriesMarkers(cs, markerList);
 
-        // --- Series p2 ---
-        var sPZ = pc2.addSeries(LC.LineSeries, { color: "#90caf9", lineWidth: 2, lastValueVisible: false, priceLineVisible: false });
-        sPZ.setData(pZ);
-        var sRZ = pc2.addSeries(LC.LineSeries, { color: "#f48fb1", lineStyle: 2, lineWidth: 2, lastValueVisible: false, priceLineVisible: false });
-        sRZ.setData(rZ);
-        var sZero2 = pc2.addSeries(LC.LineSeries, { color: "#424242", lineWidth: 1, lineStyle: 2, lastValueVisible: false, priceLineVisible: false });
-        sZero2.setData(pZ.map(d => ({ time: d.time, value: 0 })));
-
-        // --- Series p3 ---
-        var sCRaw = pc3.addSeries(LC.LineSeries, { color: "#b39ddb", lineWidth: 1, lineStyle: 2, lastValueVisible: false, priceLineVisible: false });
-        sCRaw.setData(cRaw);
-        var sCSmooth = pc3.addSeries(LC.LineSeries, { color: "#ce93d8", lineWidth: 2, lastValueVisible: false, priceLineVisible: false });
-        sCSmooth.setData(cSmooth);
-
         var leg1Config = [
             { api: cs, label: "Price", col: "price", color: "#e6edf3" },
             { api: sCwvap, label: "CWVAP", col: "cwvap", color: "#00bfa5" },
             { api: sCpoc, label: "CPOC", col: "cpoc", color: "#ffab40", dashed: true }
         ];
-        var leg2Config = [
-            { api: sPZ, label: "Price Z", col: "price_slope_z", color: "#90caf9" },
-            { api: sRZ, label: "RDV Z", col: "rdv_slope_z", color: "#f48fb1", dashed: true }
-        ];
-        var leg3Config = [
-            { api: sCRaw, label: "Coh Raw", col: "coherence_raw", color: "#b39ddb", dashed: true },
-            { api: sCSmooth, label: "Coh", col: "coherence", color: "#ce93d8" }
-        ];
+        allLegConfigs.push({ id: "leg1", config: leg1Config });
+
+        activePanels.forEach(function (panelKey, i) {
+            var panelId = "pSub" + i;
+            var isLast = (i === activePanels.length - 1);
+            
+            var panelDiv = document.createElement("div");
+            panelDiv.id = panelId;
+            panelDiv.className = "panel p-sub";
+            panelDiv.innerHTML = '<div id="legSub' + i + '" class="legend"></div>';
+            container.appendChild(panelDiv);
+
+            var cHeight = getH(panelId) || 120;
+            var c = LC.createChart(panelDiv, mkOpts(getW(panelId) || 800, cHeight, isLast));
+            charts.push(c);
+
+            var legConfig = [];
+
+            if (panelKey === "slopes") {
+                var sPZ = c.addSeries(LC.LineSeries, { color: "#90caf9", lineWidth: 2, lastValueVisible: false, priceLineVisible: false });
+                sPZ.setData(pZ);
+                var sRZ = c.addSeries(LC.LineSeries, { color: "#f48fb1", lineStyle: 2, lineWidth: 2, lastValueVisible: false, priceLineVisible: false });
+                sRZ.setData(rZ);
+                var sZero = c.addSeries(LC.LineSeries, { color: "#424242", lineWidth: 1, lineStyle: 2, lastValueVisible: false, priceLineVisible: false });
+                sZero.setData(pZ.map(d => ({ time: d.time, value: 0 })));
+                legConfig.push({ api: sPZ, label: "Price Z", col: "price_slope_z", color: "#90caf9" });
+                legConfig.push({ api: sRZ, label: "RDV Z", col: "rdv_slope_z", color: "#f48fb1", dashed: true });
+            } else if (panelKey === "coherence") {
+                var sCRaw = c.addSeries(LC.LineSeries, { color: "#b39ddb", lineWidth: 1, lineStyle: 2, lastValueVisible: false, priceLineVisible: false });
+                sCRaw.setData(cRaw);
+                var sCSmooth = c.addSeries(LC.LineSeries, { color: "#ce93d8", lineWidth: 2, lastValueVisible: false, priceLineVisible: false });
+                sCSmooth.setData(cSmooth);
+                legConfig.push({ api: sCRaw, label: "Coh Raw", col: "coherence_raw", color: "#b39ddb", dashed: true });
+                legConfig.push({ api: sCSmooth, label: "Coh", col: "coherence", color: "#ce93d8" });
+            } else if (panelKey === "rdv") {
+               var s1 = c.addSeries(LC.LineSeries, { color: "#81c784", lineWidth: 2, lastValueVisible: false, priceLineVisible: false });
+               s1.setData(rdvArr);
+               var sZ = c.addSeries(LC.LineSeries, { color: "#424242", lineWidth: 1, lineStyle: 2, lastValueVisible: false, priceLineVisible: false });
+               sZ.setData(rdvArr.map(d => ({ time: d.time, value: 1.0 })));
+               legConfig.push({ api: s1, label: "RDV", col: "rdv", color: "#81c784" });
+            } else if (panelKey === "cwc") {
+               var s1 = c.addSeries(LC.LineSeries, { color: "#e57373", lineWidth: 2, lastValueVisible: false, priceLineVisible: false });
+               s1.setData(cwcArr);
+               var sZ = c.addSeries(LC.LineSeries, { color: "#424242", lineWidth: 1, lineStyle: 2, lastValueVisible: false, priceLineVisible: false });
+               sZ.setData(cwcArr.map(d => ({ time: d.time, value: 1.0 })));
+               legConfig.push({ api: s1, label: "CWC", col: "cwc", color: "#e57373" });
+            } else if (panelKey === "rdv_consistency") {
+               var s1 = c.addSeries(LC.HistogramSeries, { color: "#64b5f6", lastValueVisible: false, priceLineVisible: false });
+               s1.setData(rdvConsArr);
+               legConfig.push({ api: s1, label: "RDV Consist", col: "rdv_consistency", color: "#64b5f6" });
+            } else if (panelKey === "atr_20") {
+               var s1 = c.addSeries(LC.LineSeries, { color: "#ba68c8", lineWidth: 2, lastValueVisible: false, priceLineVisible: false });
+               s1.setData(atrArr);
+               legConfig.push({ api: s1, label: "ATR(20)", col: "atr_20", color: "#ba68c8" });
+            } else if (panelKey === "cwvap_dist") {
+               var sDist = c.addSeries(LC.LineSeries, { color: "#4dd0e1", lineWidth: 2, lastValueVisible: false, priceLineVisible: false });
+               sDist.setData(distArr);
+               var sZ = c.addSeries(LC.LineSeries, { color: "#424242", lineWidth: 1, lineStyle: 2, lastValueVisible: false, priceLineVisible: false });
+               sZ.setData(distArr.map(d => ({ time: d.time, value: 0 })));
+               legConfig.push({ api: sDist, label: "VWAP Dist", col: "cwvap_dist", color: "#4dd0e1" });
+            } else if (panelKey === "delivery_pct") {
+               var sDel = c.addSeries(LC.LineSeries, { color: "#ffb74d", lineWidth: 2, lastValueVisible: false, priceLineVisible: false });
+               sDel.setData(delPctArr);
+               legConfig.push({ api: sDel, label: "Del %", col: "delivery_pct", color: "#ffb74d" });
+            }
+
+            allLegConfigs.push({ id: "legSub" + i, config: legConfig });
+        });
 
         function updateLegend(containerId, config, param, targetIdx) {
             var container = document.getElementById(containerId);
@@ -279,9 +353,9 @@
             var targetTime = param ? param.time : null;
             var targetIdx = targetTime ? timeToIndex[targetTime] : ledger.length - 1;
 
-            updateLegend("leg1", leg1Config, param, targetIdx);
-            updateLegend("leg2", leg2Config, param, targetIdx);
-            updateLegend("leg3", leg3Config, param, targetIdx);
+            allLegConfigs.forEach(function (lg) {
+                updateLegend(lg.id, lg.config, param, targetIdx);
+            });
 
             if (ledger[targetIdx]) buildSidebarAnnotations(ledger[targetIdx]);
         }
@@ -300,9 +374,11 @@
             }
         });
 
-        var charts = [pc, pc2, pc3];
-
         function syncCrosshair(chart, series, param) {
+            if (!series) {
+                chart.setCrosshairPosition(0, param.time, chart.series ? chart.series[0] : null);
+                return;
+            }
             if (param.point === undefined || !param.time || param.point.x < 0 || param.point.y < 0) {
                 chart.clearCrosshairPosition();
             } else {
@@ -324,7 +400,8 @@
                 } else {
                     charts.forEach(c2 => {
                         if (c1 !== c2) {
-                            var s2 = c2 === pc ? cs : (c2 === pc2 ? sPZ : sCRaw);
+                            var lg = allLegConfigs[charts.indexOf(c2)];
+                            var s2 = lg && lg.config.length > 0 ? lg.config[0].api : null;
                             syncCrosshair(c2, s2, param);
                         }
                     });
@@ -357,8 +434,11 @@
             var mainContainer = document.getElementById("chart-container");
             if (mainContainer && mainContainer.clientWidth > 0 && mainContainer.clientHeight > 0) {
                 pc.resize(getW("p1"), getH("p1"));
-                pc2.resize(getW("p2"), getH("p2"));
-                pc3.resize(getW("p3"), getH("p3"));
+                activePanels.forEach(function(pane, i) {
+                    var panelId = "pSub" + i;
+                    var c = charts[i + 1];
+                    if (c) c.resize(getW(panelId), getH(panelId));
+                });
             }
         }
 
@@ -373,6 +453,13 @@
         return [pc];
     }
 
+    // --- Gate label mapping (fallback to raw attr name if not found) ---
+    var GATE_LABELS = {
+        cwvap_dist: "CWVAP Dist", cwc: "CWC", rdv: "RDV",
+        rdv_consistency: "RDV Cons.", price_slope_z: "PSZ",
+        psz_delta_3d: "PSZ \u0394 3d", coherence: "Coherence"
+    };
+
     function buildSidebarAnnotations(l) {
         if (!l) return;
         function fmt(v, d) { return (v != null && typeof v === "number" && !isNaN(v)) ? v.toFixed(d || 2) : (v || "\u2014"); }
@@ -380,15 +467,48 @@
         var convScore = l.conviction_score != null ? " (" + fmt(l.conviction_score, 1) + ")" : "";
         var stateColor = intState === "Demand" ? "#00e676" : (intState === "Supply" ? "#ef5350" : "#8b949e");
 
+        var scoreRows = "";
+        if (intState === "Demand" || intState === "Supply") {
+            scoreRows =
+                "<tr><td>Accum Score</td><td class='val'>" + fmt(l.accum_score, 1) + "</td></tr>" +
+                "<tr><td>Diverg Score</td><td class='val'>" + fmt(l.diverg_score, 1) + "</td></tr>";
+        }
+
         document.getElementById("state-table").innerHTML =
             "<tr><td colspan='2' style='text-align:center; padding: 10px; background: rgba(0,0,0,0.2);'><strong style='color:" + stateColor + "'>" + intState + convScore + "</strong></td></tr>" +
-            "<tr><td>Date</td><td class='val'>" + (l.date ? l.date.split("T")[0] : "\u2014") + "</td></tr>" +
-            "<tr><td>CWC</td><td class='val'>" + fmt(l.cwc, 4) + "</td></tr>" +
-            "<tr><td>RDV</td><td class='val'>" + fmt(l.rdv, 4) + "</td></tr>" +
-            "<tr><td>RDV Consistency</td><td class='val'>" + fmt(l.rdv_consistency, 0) + "</td></tr>" +
-            "<tr><td>CWVAP Dist</td><td class='val'>" + fmt(l.cwvap_dist, 4) + "</td></tr>" +
-            "<tr><td>Delivery %</td><td class='val'>" + fmt(l.delivery_pct, 2) + "</td></tr>" +
-            "<tr><td>Coherence</td><td class='val'>" + fmt(l.coherence, 3) + "</td></tr>";
+            scoreRows +
+            "<tr><td>Date</td><td class='val'>" + (l.date ? l.date.split("T")[0] : "\u2014") + "</td></tr>";
+
+        // Gate diagnostics
+        var gateEl = document.getElementById("gate-diagnostics");
+        if (!gateEl || !l.gate_results) { if (gateEl) gateEl.innerHTML = ""; return; }
+
+        var gateHtml = "";
+        ["Demand", "Supply"].forEach(function(ruleName) {
+            var gates = l.gate_results[ruleName];
+            if (!gates) return;
+            var allPass = gates.every(function(g) { return g.passed; });
+            var headerColor = allPass ? "#3fb950" : "#8b949e";
+            gateHtml += '<div class="gate-section"><h4 style="color:' + headerColor + '">' + ruleName + (allPass ? " \u2714" : "") + '</h4>';
+            gates.forEach(function(g) {
+                var icon = g.passed ? '<span class="gate-pass">\u2714</span>' : '<span class="gate-fail">\u2718</span>';
+                var label = GATE_LABELS[g.attr] || g.attr;
+                var threshold = "";
+                if (g.hi != null && g.lo != null) threshold = g.lo + " \u2264 x \u2264 " + g.hi;
+                else if (g.hi != null) threshold = "\u2264 " + g.hi;
+                else if (g.lo != null) threshold = "\u2265 " + g.lo;
+                var valStr = (g.val != null) ? g.val.toFixed(3) : "NaN";
+                var valColor = g.passed ? "#c9d1d9" : "#f85149";
+                gateHtml += '<div class="gate-row">'
+                    + '<span class="gate-icon">' + icon + '</span>'
+                    + '<span class="gate-label">' + label + '</span>'
+                    + '<span class="gate-val" style="color:' + valColor + '">' + valStr + '</span>'
+                    + '<span class="gate-threshold">' + threshold + '</span>'
+                    + '</div>';
+            });
+            gateHtml += '</div>';
+        });
+        gateEl.innerHTML = gateHtml;
     }
 
     // --- Search & Watchlist Logic ---
@@ -421,19 +541,43 @@
     }
 
     var WatchlistManager = {
-        currentWlId: null, currentItems: [], activeSortMode: "date-desc",
-        init: function () { this.fetchLists(); this.bindEvents(); },
+        currentWlId: null, defaultWlId: null, currentItems: [], activeSortMode: "date-desc",
+        init: function () { 
+            var defStr = localStorage.getItem("de_default_watchlist");
+            if (defStr) {
+                try { this.defaultWlId = parseInt(defStr) || null; } catch(e) {}
+            }
+            this.fetchLists(); 
+            this.bindEvents(); 
+        },
         bindEvents: function () {
             var self = this;
             document.getElementById("wl-select").addEventListener("change", function () {
                 self.currentWlId = this.value;
+                self.updateUIState();
                 var addBtn = document.getElementById("wl-add-active");
                 if (addBtn) addBtn.disabled = !self.currentWlId;
                 self.fetchItems();
             });
             document.getElementById("wl-add").onclick = () => { var name = prompt("Enter Watchlist Name:"); if (name) this.api("/de/api/watchlists", "POST", { name }).then(() => this.fetchLists()).catch(err => alert("Error: " + err.message)); };
-            document.getElementById("wl-rename").onclick = () => { if (!this.currentWlId) return; var name = prompt("Enter New Name:"); if (name) this.api("/de/api/watchlists/" + this.currentWlId, "PATCH", { name }).then(() => this.fetchLists()).catch(err => alert("Error: " + err.message)); };
-            document.getElementById("wl-delete").onclick = () => { if (!this.currentWlId || !confirm("Delete this watchlist?")) return; this.api("/de/api/watchlists/" + this.currentWlId, "DELETE").then(() => { this.currentWlId = null; this.fetchLists(); }).catch(err => alert("Error deleting watchlist: " + err.message)); };
+            document.getElementById("wl-rename").onclick = () => { if (!this.currentWlId) return; var name = prompt("Enter New Name:"); if (name) this.api("/de/api/watchlists/" + this.currentWlId, "PATCH", { name }).then(() => { if (this.currentWlId == this.defaultWlId) localStorage.removeItem("de_default_watchlist"); this.fetchLists(); }).catch(err => alert("Error: " + err.message)); };
+            document.getElementById("wl-delete").onclick = () => { if (!this.currentWlId || !confirm("Delete this watchlist?")) return; this.api("/de/api/watchlists/" + this.currentWlId, "DELETE").then(() => { if (this.currentWlId == this.defaultWlId) { this.defaultWlId = null; localStorage.removeItem("de_default_watchlist"); } this.currentWlId = null; this.fetchLists(); }).catch(err => alert("Error deleting watchlist: " + err.message)); };
+            
+            var btnDefault = document.getElementById("wl-set-default");
+            if(btnDefault) {
+                btnDefault.onclick = () => {
+                   if(!this.currentWlId) return;
+                   if(this.currentWlId == this.defaultWlId) {
+                       this.defaultWlId = null;
+                       localStorage.removeItem("de_default_watchlist");
+                   } else {
+                       this.defaultWlId = parseInt(this.currentWlId);
+                       localStorage.setItem("de_default_watchlist", this.defaultWlId.toString());
+                   }
+                   this.fetchLists(true);
+                };
+            }
+
             document.getElementById("wl-import").onclick = () => { if (!this.currentWlId) return alert("Select a watchlist first"); fetch("/de/api/watchlists/supported-indices").then(r => r.json()).then(indices => { var idx = prompt("Enter Index Name:\n" + indices.join(", ")); if (idx && indices.includes(idx)) { this.api("/de/api/watchlists/import-index", "POST", { watchlist_id: parseInt(this.currentWlId), index_name: idx }).then(res => { alert("Imported " + res.imported + " symbols"); this.fetchItems(); }).catch(err => alert("Error importing: " + err.message)); } }); };
             document.getElementById("wl-download").onclick = () => { if (!this.currentWlId || this.currentItems.length === 0) return alert("Nothing to download"); var sel = document.getElementById("wl-select"), wlName = sel.options[sel.selectedIndex].text; var content = wlName + "\n" + this.currentItems.map(i => i.symbol).join("\n"), blob = new Blob([content], { type: "text/plain" }), url = URL.createObjectURL(blob), a = document.createElement("a"); a.href = url; a.download = wlName.replace(/\s+/g, "_") + ".txt"; a.click(); };
 
@@ -509,17 +653,54 @@
                     return data;
                 });
         },
-        fetchLists: function () {
+        fetchLists: function (keepCurrentSelection) {
             fetch("/de/api/watchlists").then(r => r.json()).then(lists => {
                 this.allWatchlists = lists;
-                var sel = document.getElementById("wl-select"), current = this.currentWlId;
-                sel.innerHTML = '<option value="">Select Watchlist</option>' + lists.map(l => `<option value="${l.id}" ${l.id == current ? 'selected' : ''}>${l.name}</option>`).join("");
+                var sel = document.getElementById("wl-select");
+                
+                // Determine current selection safely
+                var current = null;
+                if(keepCurrentSelection && this.currentWlId) {
+                    current = this.currentWlId;
+                } else {
+                    if (this.defaultWlId && lists.some(l => l.id == this.defaultWlId)) {
+                        current = this.defaultWlId;
+                    } else if (lists.length > 0) {
+                        current = lists[0].id;
+                        this.defaultWlId = current;
+                        localStorage.setItem("de_default_watchlist", current.toString());
+                    }
+                }
+                
+                this.currentWlId = current;
+                
+                sel.innerHTML = '<option value="">Select Watchlist</option>' + lists.map(l => {
+                    var isDef = (l.id == this.defaultWlId) ? " ★" : "";
+                    return `<option value="${l.id}" ${l.id == current ? 'selected' : ''}>${l.name}${isDef}</option>`;
+                }).join("");
+                
+                this.updateUIState();
+                
                 if (current) this.fetchItems();
                 else document.getElementById("wl-items").innerHTML = "";
+                
                 var addBtn = document.getElementById("wl-add-active");
                 if (addBtn) addBtn.disabled = !current;
+                
                 if (document.getElementById("wl-import-dropdown").style.display === "block") this.renderImportList();
             });
+        },
+        updateUIState: function() {
+            var btnDefault = document.getElementById("wl-set-default");
+            if(btnDefault) {
+                if(this.currentWlId && this.currentWlId == this.defaultWlId) {
+                    btnDefault.classList.add("active");
+                    btnDefault.title = "Current watchlist is default";
+                } else {
+                    btnDefault.classList.remove("active");
+                    btnDefault.title = "Set as Default Watchlist";
+                }
+            }
         },
         renderImportList: function () {
             var dropdown = document.getElementById("wl-import-dropdown");
@@ -563,31 +744,49 @@
 
     // --- Settings Panel Logic ---
     var THRESHOLD_META = {
-        cwc_gate: { label: "CWC Gate (\u2264)", min: 0.3, max: 1.0, step: 0.05, fmt: v => v.toFixed(2) },
-        rdv_gate: { label: "RDV Gate (\u2265)", min: 0.2, max: 2.0, step: 0.1, fmt: v => v.toFixed(1) },
-        rdv_consistency_gate: { label: "RDV Consistency (\u2265)", min: 0, max: 5, step: 1, fmt: v => v },
-        verification_horizon: { label: "Verification Horizon (days)", min: 1, max: 20, step: 1, fmt: v => v },
-        verification_atr_mult: { label: "ATR Multiplier", min: 0.5, max: 4.0, step: 0.5, fmt: v => v.toFixed(1) },
+        demand_cwc_gate: { label: "CWC Gate (\u2264)", min: 0.3, max: 1.0, step: 0.05, fmt: v => v.toFixed(2) },
+        demand_rdv_gate: { label: "RDV Gate (\u2265)", min: 0.2, max: 2.0, step: 0.1, fmt: v => v.toFixed(1) },
+        demand_rdv_consistency_gate: { label: "RDV Consistency (\u2265)", min: 0, max: 5, step: 1, fmt: v => v },
+        demand_price_slope_z_gate: { label: "Price Slope Z (\u2264)", min: -2.0, max: 2.0, step: 0.05, fmt: v => v.toFixed(2) },
+        demand_psz_delta_3d_gate: { label: "PSZ Delta 3d (\u2265)", min: -1.0, max: 1.0, step: 0.05, fmt: v => v.toFixed(2) },
+        demand_coherence_gate: { label: "Coherence (\u2265)", min: 0.0, max: 1.0, step: 0.05, fmt: v => v.toFixed(2) },
+        supply_cwc_gate: { label: "CWC Gate (\u2264)", min: 0.3, max: 1.0, step: 0.05, fmt: v => v.toFixed(2) },
+        supply_rdv_gate: { label: "RDV Gate (\u2265)", min: 0.2, max: 2.0, step: 0.1, fmt: v => v.toFixed(1) },
+        supply_rdv_consistency_gate: { label: "RDV Consistency (\u2265)", min: 0, max: 5, step: 1, fmt: v => v },
+        supply_price_slope_z_gate: { label: "Price Slope Z (\u2265)", min: -1.0, max: 2.0, step: 0.05, fmt: v => v.toFixed(2) },
+        supply_psz_delta_3d_gate: { label: "PSZ Delta 3d (\u2264)", min: -1.0, max: 1.0, step: 0.05, fmt: v => v.toFixed(2) },
+        supply_coherence_gate: { label: "Coherence (\u2265)", min: 0.0, max: 1.0, step: 0.05, fmt: v => v.toFixed(2) },
     };
 
     var GROUPS = [
-        { title: "Conviction Gates", keys: ["cwc_gate", "rdv_gate", "rdv_consistency_gate"] },
-        { title: "Verification", keys: ["verification_horizon", "verification_atr_mult"] },
+        { title: "Demand Gates", keys: ["demand_cwc_gate", "demand_rdv_gate", "demand_rdv_consistency_gate", "demand_price_slope_z_gate", "demand_psz_delta_3d_gate", "demand_coherence_gate"] },
+        { title: "Supply Gates", keys: ["supply_cwc_gate", "supply_rdv_gate", "supply_rdv_consistency_gate", "supply_price_slope_z_gate", "supply_psz_delta_3d_gate", "supply_coherence_gate"] },
     ];
 
     var settingsOverlay = document.getElementById("settings-overlay");
-    var settingsBody = document.getElementById("settings-body");
+    var settingsThresholds = document.getElementById("settings-thresholds");
     var settingsDefaults = {};
     var settingsCurrent = {};
+    var currentPanelsConfig = [];
 
     document.getElementById("open-settings").onclick = function () {
         fetch("/de/api/config/state-rules").then(r => r.json()).then(function (data) {
             settingsDefaults = data.defaults || {};
             settingsCurrent = Object.assign({}, data.thresholds || {});
             renderSettings();
+            renderPanelsSettings();
             settingsOverlay.classList.remove("hidden");
         });
     };
+
+    document.querySelectorAll(".settings-tab").forEach(function(btn) {
+        btn.addEventListener("click", function() {
+            document.querySelectorAll(".settings-tab").forEach(b => b.classList.remove("active"));
+            this.classList.add("active");
+            document.querySelectorAll(".settings-body").forEach(b => b.classList.add("hidden"));
+            document.getElementById(this.dataset.target).classList.remove("hidden");
+        });
+    });
 
     function closeSettings() { settingsOverlay.classList.add("hidden"); }
     document.getElementById("settings-close").onclick = closeSettings;
@@ -612,7 +811,7 @@
             });
             html += '</div>';
         });
-        settingsBody.innerHTML = html;
+        settingsThresholds.innerHTML = html;
 
         // Bind live update on sliders
         Object.keys(THRESHOLD_META).forEach(function (key) {
@@ -629,7 +828,79 @@
         });
     }
 
+    function renderPanelsSettings() {
+        currentPanelsConfig = getActivePanels();
+        updatePanelsUI();
+    }
+
+    function updatePanelsUI() {
+        var listContainer = document.getElementById("active-panels-list");
+        if (!listContainer) return;
+        var html = "";
+        currentPanelsConfig.forEach(function (key, i) {
+            var label = PANEL_DEFINITIONS[key] ? PANEL_DEFINITIONS[key].label : key;
+            html += '<div class="panel-setting-item" data-key="' + key + '">'
+                 + '<div class="panel-setting-controls">'
+                 + '<button class="mini-btn move-up" data-idx="' + i + '">▲</button>'
+                 + '<button class="mini-btn move-down" data-idx="' + i + '">▼</button>'
+                 + '</div>'
+                 + '<span class="panel-setting-label">' + label + '</span>'
+                 + '<button class="mini-button delete-panel" data-idx="' + i + '">×</button>'
+                 + '</div>';
+        });
+        listContainer.innerHTML = html;
+
+        var select = document.getElementById("add-panel-select");
+        var selHtml = '<option value="">-- Select Panel --</option>';
+        Object.keys(PANEL_DEFINITIONS).forEach(function(key) {
+            if (currentPanelsConfig.indexOf(key) === -1) {
+                selHtml += '<option value="' + key + '">' + PANEL_DEFINITIONS[key].label + '</option>';
+            }
+        });
+        select.innerHTML = selHtml;
+        document.getElementById("add-panel-btn").disabled = currentPanelsConfig.length >= Object.keys(PANEL_DEFINITIONS).length;
+
+        listContainer.querySelectorAll(".move-up").forEach(function(btn) {
+            btn.onclick = function() {
+                var idx = parseInt(this.dataset.idx);
+                if (idx > 0) {
+                    var tmp = currentPanelsConfig[idx];
+                    currentPanelsConfig[idx] = currentPanelsConfig[idx-1];
+                    currentPanelsConfig[idx-1] = tmp;
+                    updatePanelsUI();
+                }
+            };
+        });
+        listContainer.querySelectorAll(".move-down").forEach(function(btn) {
+            btn.onclick = function() {
+                var idx = parseInt(this.dataset.idx);
+                if (idx < currentPanelsConfig.length - 1) {
+                    var tmp = currentPanelsConfig[idx];
+                    currentPanelsConfig[idx] = currentPanelsConfig[idx+1];
+                    currentPanelsConfig[idx+1] = tmp;
+                    updatePanelsUI();
+                }
+            };
+        });
+        listContainer.querySelectorAll(".delete-panel").forEach(function(btn) {
+            btn.onclick = function() {
+                var idx = parseInt(this.dataset.idx);
+                currentPanelsConfig.splice(idx, 1);
+                updatePanelsUI();
+            };
+        });
+    }
+
+    document.getElementById("add-panel-btn").onclick = function() {
+        var val = document.getElementById("add-panel-select").value;
+        if (val) {
+            currentPanelsConfig.push(val);
+            updatePanelsUI();
+        }
+    };
+
     document.getElementById("settings-save").onclick = function () {
+        localStorage.setItem("de_panel_config", JSON.stringify(currentPanelsConfig));
         fetch("/de/api/config/state-rules", {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
@@ -641,7 +912,8 @@
     };
 
     document.getElementById("settings-reset").onclick = function () {
-        if (!confirm("Reset all thresholds to factory defaults?")) return;
+        if (!confirm("Reset all thresholds and panels to factory defaults?")) return;
+        localStorage.removeItem("de_panel_config");
         fetch("/de/api/config/state-rules/reset", { method: "POST" })
             .then(r => r.json())
             .then(function (data) {
@@ -651,52 +923,6 @@
                 loadSymbol(symbol);
             });
     };
-
-    // --- Verification Panel ---
-    function loadVerification() {
-        var panel = document.getElementById("verification-panel");
-        if (!panel) return;
-        fetch("/de/api/verification/" + symbol)
-            .then(r => r.json())
-            .then(function (data) {
-                var stats = data.stats || {};
-                var signals = (data.signals || []).slice(-20).reverse();
-                var hitRate = stats.hit_rate_pct != null ? stats.hit_rate_pct : 0;
-                var badgeClass = hitRate >= 60 ? "badge-hit" : (hitRate >= 40 ? "badge-pending" : "badge-miss");
-
-                var html = '<div class="verif-stats">'
-                    + '<span class="verif-badge ' + badgeClass + '">' + hitRate + '% hit rate</span>'
-                    + '<span class="verif-counts">' + stats.hits + 'H / ' + stats.misses + 'M / ' + stats.pending + 'P (' + stats.total + ' total)</span>'
-                    + '</div>';
-
-                if (signals.length > 0) {
-                    html += '<table class="verif-table"><tr><th>Date</th><th>Signal</th><th>Conv</th><th>Result</th></tr>';
-                    signals.forEach(function (s) {
-                        var resClass = s.result === "hit" ? "badge-hit" : (s.result === "miss" ? "badge-miss" : "badge-pending");
-                        var stateCol = s.state === "Demand" ? "#00e676" : "#ef5350";
-                        html += '<tr>'
-                            + '<td>' + s.date + '</td>'
-                            + '<td style="color:' + stateCol + '">' + s.state + '</td>'
-                            + '<td>' + (s.conviction_score || '-') + '</td>'
-                            + '<td><span class="verif-badge ' + resClass + '">' + s.result + '</span></td>'
-                            + '</tr>';
-                    });
-                    html += '</table>';
-                }
-                panel.innerHTML = html;
-            })
-            .catch(function () {
-                panel.innerHTML = '<span class="placeholder">Verification unavailable</span>';
-            });
-    }
-
-    // Load verification after initial symbol load
-    var origLoadSymbol = loadSymbol;
-    loadSymbol = function (sym) {
-        origLoadSymbol(sym);
-        setTimeout(loadVerification, 1500);
-    };
-    setTimeout(loadVerification, 2000);
 
     window.WatchlistManager = WatchlistManager;
 })();

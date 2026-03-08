@@ -49,3 +49,4 @@ test_britannia.py
 test_august.py
 test_august_full.py
 test_august_2024.py
+scripts/rejected_stocks.csv

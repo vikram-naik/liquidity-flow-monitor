@@ -25,3 +25,8 @@ class CacheInterface(ABC):
     def clear(self) -> bool:
         """Clear all entries from the cache."""
         pass
+
+    @abstractmethod
+    def delete_pattern(self, pattern: str) -> int:
+        """Remove all keys matching a glob pattern. Returns count deleted."""
+        pass

@@ -131,6 +131,11 @@ def compute_trend_participation(
     df["price_slope_z"] = _rolling_slope_z(df[close_col], slope_window).round(4)
     df["rdv_slope_z"]   = _rolling_slope_z(df[rdv_col],   slope_window).round(4)
 
+    df["psz_delta_3d"]    = df["price_slope_z"].diff(3).fillna(0.0).round(4)
+    df["psz_delta_5d"]    = df["price_slope_z"].diff(5).fillna(0.0).round(4)
+    df["rdv_sz_delta_3d"] = df["rdv_slope_z"].diff(3).fillna(0.0).round(4)
+    df["rdv_sz_delta_5d"] = df["rdv_slope_z"].diff(5).fillna(0.0).round(4)
+
     p_a = _pillar_a_slope_alignment(df["price_slope_z"], df["rdv_slope_z"])
     p_b = _pillar_b_mcs_confirmation(df[mcs_col], df[mcs_slope_col], df["price_slope_z"])
     p_c = _pillar_c_cwc_coherence(df[cwc_slope_col])

@@ -25,8 +25,11 @@ UI_COLUMNS = [
     "coherence_raw", "coherence",
     "integrated_state",
     # Conviction marker data
-    "conviction_score", "cwvap_dist", "rdv", "cwc",
+    "conviction_score", "accum_score", "diverg_score",
+    "cwvap_dist", "rdv", "cwc",
     "rdv_consistency", "delivery_pct", "atr_20",
+    "psz_delta_3d", "pdd_30",
+    "gate_results",
 ]
 
 

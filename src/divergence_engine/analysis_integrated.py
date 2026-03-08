@@ -49,17 +49,29 @@ def apply_integrated_matrix(df: pd.DataFrame, db_conn=None) -> pd.DataFrame:
         df['rdv'].ge(1.0).astype(int).rolling(5, min_periods=1).sum().astype(int)
     )
 
-    # --- Score weights ---
-    w_cwc = float(thresholds.get("w_cwc", 0.25))
-    w_rdv = float(thresholds.get("w_rdv", 0.20))
-    w_rdv_con = float(thresholds.get("w_rdv_consistency", 0.15))
-    w_depth = float(thresholds.get("w_cwvap_depth", 0.15))
-    w_del = float(thresholds.get("w_delivery_pct", 0.10))
-    w_pdd = float(thresholds.get("w_pdd", 0.15))
+    # --- Accumulation score weights (must sum to 1.0) ---
+    w_acc_cwc = float(thresholds.get("w_acc_cwc", 0.25))
+    w_acc_rdv = float(thresholds.get("w_acc_rdv", 0.20))
+    w_acc_rdv_con = float(thresholds.get("w_acc_rdv_consistency", 0.15))
+    w_acc_depth = float(thresholds.get("w_acc_cwvap_depth", 0.15))
+    w_acc_del = float(thresholds.get("w_acc_delivery_pct", 0.10))
+    w_acc_coh = float(thresholds.get("w_acc_coherence", 0.15))
+
+    # --- Divergence score weights (must sum to 1.0) ---
+    w_div_psz_d = float(thresholds.get("w_div_psz_delta", 0.40))
+    w_div_pdd = float(thresholds.get("w_div_pdd", 0.35))
+    w_div_psz_ext = float(thresholds.get("w_div_psz_extreme", 0.25))
+
+    # --- Conviction blend ---
+    w_conv_acc = float(thresholds.get("w_conviction_accum", 0.50))
+    w_conv_div = float(thresholds.get("w_conviction_diverg", 0.50))
 
     # --- Classification + Conviction Scoring ---
     states = []
-    scores = []
+    conv_scores = []
+    acc_scores = []
+    div_scores = []
+    gate_results_list = []
 
     for _, r in df.iterrows():
         cwc_val = float(r.get('cwc', 1.0))
@@ -69,6 +81,10 @@ def apply_integrated_matrix(df: pd.DataFrame, db_conn=None) -> pd.DataFrame:
         del_pct = float(r.get('delivery_pct', 0.0))
         pdd_val = float(r.get('pdd_30', 0.0))
         coh_val = float(r.get('coherence', 0.0))
+        psz_raw = r.get('price_slope_z', 0.0)
+        psz_val = float(psz_raw) if pd.notna(psz_raw) else 0.0
+        psz_d3_raw = r.get('psz_delta_3d', 0.0)
+        psz_d3_val = float(psz_d3_raw) if pd.notna(psz_d3_raw) else 0.0
 
         ctx = MarketContext(
             cwvap_dist=cwvap_d,
@@ -78,118 +94,47 @@ def apply_integrated_matrix(df: pd.DataFrame, db_conn=None) -> pd.DataFrame:
             delivery_pct=del_pct,
             pdd_30=pdd_val,
             coherence=coh_val,
+            price_slope_z=psz_val,
+            psz_delta_3d=psz_d3_val,
         )
-        state = engine.classify(ctx)
+        state, gate_details = engine.classify_with_gates(ctx)
         states.append(state.label)
+        gate_results_list.append(gate_details)
 
         if state is not StateName.NO_SIGNAL:
-            cwc_score = max(0.0, 1.0 - cwc_val)
-            rdv_score = min(rdv_val / 2.0, 1.0)
-            rdv_con_score = rdv_con / 5.0
-            depth_score = min(abs(cwvap_d) / 5.0, 1.0)
-            del_score = min(del_pct / 80.0, 1.0)
-            pdd_score = min(abs(pdd_val) / 20.0, 1.0)
-
-            score = (
-                w_cwc * cwc_score
-                + w_rdv * rdv_score
-                + w_rdv_con * rdv_con_score
-                + w_depth * depth_score
-                + w_del * del_score
-                + w_pdd * pdd_score
+            # --- Accumulation score: is smart money building/unwinding? ---
+            acc = (
+                w_acc_cwc * max(0.0, 1.0 - cwc_val)
+                + w_acc_rdv * min(rdv_val / 2.0, 1.0)
+                + w_acc_rdv_con * (rdv_con / 5.0)
+                + w_acc_depth * min(abs(cwvap_d) / 5.0, 1.0)
+                + w_acc_del * min(del_pct / 80.0, 1.0)
+                + w_acc_coh * min(coh_val, 1.0)
             ) * 100
-            scores.append(round(score, 1))
+
+            # --- Divergence score: is price disconnected from flow + turning? ---
+            psz_delta_score = min(abs(psz_d3_val) / 0.15, 1.0)
+            pdd_score = min(abs(pdd_val) / 20.0, 1.0)
+            psz_extreme_score = min(abs(psz_val) / 0.5, 1.0)  # how stretched the trend is
+
+            div = (
+                w_div_psz_d * psz_delta_score
+                + w_div_pdd * pdd_score
+                + w_div_psz_ext * psz_extreme_score
+            ) * 100
+
+            score = w_conv_acc * acc + w_conv_div * div
+            acc_scores.append(round(acc, 1))
+            div_scores.append(round(div, 1))
+            conv_scores.append(round(score, 1))
         else:
-            scores.append(None)
+            acc_scores.append(None)
+            div_scores.append(None)
+            conv_scores.append(None)
 
     df['integrated_state'] = states
-    df['conviction_score'] = scores
+    df['accum_score'] = acc_scores
+    df['diverg_score'] = div_scores
+    df['conviction_score'] = conv_scores
+    df['gate_results'] = gate_results_list
     return df
-
-
-def compute_verification(
-    df: pd.DataFrame,
-    horizon: int = 5,
-    atr_mult: float = 2.0,
-) -> dict:
-    """Verify Demand/Supply signals against forward price action.
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-        Full ledger with integrated_state, conviction_score, close, high, low, atr_20.
-    horizon : int
-        Number of trading days to look forward.
-    atr_mult : float
-        ATR multiplier for the target barrier.
-
-    Returns
-    -------
-    dict with 'signals' (list of dicts) and 'stats' (summary dict).
-    """
-    signals = []
-
-    for i in range(len(df)):
-        row = df.iloc[i]
-        state = row.get('integrated_state', 'No Signal')
-        if state not in ('Demand', 'Supply'):
-            continue
-
-        entry_close = float(row['close'])
-        atr = float(row.get('atr_20', 0))
-        if atr <= 0:
-            continue
-
-        barrier = atr_mult * atr
-        conv_score = row.get('conviction_score')
-        signal_date = str(row['date'])
-        if hasattr(row['date'], 'strftime'):
-            signal_date = row['date'].strftime('%Y-%m-%d')
-
-        # Look forward
-        end_idx = min(i + horizon, len(df) - 1)
-        future = df.iloc[i + 1: end_idx + 1]
-
-        result = 'pending'
-        if len(future) > 0:
-            if state == 'Demand':
-                target = entry_close + barrier
-                if future['high'].max() >= target:
-                    result = 'hit'
-                elif len(future) >= horizon:
-                    result = 'miss'
-            else:  # Supply
-                target = entry_close - barrier
-                if future['low'].min() <= target:
-                    result = 'hit'
-                elif len(future) >= horizon:
-                    result = 'miss'
-        else:
-            target = entry_close + barrier if state == 'Demand' else entry_close - barrier
-
-        signals.append({
-            'date': signal_date,
-            'state': state,
-            'conviction_score': conv_score,
-            'entry_close': round(entry_close, 2),
-            'barrier': round(barrier, 2),
-            'target': round(target, 2),
-            'result': result,
-        })
-
-    total = len(signals)
-    hits = sum(1 for s in signals if s['result'] == 'hit')
-    misses = sum(1 for s in signals if s['result'] == 'miss')
-    pending = sum(1 for s in signals if s['result'] == 'pending')
-    hit_rate = round(hits / (hits + misses) * 100, 1) if (hits + misses) > 0 else 0.0
-
-    return {
-        'signals': signals,
-        'stats': {
-            'total': total,
-            'hits': hits,
-            'misses': misses,
-            'pending': pending,
-            'hit_rate_pct': hit_rate,
-        },
-    }

@@ -48,7 +48,9 @@ class RedisCache(CacheInterface):
         
         try:
             data = pickle.dumps(value)
-            return self.client.setex(key, ttl, data)
+            if ttl > 0:
+                return self.client.setex(key, ttl, data)
+            return self.client.set(key, data)
         except Exception as e:
             logger.error(f"Error setting key {key} in Redis: {e}")
             return False
@@ -66,9 +68,27 @@ class RedisCache(CacheInterface):
     def clear(self) -> bool:
         if not self.client:
             return False
-        
+
         try:
             return self.client.flushdb()
         except Exception as e:
             logger.error(f"Error clearing Redis DB: {e}")
             return False
+
+    def delete_pattern(self, pattern: str) -> int:
+        if not self.client:
+            return 0
+
+        try:
+            count = 0
+            cursor = 0
+            while True:
+                cursor, keys = self.client.scan(cursor=cursor, match=pattern, count=200)
+                if keys:
+                    count += self.client.delete(*keys)
+                if cursor == 0:
+                    break
+            return count
+        except Exception as e:
+            logger.error(f"Error deleting pattern {pattern} from Redis: {e}")
+            return 0

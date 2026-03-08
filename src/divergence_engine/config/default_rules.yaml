@@ -1,28 +1,44 @@
 # Conviction-Gated Marker System — Default Configuration
 #
-# Two markers (Demand / Supply) with conviction gates and scoring.
+# Two markers (Demand / Supply) with per-marker conviction gates and scoring.
 # User overrides are stored in the database (user_settings table).
 
 # ----------------------------------------------------------------
-# Tunable Thresholds
+# Tunable Thresholds (per-marker: demand_ / supply_ prefixes)
 # ----------------------------------------------------------------
 thresholds:
-  # Conviction Gates
-  cwc_gate: 0.65            # CWC must be <= this for a signal
-  rdv_gate: 0.6             # RDV must be >= this for a signal
-  rdv_consistency_gate: 2   # Days with above-avg delivery in last 5
+  # Demand Conviction Gates
+  demand_cwc_gate: 0.75            # CWC must be <= this
+  demand_rdv_gate: 0.6             # RDV must be >= this
+  demand_rdv_consistency_gate: 0   # Days with above-avg delivery in last 5
+  demand_price_slope_z_gate: 0  # price_slope_z must be <= this
+  demand_psz_delta_3d_gate: 0.0   # psz_delta_3d must be >= this (slope turning up)
+  demand_coherence_gate: 0.5       # coherence must be >= this
 
-  # Conviction Score Weights (must sum to 1.0)
-  w_cwc: 0.25
-  w_rdv: 0.20
-  w_rdv_consistency: 0.15
-  w_cwvap_depth: 0.15
-  w_delivery_pct: 0.10
-  w_pdd: 0.15
+  # Supply Conviction Gates
+  supply_cwc_gate: 0.65
+  supply_rdv_gate: 0.6
+  supply_rdv_consistency_gate: 2
+  supply_price_slope_z_gate: 0.2   # price_slope_z must be >= this
+  supply_psz_delta_3d_gate: 0.0   # psz_delta_3d must be <= this (slope turning down)
+  supply_coherence_gate: 0.5       # coherence must be >= this
 
-  # Verification
-  verification_horizon: 5     # Trading days to look forward
-  verification_atr_mult: 2.0  # ATR multiplier for target barrier
+  # Accumulation Score Weights (must sum to 1.0)
+  w_acc_cwc: 0.25
+  w_acc_rdv: 0.20
+  w_acc_rdv_consistency: 0.15
+  w_acc_cwvap_depth: 0.15
+  w_acc_delivery_pct: 0.10
+  w_acc_coherence: 0.15
+
+  # Divergence Score Weights (must sum to 1.0)
+  w_div_psz_delta: 0.40
+  w_div_pdd: 0.35
+  w_div_psz_extreme: 0.25
+
+  # Conviction = blend of accumulation + divergence
+  w_conviction_accum: 0.50
+  w_conviction_diverg: 0.50
 
 # ----------------------------------------------------------------
 # Classification Rules (evaluated in priority order, first match wins)
@@ -32,14 +48,20 @@ rules:
     priority: 10
     conditions:
       cwvap_dist: { max: 0 }
-      cwc: { max: "$cwc_gate" }
-      rdv: { min: "$rdv_gate" }
-      rdv_consistency: { min: "$rdv_consistency_gate" }
+      cwc: { max: "$demand_cwc_gate" }
+      rdv: { min: "$demand_rdv_gate" }
+      rdv_consistency: { min: "$demand_rdv_consistency_gate" }
+      price_slope_z: { max: "$demand_price_slope_z_gate" }
+      psz_delta_3d: { min: "$demand_psz_delta_3d_gate" }
+      coherence: { min: "$demand_coherence_gate" }
 
   - name: "Supply"
     priority: 20
     conditions:
       cwvap_dist: { min: 0 }
-      cwc: { max: "$cwc_gate" }
-      rdv: { min: "$rdv_gate" }
-      rdv_consistency: { min: "$rdv_consistency_gate" }
+      cwc: { max: "$supply_cwc_gate" }
+      rdv: { min: "$supply_rdv_gate" }
+      rdv_consistency: { min: "$supply_rdv_consistency_gate" }
+      price_slope_z: { min: "$supply_price_slope_z_gate" }
+      psz_delta_3d: { max: "$supply_psz_delta_3d_gate" }
+      coherence: { min: "$supply_coherence_gate" }

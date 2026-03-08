@@ -30,7 +30,6 @@
             <a href="#sec-markers">Demand &amp; Supply Markers</a>
             <a href="#sec-gates" class="sub">Conviction Gates</a>
             <a href="#sec-score" class="sub">Conviction Score</a>
-            <a href="#sec-verification">Verification System</a>
             <a href="#sec-overlays">Chart Overlays</a>
             <a href="#sec-panels">Chart Panels</a>
             <a href="#sec-sidebar">Sidebar Annotations</a>
@@ -126,18 +125,6 @@
                     for screening purposes.</p>
             </section>
 
-            <!-- VERIFICATION -->
-            <section id="sec-verification">
-                <h2>Verification System</h2>
-                <p>The verification system tracks whether signals are followed by the expected price move:</p>
-                <ul>
-                    <li><strong>Demand hit:</strong> High reaches entry_close + ATR_mult &times; ATR within the horizon</li>
-                    <li><strong>Supply hit:</strong> Low reaches entry_close - ATR_mult &times; ATR within the horizon</li>
-                    <li><strong>Miss:</strong> Target not reached within the horizon</li>
-                    <li><strong>Pending:</strong> Not enough forward data yet</li>
-                </ul>
-                <p>Default settings: 5-day horizon with 2.0&times; ATR barrier. Both are configurable via Settings.</p>
-            </section>
 
             <!-- OVERLAYS -->
             <section id="sec-overlays">
@@ -194,7 +181,6 @@
                 <p>Click the gear icon to open the settings panel. Two groups are available:</p>
                 <ul>
                     <li><strong>Conviction Gates</strong> &mdash; Adjust CWC gate, RDV gate, and RDV consistency thresholds</li>
-                    <li><strong>Verification</strong> &mdash; Adjust verification horizon and ATR multiplier</li>
                 </ul>
                 <p>Changes are saved per-user and take effect on the next chart reload.
                     Use "Factory Reset" to restore defaults.</p>

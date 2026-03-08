@@ -162,42 +162,6 @@ def divergence_engine_data(
         raise HTTPException(status_code=500, detail=f"Engine error: {e}")
 
 
-@app.get("/de/api/verification/{symbol}")
-def verification_data(
-    symbol: str,
-    horizon: Optional[int] = Query(None, description="Verification horizon in trading days"),
-    atr_mult: Optional[float] = Query(None, description="ATR multiplier for target barrier"),
-):
-    """Run verification on Demand/Supply signals for a symbol."""
-    try:
-        from src.divergence_engine.engine import DivergenceEngine
-        from src.divergence_engine.analysis_integrated import compute_verification
-        from src.divergence_engine import config_manager
-
-        engine = DivergenceEngine(ticker=symbol.upper())
-        result = engine.run()
-
-        # Get thresholds for defaults
-        import sqlite3
-        from src.database import DB_PATH
-        conn = sqlite3.connect(DB_PATH, timeout=10)
-        conn.row_factory = sqlite3.Row
-        try:
-            cfg = config_manager.get_config(conn)
-        finally:
-            conn.close()
-        thresholds = cfg.get("thresholds", {})
-
-        h = horizon if horizon is not None else int(thresholds.get("verification_horizon", 5))
-        am = atr_mult if atr_mult is not None else float(thresholds.get("verification_atr_mult", 2.0))
-
-        return compute_verification(result.ledger, horizon=h, atr_mult=am)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Verification error: {e}")
-
-
 @app.get("/de/dashboard/{symbol}")
 def divergence_engine_chart(symbol: str):
     """
@@ -335,6 +299,178 @@ def remove_watchlist_item(watchlist_id: int, symbol: str, db: sqlite3.Connection
 @app.get("/de/api/watchlists/supported-indices")
 def get_supported_indices():
     return list(NSE_INDICES.keys())
+
+# --- Signal Quality Routes ---
+
+@app.get("/de/signal-quality")
+def signal_quality_page():
+    """Serve the Signal Quality Explorer UI."""
+    html_path = os.path.join(_WEB_DIR, "signal_quality.html")
+    if not os.path.isfile(html_path):
+        raise HTTPException(status_code=404, detail="Signal Quality page not found")
+    return FileResponse(html_path, media_type="text/html")
+
+
+@app.get("/de/api/signal-quality")
+def signal_quality_data(
+    run_date: Optional[str] = Query(None, description="Filter by run date (YYYY-MM-DD)"),
+    signal_type: Optional[str] = Query(None, description="Demand or Supply"),
+    volume_tier: Optional[str] = Query(None, description="Large, Mid, Small, Micro"),
+    hit_horizon: Optional[str] = Query(None, description="Filter by hit/miss: hit_3d, hit_5d, hit_10d"),
+    hit_value: Optional[int] = Query(None, description="0=miss, 1=hit"),
+    limit: int = Query(10000, description="Max rows to return"),
+    offset: int = Query(0, description="Offset for pagination"),
+    db: sqlite3.Connection = Depends(get_db),
+):
+    """Return signal quality data for the AG Grid explorer."""
+    import math
+
+    # Build cache key from all params
+    cache_key = f"sq:data:{run_date}:{signal_type}:{volume_tier}:{hit_horizon}:{hit_value}:{limit}:{offset}"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    # Get available runs
+    runs = [
+        dict(r) for r in db.execute(
+            "SELECT DISTINCT run_date, thresholds_hash, COUNT(*) as signal_count "
+            "FROM signal_quality GROUP BY run_date, thresholds_hash "
+            "ORDER BY run_date DESC"
+        ).fetchall()
+    ]
+
+    if not runs:
+        return {"runs": [], "signals": [], "summary": {}, "total": 0}
+
+    # Use latest run if not specified
+    target_run = run_date or runs[0]["run_date"]
+    target_hash = None
+    for r in runs:
+        if r["run_date"] == target_run:
+            target_hash = r["thresholds_hash"]
+            break
+    if not target_hash:
+        target_run = runs[0]["run_date"]
+        target_hash = runs[0]["thresholds_hash"]
+
+    # Build query with optional filters
+    where = "WHERE run_date = ? AND thresholds_hash = ?"
+    params: list = [target_run, target_hash]
+
+    if signal_type:
+        where += " AND signal_type = ?"
+        params.append(signal_type)
+    if volume_tier:
+        where += " AND volume_tier = ?"
+        params.append(volume_tier)
+    if hit_horizon and hit_value is not None and hit_horizon in ("hit_3d", "hit_5d", "hit_10d"):
+        where += f" AND {hit_horizon} = ?"
+        params.append(hit_value)
+
+    # Total count for this filter
+    total = db.execute(
+        f"SELECT COUNT(*) FROM signal_quality {where}", params
+    ).fetchone()[0]
+
+    # Summary via SQL aggregation (fast for large tables)
+    summary = _compute_summary_sql(db, where, params)
+
+    # Paginated data
+    rows = db.execute(
+        f"SELECT * FROM signal_quality {where} ORDER BY signal_date DESC LIMIT ? OFFSET ?",
+        params + [limit, offset],
+    ).fetchall()
+
+    def _clean_row(row):
+        d = dict(row)
+        for k, v in d.items():
+            if isinstance(v, float) and (math.isnan(v) or math.isinf(v)):
+                d[k] = None
+        return d
+
+    signals = [_clean_row(r) for r in rows]
+
+    result = {
+        "runs": runs,
+        "current_run": target_run,
+        "current_hash": target_hash,
+        "signal_count": len(signals),
+        "total": total,
+        "signals": signals,
+        "summary": summary,
+    }
+
+    # Cache indefinitely (no TTL) — data is static until next report run
+    cache.set(cache_key, result, ttl=0)
+
+    return result
+
+
+def _compute_summary_sql(db, where: str, params: list) -> dict:
+    """Compute hit rate summary via SQL aggregation."""
+    def _safe_round(v, d=2):
+        import math
+        if v is None or (isinstance(v, float) and (math.isnan(v) or math.isinf(v))):
+            return 0.0
+        return round(v, d)
+
+    # By signal_type
+    rows = db.execute(f"""
+        SELECT signal_type AS grp,
+            AVG(CASE WHEN hit_3d IS NOT NULL THEN hit_3d END) AS hr3,
+            AVG(CASE WHEN hit_5d IS NOT NULL THEN hit_5d END) AS hr5,
+            AVG(CASE WHEN hit_10d IS NOT NULL THEN hit_10d END) AS hr10,
+            AVG(CASE WHEN ret_3d IS NOT NULL AND ABS(ret_3d) < 1000 THEN ret_3d END) AS ar3,
+            AVG(CASE WHEN ret_5d IS NOT NULL AND ABS(ret_5d) < 1000 THEN ret_5d END) AS ar5,
+            AVG(CASE WHEN ret_10d IS NOT NULL AND ABS(ret_10d) < 1000 THEN ret_10d END) AS ar10,
+            SUM(CASE WHEN hit_3d IS NOT NULL THEN 1 ELSE 0 END) AS n3,
+            SUM(CASE WHEN hit_5d IS NOT NULL THEN 1 ELSE 0 END) AS n5,
+            SUM(CASE WHEN hit_10d IS NOT NULL THEN 1 ELSE 0 END) AS n10
+        FROM signal_quality {where}
+        GROUP BY signal_type
+    """, params).fetchall()
+
+    result = {}
+    def _parse_group(rows_list):
+        out = {}
+        for r in rows_list:
+            d = dict(r)
+            grp = d["grp"]
+            if not grp:
+                continue
+            out[grp] = {}
+            for h, hr_key, ar_key, n_key in [(3,"hr3","ar3","n3"),(5,"hr5","ar5","n5"),(10,"hr10","ar10","n10")]:
+                if d[n_key] and d[n_key] > 0:
+                    out[grp][h] = {
+                        "hit_rate": _safe_round((d[hr_key] or 0) * 100, 1),
+                        "avg_ret": _safe_round(d[ar_key], 2),
+                        "n": int(d[n_key]),
+                    }
+        return out
+
+    result = _parse_group(rows)
+
+    # By tier
+    tier_rows = db.execute(f"""
+        SELECT volume_tier AS grp,
+            AVG(CASE WHEN hit_3d IS NOT NULL THEN hit_3d END) AS hr3,
+            AVG(CASE WHEN hit_5d IS NOT NULL THEN hit_5d END) AS hr5,
+            AVG(CASE WHEN hit_10d IS NOT NULL THEN hit_10d END) AS hr10,
+            AVG(CASE WHEN ret_3d IS NOT NULL AND ABS(ret_3d) < 1000 THEN ret_3d END) AS ar3,
+            AVG(CASE WHEN ret_5d IS NOT NULL AND ABS(ret_5d) < 1000 THEN ret_5d END) AS ar5,
+            AVG(CASE WHEN ret_10d IS NOT NULL AND ABS(ret_10d) < 1000 THEN ret_10d END) AS ar10,
+            SUM(CASE WHEN hit_3d IS NOT NULL THEN 1 ELSE 0 END) AS n3,
+            SUM(CASE WHEN hit_5d IS NOT NULL THEN 1 ELSE 0 END) AS n5,
+            SUM(CASE WHEN hit_10d IS NOT NULL THEN 1 ELSE 0 END) AS n10
+        FROM signal_quality {where}
+        GROUP BY volume_tier
+    """, params).fetchall()
+
+    result["by_tier"] = _parse_group(tier_rows)
+
+    return result
+
 
 @app.post("/de/api/watchlists/import-index")
 def import_index_constituents(req: IndexImportRequest, conn: sqlite3.Connection = Depends(get_db)):

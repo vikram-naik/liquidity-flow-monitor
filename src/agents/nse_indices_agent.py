@@ -123,16 +123,18 @@ def process_and_store_data(df, record_date):
             pe_ratio,
             pb_ratio,
             div_yield,
-            turnover
+            turnover,
+            'INDEX',
         ))
         
     print(f"[NSE Indices] Inserting {len(records)} records for {record_date}...")
     
     cursor.executemany("""
-        INSERT OR REPLACE INTO nse_delivery_log 
-        (record_date, symbol, price_close, price_open, price_high, price_low, volume_total, delivery_qty, delivery_pct, 
-         price_change_pct, volume_change_pct, delivery_change_pct, pe_ratio, pb_ratio, dividend_yield, turnover_crs)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT OR REPLACE INTO nse_delivery_log
+        (record_date, symbol, price_close, price_open, price_high, price_low, volume_total, delivery_qty, delivery_pct,
+         price_change_pct, volume_change_pct, delivery_change_pct, pe_ratio, pb_ratio, dividend_yield, turnover_crs,
+         instrument_type)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, records)
     
     conn.commit()
@@ -173,17 +175,19 @@ def update_changes_for_date(current_date):
     try:
         cursor.execute(f"""
         INSERT OR REPLACE INTO nse_delivery_log (
-            record_date, symbol, price_close, price_open, price_high, price_low, 
-            volume_total, delivery_qty, delivery_pct, 
+            record_date, symbol, price_close, price_open, price_high, price_low,
+            volume_total, delivery_qty, delivery_pct,
             price_change_pct, volume_change_pct, delivery_change_pct,
-            pe_ratio, pb_ratio, dividend_yield, turnover_crs
+            pe_ratio, pb_ratio, dividend_yield, turnover_crs,
+            instrument_type
         )
-        SELECT 
+        SELECT
             curr.record_date, curr.symbol, curr.price_close, curr.price_open, curr.price_high, curr.price_low,
             curr.volume_total, curr.delivery_qty, curr.delivery_pct, curr.price_change_pct,
             ((curr.volume_total - prev.volume_total) * 100.0 / prev.volume_total),
             (curr.delivery_pct - prev.delivery_pct),
-            curr.pe_ratio, curr.pb_ratio, curr.dividend_yield, curr.turnover_crs
+            curr.pe_ratio, curr.pb_ratio, curr.dividend_yield, curr.turnover_crs,
+            'INDEX'
         FROM nse_delivery_log AS curr
         JOIN nse_delivery_log AS prev ON curr.symbol = prev.symbol
         WHERE curr.record_date = '{current_date_str}' AND prev.record_date = '{prev_date_str}'

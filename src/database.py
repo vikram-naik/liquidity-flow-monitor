@@ -147,7 +147,15 @@ def init_db():
         ]
     )
 
+    # Migration: Add instrument_type column if it doesn't exist
+    try:
+        cursor.execute("SELECT instrument_type FROM nse_delivery_log LIMIT 1")
+    except sqlite3.OperationalError:
+        print("Migrating: Adding instrument_type column to nse_delivery_log...")
+        cursor.execute("ALTER TABLE nse_delivery_log ADD COLUMN instrument_type TEXT DEFAULT 'STOCK'")
+
     # --- Secondary Indices for Performance ---
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_nse_instrument_type ON nse_delivery_log (instrument_type);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_nse_symbol_date ON nse_delivery_log (symbol, record_date);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_watchlists_created ON watchlists (created_at DESC);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_watchlist_items_order ON watchlist_items (watchlist_id, display_order);")

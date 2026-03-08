@@ -27,7 +27,10 @@ class _Range:
     lo: float | None = None
     hi: float | None = None
     def ok(self, ctx: MarketContext) -> bool:
+        import math
         val = getattr(ctx, self.attr)
+        if math.isnan(val):
+            return False
         if self.lo is not None and val < self.lo:
             return False
         if self.hi is not None and val > self.hi:
@@ -73,6 +76,37 @@ class RuleEngine:
             if rule.matches(ctx):
                 return rule.state
         return StateName.NO_SIGNAL
+
+    def classify_with_gates(self, ctx: MarketContext) -> tuple[StateName, dict]:
+        """Classify and return per-gate pass/fail details for every rule.
+
+        Returns (state, gate_details) where gate_details maps rule name to a
+        list of dicts: {attr, value, lo, hi, passed}.
+        """
+        import math
+        gate_details = {}
+        winner = StateName.NO_SIGNAL
+        found = False
+        for rule in self._rules:
+            gates = []
+            all_pass = True
+            for p in rule.predicates:
+                val = getattr(ctx, p.attr)
+                passed = p.ok(ctx)
+                if not passed:
+                    all_pass = False
+                gates.append({
+                    "attr": p.attr,
+                    "val": None if math.isnan(val) else round(val, 4),
+                    "lo": p.lo,
+                    "hi": p.hi,
+                    "passed": passed,
+                })
+            gate_details[rule.name] = gates
+            if all_pass and not found:
+                winner = rule.state
+                found = True
+        return winner, gate_details
 
     def explain(self, ctx: MarketContext) -> list[dict]:
         """Return a trace showing which rules matched or didn't."""
