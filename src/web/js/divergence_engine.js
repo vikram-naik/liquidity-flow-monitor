@@ -22,7 +22,8 @@
         "rdv_consistency": { label: "RDV Consistency" },
         "atr_20": { label: "ATR (20)" },
         "cwvap_dist": { label: "CWVAP Dist %" },
-        "delivery_pct": { label: "Delivery %" }
+        "delivery_pct": { label: "Delivery %" },
+        "pdd": { label: "PDD (30)" }
     };
 
     function getActivePanels() {
@@ -122,7 +123,7 @@
         var markerList = [];
         var timeToIndex = {};
         var pZ = [], rZ = [], cRaw = [], cSmooth = [];
-        var rdvArr = [], cwcArr = [], rdvConsArr = [], atrArr = [], distArr = [], delPctArr = [];
+        var rdvArr = [], cwcArr = [], rdvConsArr = [], atrArr = [], distArr = [], delPctArr = [], pddArr = [];
 
         for (var i = 0; i < ledger.length; i++) {
             var r = ledger[i];
@@ -150,6 +151,7 @@
             if (r.atr_20 != null) atrArr.push({ time: t, value: r.atr_20 }); else atrArr.push({ time: t });
             if (r.cwvap_dist != null) distArr.push({ time: t, value: r.cwvap_dist }); else distArr.push({ time: t });
             if (r.delivery_pct != null) delPctArr.push({ time: t, value: r.delivery_pct }); else delPctArr.push({ time: t });
+            if (r.pdd_30 != null) pddArr.push({ time: t, value: r.pdd_30 }); else pddArr.push({ time: t });
 
             if (r.delivery_qty != null) {
                 var mfm = r.mfm != null ? r.mfm : 0;
@@ -175,13 +177,13 @@
             var stateStr = r.integrated_state || "No Signal";
             if (stateStr === "Demand" || stateStr === "Supply") {
                 var isDemand = stateStr === "Demand";
-                var convScore = r.conviction_score != null ? r.conviction_score : "";
+                var sigStr = r.signal_strength != null ? r.signal_strength : "";
                 markerList.push({
                     time: t,
                     position: isDemand ? "belowBar" : "aboveBar",
                     color: stateColorMap[stateStr],
                     shape: isDemand ? "arrowUp" : "arrowDown",
-                    stateText: stateStr + (convScore !== "" ? " (" + convScore + ")" : "")
+                    stateText: stateStr + (sigStr !== "" ? " (" + sigStr + ")" : "")
                 });
             }
         }
@@ -320,6 +322,12 @@
                var sDel = c.addSeries(LC.LineSeries, { color: "#ffb74d", lineWidth: 2, lastValueVisible: false, priceLineVisible: false });
                sDel.setData(delPctArr);
                legConfig.push({ api: sDel, label: "Del %", col: "delivery_pct", color: "#ffb74d" });
+            } else if (panelKey === "pdd") {
+               var sPdd = c.addSeries(LC.LineSeries, { color: "#ff7043", lineWidth: 2, lastValueVisible: false, priceLineVisible: false });
+               sPdd.setData(pddArr);
+               var sZ = c.addSeries(LC.LineSeries, { color: "#424242", lineWidth: 1, lineStyle: 2, lastValueVisible: false, priceLineVisible: false });
+               sZ.setData(pddArr.map(d => ({ time: d.time, value: 0 })));
+               legConfig.push({ api: sPdd, label: "PDD", col: "pdd_30", color: "#ff7043" });
             }
 
             allLegConfigs.push({ id: "legSub" + i, config: legConfig });
@@ -453,62 +461,65 @@
         return [pc];
     }
 
-    // --- Gate label mapping (fallback to raw attr name if not found) ---
-    var GATE_LABELS = {
-        cwvap_dist: "CWVAP Dist", cwc: "CWC", rdv: "RDV",
-        rdv_consistency: "RDV Cons.", price_slope_z: "PSZ",
-        psz_delta_3d: "PSZ \u0394 3d", coherence: "Coherence"
-    };
-
     function buildSidebarAnnotations(l) {
         if (!l) return;
         function fmt(v, d) { return (v != null && typeof v === "number" && !isNaN(v)) ? v.toFixed(d || 2) : (v || "\u2014"); }
         var intState = l.integrated_state || "No Signal";
-        var convScore = l.conviction_score != null ? " (" + fmt(l.conviction_score, 1) + ")" : "";
+        var scoringDir = l.scoring_direction || null;
+        var sigStr = l.signal_strength != null ? " (" + fmt(l.signal_strength, 1) + ")" : "";
+        // For No Signal, append the scoring direction so user knows which side was evaluated
+        if (intState === "No Signal" && scoringDir) {
+            sigStr += " " + scoringDir;
+        }
         var stateColor = intState === "Demand" ? "#00e676" : (intState === "Supply" ? "#ef5350" : "#8b949e");
 
-        var scoreRows = "";
-        if (intState === "Demand" || intState === "Supply") {
-            scoreRows =
-                "<tr><td>Accum Score</td><td class='val'>" + fmt(l.accum_score, 1) + "</td></tr>" +
-                "<tr><td>Diverg Score</td><td class='val'>" + fmt(l.diverg_score, 1) + "</td></tr>";
-        }
+        var regime = l.regime || "\u2014";
+        var regimeColor = regime === "uptrend" ? "#3fb950" : (regime === "downtrend" ? "#ef5350" : (regime === "transition" ? "#d29922" : "#8b949e"));
 
         document.getElementById("state-table").innerHTML =
-            "<tr><td colspan='2' style='text-align:center; padding: 10px; background: rgba(0,0,0,0.2);'><strong style='color:" + stateColor + "'>" + intState + convScore + "</strong></td></tr>" +
-            scoreRows +
-            "<tr><td>Date</td><td class='val'>" + (l.date ? l.date.split("T")[0] : "\u2014") + "</td></tr>";
+            "<tr><td colspan='2' style='text-align:center; padding: 10px; background: rgba(0,0,0,0.2);'><strong style='color:" + stateColor + "'>" + intState + sigStr + "</strong></td></tr>" +
+            "<tr><td>Date</td><td class='val'>" + (l.date ? l.date.split("T")[0] : "\u2014") + "</td></tr>" +
+            "<tr><td>Regime</td><td class='val' style='color:" + regimeColor + "'>" + regime + "</td></tr>";
 
-        // Gate diagnostics
-        var gateEl = document.getElementById("gate-diagnostics");
-        if (!gateEl || !l.gate_results) { if (gateEl) gateEl.innerHTML = ""; return; }
+        // Scoring breakdown (replaces gate diagnostics)
+        var diagEl = document.getElementById("gate-diagnostics");
+        if (!diagEl) return;
+        if (!l.scoring_details || !Array.isArray(l.scoring_details) || l.scoring_details.length === 0) {
+            diagEl.innerHTML = "";
+            return;
+        }
 
-        var gateHtml = "";
-        ["Demand", "Supply"].forEach(function(ruleName) {
-            var gates = l.gate_results[ruleName];
-            if (!gates) return;
-            var allPass = gates.every(function(g) { return g.passed; });
-            var headerColor = allPass ? "#3fb950" : "#8b949e";
-            gateHtml += '<div class="gate-section"><h4 style="color:' + headerColor + '">' + ruleName + (allPass ? " \u2714" : "") + '</h4>';
-            gates.forEach(function(g) {
-                var icon = g.passed ? '<span class="gate-pass">\u2714</span>' : '<span class="gate-fail">\u2718</span>';
-                var label = GATE_LABELS[g.attr] || g.attr;
-                var threshold = "";
-                if (g.hi != null && g.lo != null) threshold = g.lo + " \u2264 x \u2264 " + g.hi;
-                else if (g.hi != null) threshold = "\u2264 " + g.hi;
-                else if (g.lo != null) threshold = "\u2265 " + g.lo;
-                var valStr = (g.val != null) ? g.val.toFixed(3) : "NaN";
-                var valColor = g.passed ? "#c9d1d9" : "#f85149";
-                gateHtml += '<div class="gate-row">'
-                    + '<span class="gate-icon">' + icon + '</span>'
-                    + '<span class="gate-label">' + label + '</span>'
-                    + '<span class="gate-val" style="color:' + valColor + '">' + valStr + '</span>'
-                    + '<span class="gate-threshold">' + threshold + '</span>'
-                    + '</div>';
-            });
-            gateHtml += '</div>';
+        var html = '<div class="scoring-section">';
+        var totalWeighted = 0, totalWeight = 0;
+        l.scoring_details.forEach(function(f) {
+            var pct = Math.round(f.score * 100);
+            var barColor = pct >= 70 ? "#3fb950" : (pct >= 40 ? "#d29922" : "#8b949e");
+            var label = (f.ui && f.ui.label) ? f.ui.label : f.factor;
+            var weightPct = Math.round(f.weight * 100);
+            totalWeighted += f.weighted;
+            totalWeight += f.weight;
+            html += '<div class="scoring-row">'
+                + '<span class="scoring-label">' + label + ' <span class="scoring-weight">(' + weightPct + '%)</span></span>'
+                + '<div class="scoring-bar-wrap">'
+                + '<div class="scoring-bar" style="width:' + pct + '%; background:' + barColor + '"></div>'
+                + '</div>'
+                + '<span class="scoring-val">' + fmt(f.raw_value, 2) + '</span>'
+                + '<span class="scoring-contrib">' + (f.weighted * 100).toFixed(1) + '</span>'
+                + '</div>';
         });
-        gateEl.innerHTML = gateHtml;
+        // Total row
+        var totalPct = totalWeight > 0 ? Math.round((totalWeighted / totalWeight) * 100) : 0;
+        var totalColor = totalPct >= 70 ? "#3fb950" : (totalPct >= 40 ? "#d29922" : "#8b949e");
+        html += '<div class="scoring-total">'
+            + '<span class="scoring-label">Total</span>'
+            + '<div class="scoring-bar-wrap">'
+            + '<div class="scoring-bar" style="width:' + totalPct + '%; background:' + totalColor + '"></div>'
+            + '</div>'
+            + '<span class="scoring-val"></span>'
+            + '<span class="scoring-contrib" style="color:' + totalColor + '">' + totalPct + '</span>'
+            + '</div>';
+        html += '</div>';
+        diagEl.innerHTML = html;
     }
 
     // --- Search & Watchlist Logic ---
@@ -742,37 +753,19 @@
     fetchAllStocks();
     WatchlistManager.init();
 
-    // --- Settings Panel Logic ---
-    var THRESHOLD_META = {
-        demand_cwc_gate: { label: "CWC Gate (\u2264)", min: 0.3, max: 1.0, step: 0.05, fmt: v => v.toFixed(2) },
-        demand_rdv_gate: { label: "RDV Gate (\u2265)", min: 0.2, max: 2.0, step: 0.1, fmt: v => v.toFixed(1) },
-        demand_rdv_consistency_gate: { label: "RDV Consistency (\u2265)", min: 0, max: 5, step: 1, fmt: v => v },
-        demand_price_slope_z_gate: { label: "Price Slope Z (\u2264)", min: -2.0, max: 2.0, step: 0.05, fmt: v => v.toFixed(2) },
-        demand_psz_delta_3d_gate: { label: "PSZ Delta 3d (\u2265)", min: -1.0, max: 1.0, step: 0.05, fmt: v => v.toFixed(2) },
-        demand_coherence_gate: { label: "Coherence (\u2265)", min: 0.0, max: 1.0, step: 0.05, fmt: v => v.toFixed(2) },
-        supply_cwc_gate: { label: "CWC Gate (\u2264)", min: 0.3, max: 1.0, step: 0.05, fmt: v => v.toFixed(2) },
-        supply_rdv_gate: { label: "RDV Gate (\u2265)", min: 0.2, max: 2.0, step: 0.1, fmt: v => v.toFixed(1) },
-        supply_rdv_consistency_gate: { label: "RDV Consistency (\u2265)", min: 0, max: 5, step: 1, fmt: v => v },
-        supply_price_slope_z_gate: { label: "Price Slope Z (\u2265)", min: -1.0, max: 2.0, step: 0.05, fmt: v => v.toFixed(2) },
-        supply_psz_delta_3d_gate: { label: "PSZ Delta 3d (\u2264)", min: -1.0, max: 1.0, step: 0.05, fmt: v => v.toFixed(2) },
-        supply_coherence_gate: { label: "Coherence (\u2265)", min: 0.0, max: 1.0, step: 0.05, fmt: v => v.toFixed(2) },
-    };
-
-    var GROUPS = [
-        { title: "Demand Gates", keys: ["demand_cwc_gate", "demand_rdv_gate", "demand_rdv_consistency_gate", "demand_price_slope_z_gate", "demand_psz_delta_3d_gate", "demand_coherence_gate"] },
-        { title: "Supply Gates", keys: ["supply_cwc_gate", "supply_rdv_gate", "supply_rdv_consistency_gate", "supply_price_slope_z_gate", "supply_psz_delta_3d_gate", "supply_coherence_gate"] },
-    ];
-
+    // --- Settings Panel Logic (auto-generated from API) ---
     var settingsOverlay = document.getElementById("settings-overlay");
     var settingsThresholds = document.getElementById("settings-thresholds");
     var settingsDefaults = {};
     var settingsCurrent = {};
+    var settingsFactors = [];  // factor UI metadata from API
     var currentPanelsConfig = [];
 
     document.getElementById("open-settings").onclick = function () {
         fetch("/de/api/config/state-rules").then(r => r.json()).then(function (data) {
             settingsDefaults = data.defaults || {};
-            settingsCurrent = Object.assign({}, data.thresholds || {});
+            settingsCurrent = Object.assign({}, data.current || {});
+            settingsFactors = data.factors || [];
             renderSettings();
             renderPanelsSettings();
             settingsOverlay.classList.remove("hidden");
@@ -795,35 +788,56 @@
 
     function renderSettings() {
         var html = "";
-        GROUPS.forEach(function (grp) {
-            html += '<div class="setting-group"><h4>' + grp.title + '</h4>';
-            grp.keys.forEach(function (key) {
-                var meta = THRESHOLD_META[key];
-                if (!meta) return;
-                var val = settingsCurrent[key] != null ? settingsCurrent[key] : settingsDefaults[key];
-                var defVal = settingsDefaults[key];
+
+        // --- Global settings ---
+        html += '<div class="setting-group"><h4>Signal Settings</h4>';
+        var mss = settingsCurrent.min_signal_strength != null ? settingsCurrent.min_signal_strength : 40;
+        var mssDefault = settingsDefaults.min_signal_strength != null ? settingsDefaults.min_signal_strength : 40;
+        var mssModified = mss !== mssDefault;
+        html += '<div class="setting-row">'
+            + '<label>Min Signal Strength</label>'
+            + '<input type="range" id="s-min_signal_strength" min="10" max="80" step="5" value="' + mss + '">'
+            + '<span class="val-display' + (mssModified ? ' modified' : '') + '" id="sv-min_signal_strength">' + mss + '</span>'
+            + '</div>';
+
+        html += '</div>';
+
+        // --- Factor weights (auto-generated from API) ---
+        ["Demand", "Supply"].forEach(function(dir) {
+            var dirLower = dir.toLowerCase();
+            html += '<div class="setting-group"><h4>' + dir + ' Weights</h4>';
+            settingsFactors.forEach(function(f) {
+                var key = "weight_" + f.factor + "_" + dirLower;
+                var val = settingsCurrent[key] != null ? settingsCurrent[key] : (settingsDefaults[key] || 0);
+                var defVal = settingsDefaults[key] || 0;
                 var isModified = val !== defVal;
                 html += '<div class="setting-row">'
-                    + '<label>' + meta.label + '</label>'
-                    + '<input type="range" id="s-' + key + '" min="' + meta.min + '" max="' + meta.max + '" step="' + meta.step + '" value="' + val + '">'
-                    + '<span class="val-display' + (isModified ? ' modified' : '') + '" id="sv-' + key + '">' + meta.fmt(val) + '</span>'
+                    + '<label title="' + (f.description || '') + '">' + f.label + '</label>'
+                    + '<input type="range" id="s-' + key + '" min="0" max="0.5" step="0.05" value="' + val + '">'
+                    + '<span class="val-display' + (isModified ? ' modified' : '') + '" id="sv-' + key + '">' + val.toFixed(2) + '</span>'
                     + '</div>';
             });
             html += '</div>';
         });
+
         settingsThresholds.innerHTML = html;
 
-        // Bind live update on sliders
-        Object.keys(THRESHOLD_META).forEach(function (key) {
+        // Bind live update on all sliders
+        var allKeys = ["min_signal_strength"];
+        settingsFactors.forEach(function(f) {
+            allKeys.push("weight_" + f.factor + "_demand");
+            allKeys.push("weight_" + f.factor + "_supply");
+        });
+        allKeys.forEach(function(key) {
             var slider = document.getElementById("s-" + key);
             if (!slider) return;
             var display = document.getElementById("sv-" + key);
-            var meta = THRESHOLD_META[key];
             slider.addEventListener("input", function () {
                 var v = parseFloat(this.value);
                 settingsCurrent[key] = v;
-                display.textContent = meta.fmt(v);
-                display.classList.toggle("modified", v !== settingsDefaults[key]);
+                var isInt = (key === "min_signal_strength");
+                display.textContent = isInt ? v : v.toFixed(2);
+                display.classList.toggle("modified", v !== (settingsDefaults[key] || 0));
             });
         });
     }
@@ -912,12 +926,12 @@
     };
 
     document.getElementById("settings-reset").onclick = function () {
-        if (!confirm("Reset all thresholds and panels to factory defaults?")) return;
+        if (!confirm("Reset all weights and panels to factory defaults?")) return;
         localStorage.removeItem("de_panel_config");
         fetch("/de/api/config/state-rules/reset", { method: "POST" })
             .then(r => r.json())
             .then(function (data) {
-                settingsCurrent = Object.assign({}, data.thresholds || settingsDefaults);
+                settingsCurrent = Object.assign({}, data.current || settingsDefaults);
                 renderSettings();
                 closeSettings();
                 loadSymbol(symbol);

@@ -186,14 +186,16 @@ def help_guide():
 
 @app.get("/de/api/config/state-rules")
 def get_state_rules(db: sqlite3.Connection = Depends(get_db)):
-    """Return current state classification config (defaults + user overrides)."""
+    """Return current scoring config: flat settings/weights + defaults + factor UI metadata."""
     from src.divergence_engine import config_manager
-    config = config_manager.get_config(db)
-    defaults = config_manager.load_defaults()
+    current = config_manager.get_flat_config(db)
+    defaults = config_manager.get_flat_defaults()
+    factors_meta = config_manager.get_factors_ui_meta(db)
     return {
-        "thresholds": config["thresholds"],
-        "defaults": defaults["thresholds"],
-        "rules_count": len(config.get("rules", [])),
+        "schema_version": 2,
+        "current": current,
+        "defaults": defaults,
+        "factors": factors_meta,
     }
 
 
@@ -203,11 +205,12 @@ class ThresholdUpdate(BaseModel):
 
 @app.put("/de/api/config/state-rules")
 def update_state_rules(body: ThresholdUpdate, db: sqlite3.Connection = Depends(get_db)):
-    """Save user threshold overrides. Only stores values that differ from defaults."""
+    """Save user overrides (flat keys). Only stores values that differ from defaults."""
     from src.divergence_engine import config_manager
     config = config_manager.save_user_config(db, body.thresholds)
     cache.clear()  # Invalidate analysis cache so next load uses new thresholds
-    return {"status": "saved", "thresholds": config["thresholds"]}
+    current = config_manager.get_flat_config(db)
+    return {"status": "saved", "current": current}
 
 
 @app.post("/de/api/config/state-rules/reset")
@@ -216,7 +219,8 @@ def reset_state_rules(db: sqlite3.Connection = Depends(get_db)):
     from src.divergence_engine import config_manager
     config = config_manager.factory_reset(db)
     cache.clear()  # Invalidate analysis cache
-    return {"status": "reset", "thresholds": config["thresholds"]}
+    defaults = config_manager.get_flat_defaults()
+    return {"status": "reset", "current": defaults}
 
 
 # --- Stock & Analysis Routes ---

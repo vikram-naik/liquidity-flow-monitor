@@ -73,7 +73,7 @@
         { field: "symbol", headerName: "Symbol", cellRenderer: symbolRenderer, filter: "agTextColumnFilter", pinned: "left", width: 120 },
         { field: "signal_date", headerName: "Date", filter: "agDateColumnFilter", sort: "desc", width: 110 },
         { field: "signal_type", headerName: "Type", cellRenderer: typeRenderer, filter: "agSetColumnFilter", width: 90 },
-        { field: "conviction_score", headerName: "Conv", valueFormatter: numFmt(1), filter: "agNumberColumnFilter", width: 75 },
+        { field: "signal_strength", headerName: "Strength", valueFormatter: numFmt(1), filter: "agNumberColumnFilter", width: 85 },
         { field: "volume_tier", headerName: "Tier", cellRenderer: tierRenderer, filter: "agSetColumnFilter", width: 85 },
         { field: "entry_close", headerName: "Entry", valueFormatter: numFmt(2), filter: "agNumberColumnFilter", width: 90 },
         { field: "avg_del_val", headerName: "Avg Del (Cr)", valueFormatter: numFmt(1), filter: "agNumberColumnFilter", width: 105 },

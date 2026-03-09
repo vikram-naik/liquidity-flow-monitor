@@ -12,30 +12,38 @@ Always use `venv/bin/python3` to run scripts. Never use the system Python.
 - Key tables: `nse_delivery_log`, `corporate_actions` (516 rows), `watchlists` (12), `watchlist_items` (1,203), `user_settings`, `symbol_anchors`, `nse_trading_holidays`, `signal_quality`.
 
 ## Current Production Pipeline
-7-module pipeline in `src/divergence_engine/`:
+8-module pipeline in `src/divergence_engine/`:
 1. `base_calc.py` — ATR20 (Wilder), RDV, MFM, TP, MFM_TP
+1.5. `regime.py` — ADX/DMI market regime classification (uptrend/downtrend/notrend/transition)
 2. `dvl_ledger.py` — DVL, DVL_rate, Velocity (norm), Price_distance, ARS, PDD per window [10,30,60,120]
 3. `cwvap.py` — DVWAP_n, POC_n, CWVAP, CPOC, POC_spread, CVAH/CVAL, price_location
 4. `cwc.py` — Cross-Window Coherence, CWC_delta, CWC_slope
 5. `mcs.py` — MCS, MCS_MFM, MCS_composite, MCS_composite_slope
 6. `analysis.py` — price_slope_z, rdv_slope_z, coherence_raw, coherence, psz_delta_3d/5d
-7. `analysis_integrated.py` — Binary gates + dual conviction scoring (BEING REPLACED)
+7. `analysis_integrated.py` → delegates to `scoring/` package
 
-### Current Marker System (to be replaced by unified scoring)
-Binary gates + dual conviction scoring. See `handoff.md` for full details.
-- `classify_with_gates()` in rule_engine.py provides per-gate pass/fail → `gate_results` column
-- Gate diagnostics rendered in sidebar UI (backend-driven, no JS business logic)
-
-### Unified Scoring Rearchitecture (NEXT)
-Replacing binary gates + conviction score with a single weighted scoring model.
-Full architecture plan in `handoff.md` under "Unified Weighted Scoring Model".
-Key concepts: scoring function registry, YAML-driven factors, ATR tolerance band for CWVAP direction, config-driven UI, `scoring/` package.
+### Unified Scoring Model (v2 — LIVE)
+Continuous factor scoring replaces binary gates. See `handoff.md` for full details.
+- `scoring/__init__.py` — `compute_signal_strength()`, regime-aware direction detection
+- `scoring/functions.py` — registry: `higher_is_better`, `lower_is_better`, `abs_higher_is_better`, `directional`, `counter_directional`, `count_ratio`
+- YAML v2: `settings` + `factors` (7 active: PSZ Delta 20%, RSZ Delta 10%, PSZ 15%, RSZ 10%, CWC 5%, Coherence 5%, Regime 5%)
+- PDD **disabled** — negatively correlated with returns (r=-0.043), Q4 hit=37.6% Supply
+- `requires` system: child score capped by parent. `{factor: X}` single parent, `{any: [X,Y]}` max of parents
+- Tiered hierarchy: T1 deltas (psz_delta, rsz_delta) → T2 levels (PSZ, RSZ) → T3 confirmation (CWC, Coherence) → T4 context (Regime)
+- Factor order in YAML matters — parents must appear before children
+- Output: `signal_strength` (0-100), `scoring_details` (per-factor breakdown), `integrated_state`
+- UI: progress bars + contributions in sidebar, auto-generated weight sliders in settings
+- **Direction detection**: regime-based (uptrend→Demand, downtrend→Supply, transition/notrend→strict CWVAP)
+- **Regime alignment factor**: scores 1.0 (trending), 0.5 (transition), 0.15 (notrend) — no hard gates
+- `rule_engine.py` — legacy, no longer called (can be deleted)
 
 ## Key File Paths
 - Engine orchestrator: `src/divergence_engine/engine.py`
 - State types: `src/divergence_engine/state_types.py`
-- Rule engine: `src/divergence_engine/rule_engine.py` (to be replaced)
-- Analysis (markers): `src/divergence_engine/analysis_integrated.py` (to be replaced)
+- Regime classifier: `src/divergence_engine/regime.py`
+- Scoring package: `src/divergence_engine/scoring/` (__init__.py, functions.py)
+- Analysis (delegates to scoring): `src/divergence_engine/analysis_integrated.py`
+- Rule engine (legacy, unused): `src/divergence_engine/rule_engine.py`
 - Rules config: `src/divergence_engine/config/default_rules.yaml`
 - Chart data: `src/divergence_engine/chart.py`
 - API: `src/api/main.py` (FastAPI)
@@ -55,11 +63,12 @@ Key concepts: scoring function registry, YAML-driven factors, ATR tolerance band
 - Re-run after any gate/scoring change
 - Flush `de:*` Redis cache after changes
 
-### Key Data Findings
-- **Coherence is strongest discriminator** in large-caps: Q4=53.6% vs Q1=48.1% hit rate
-- **Accum score correlates with returns**: Q4: +0.65% vs Q1: +0.35%
-- **Conviction score doesn't discriminate**: all quartiles hover 48-50% — motivates unified scoring
-- **Best segment: Large-cap Demand, high accum + high coherence: 58.1% hit at 5d (n=544)**
+### Key Data Findings (Run 4 — v2 tiered requires, 973K signals)
+- Supply outperforms Demand: 52.1% vs 46.7% hit rate at 5d
+- PDD harmful: r=-0.043, Q4=37.6% Supply hit → disabled
+- `mcs_delta` strongest unused predictor: 5.4% Q1→Q4 spread, r=+0.089 Supply
+- `mfm` useful for Demand: r=+0.071
+- CWC/Coherence are weak discriminators when ungated; effective only as confirmation (Tier 3)
 
 ## Cache Layer
 - Redis-based: `src/cache/` with `CacheInterface` abstraction
@@ -75,6 +84,8 @@ Key concepts: scoring function registry, YAML-driven factors, ATR tolerance band
 - **Always use latest versions** of frameworks/libs. Verify actual version availability via CDN/registry before using.
 
 ## Backlog
+- **Add `mcs_delta` as scoring factor** — strongest unused predictor, see handoff.md for details
+- **Add `mfm` as scoring factor** — Demand-specific (r=+0.071), lower priority
+- **Run 5 signal quality report** — with PDD disabled + CWC/Coherence at 5%
 - **Multi-thread signal quality report** — per-symbol runs are independent/IO-bound, use ThreadPoolExecutor
-- **Signal clustering**: Investigate whether consecutive signals should be collapsed
-- **Tier-specific weights**: Different factor weights for Large/Mid/Small/Micro tiers (post unified scoring)
+- **Tier-specific weights**: Different factor weights for Large/Mid/Small/Micro tiers

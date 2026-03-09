@@ -5,8 +5,8 @@ run_screener.py — NIFTY 500 Stock Screener
 Scans all NIFTY 500 symbols through the Divergence Engine and populates
 two screener watchlists:
 
-    SCR: Demand  — Demand markers with conviction >= threshold
-    SCR: Supply  — Supply markers with conviction >= threshold
+    SCR: Demand  — Demand markers with strength >= threshold
+    SCR: Supply  — Supply markers with strength >= threshold
 
 Usage:
     python scripts/run_screener.py                  # full NIFTY 500 scan
@@ -32,7 +32,7 @@ from src.divergence_engine.engine import DivergenceEngine
 # Screener Configuration
 # ─────────────────────────────────────────────────────────────────────────────
 
-CONVICTION_THRESHOLD = 50
+STRENGTH_THRESHOLD = 50
 
 DEMAND_WL_NAME = "SCR: Demand"
 SUPPLY_WL_NAME = "SCR: Supply"
@@ -105,7 +105,7 @@ def main():
     parser = argparse.ArgumentParser(description="NIFTY 500 Stock Screener")
     parser.add_argument("--limit", type=int, default=0, help="Limit symbols to scan (0 = all)")
     parser.add_argument("--dry-run", action="store_true", help="Print results without writing to DB")
-    parser.add_argument("--min-conviction", type=float, default=CONVICTION_THRESHOLD, help="Minimum conviction score")
+    parser.add_argument("--min-strength", type=float, default=STRENGTH_THRESHOLD, help="Minimum strength score")
     args = parser.parse_args()
 
     conn = get_db_connection()
@@ -113,7 +113,7 @@ def main():
     if args.limit > 0:
         symbols = symbols[: args.limit]
 
-    print(f"Screening {len(symbols)} symbols (conviction >= {args.min_conviction})...")
+    print(f"Screening {len(symbols)} symbols (strength >= {args.min_strength})...")
     print()
 
     demand_hits: list[tuple[str, str, float]] = []
@@ -129,13 +129,13 @@ def main():
             latest = result.latest
 
             integrated_state = latest.get("integrated_state", "No Signal")
-            conviction = latest.get("conviction_score") or 0.0
+            strength = latest.get("signal_strength") or 0.0
 
-            if conviction >= args.min_conviction:
+            if strength >= args.min_strength:
                 if integrated_state == "Demand":
-                    demand_hits.append((sym, integrated_state, conviction))
+                    demand_hits.append((sym, integrated_state, strength))
                 elif integrated_state == "Supply":
-                    supply_hits.append((sym, integrated_state, conviction))
+                    supply_hits.append((sym, integrated_state, strength))
 
             # Progress indicator
             elapsed = time.perf_counter() - t_start
@@ -143,7 +143,7 @@ def main():
             eta = (len(symbols) - i) / rate if rate > 0 else 0
             print(
                 f"\r  [{i}/{len(symbols)}] {sym:<20s} -> {integrated_state:<15s} "
-                f"conv={conviction:.1f}  ({rate:.1f} sym/s, ETA {eta:.0f}s)",
+                f"conv={strength:.1f}  ({rate:.1f} sym/s, ETA {eta:.0f}s)",
                 end="", flush=True,
             )
         except Exception as e:
@@ -159,7 +159,7 @@ def main():
     print(f"  SCREENER RESULTS  ({elapsed_total:.1f}s)")
     print(f"{'=' * 70}")
 
-    # Sort by conviction descending
+    # Sort by strength descending
     demand_hits.sort(key=lambda x: -x[2])
     supply_hits.sort(key=lambda x: -x[2])
 

@@ -34,6 +34,7 @@ from src.divergence_engine.dvl_ledger import DVLLedger
 from src.divergence_engine.mcs import MoneyCompositeScore
 from src.divergence_engine.analysis import compute_trend_participation
 from src.divergence_engine.analysis_integrated import apply_integrated_matrix
+from src.divergence_engine.regime import classify_market_regime
 from src.divergence_engine.utils import load_symbol_data, validate_dataframe, WINDOWS
 from src.divergence_engine.aggregator import resample_ohlc_delivery, VALID_MODES
 from src.cache import get_cache
@@ -84,7 +85,7 @@ class EngineResult:
         return {
             "date": str(row["date"]),
             "integrated_state": row.get("integrated_state", "No Signal"),
-            "conviction_score": _safe(row.get("conviction_score"), decimals=1),
+            "signal_strength": _safe(row.get("signal_strength"), decimals=1),
             "cwc": _safe(row.get("cwc", 0), decimals=4),
             "rdv": _safe(row.get("rdv", 0), decimals=4),
             "rdv_consistency": int(row.get("rdv_consistency", 0)),
@@ -97,6 +98,7 @@ class EngineResult:
             "coherence": _safe(row.get("coherence", 0), decimals=4),
             "price_slope_z": _safe(row.get("price_slope_z", 0), decimals=4),
             "rdv_slope_z": _safe(row.get("rdv_slope_z", 0), decimals=4),
+            "regime": row.get("regime", "notrend"),
         }
 
     def export(self, path: str | None = None) -> str:
@@ -188,6 +190,9 @@ class DivergenceEngine:
         # Module 1 — Base Calculations
         base = BaseCalculator()
         df = base.compute_all(df)
+
+        # Module 1.5 — Market Regime Classification (ADX/DMI)
+        df["regime"] = classify_market_regime(df)
 
         # Module 2 — DVL Ledger
         dvl = DVLLedger()

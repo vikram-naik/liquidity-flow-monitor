@@ -51,7 +51,7 @@ MIN_CALENDAR_DAYS = 365
 FEATURE_COLS = [
     "cwc", "rdv", "rdv_consistency", "cwvap_dist", "delivery_pct",
     "pdd_30", "coherence", "price_slope_z", "rdv_slope_z",
-    "mcs_composite", "atr_20", "conviction_score", "accum_score", "diverg_score",
+    "mcs_composite", "atr_20", "signal_strength",
     "price_distance_30", "velocity_30_norm", "cwc_slope",
     "psz_delta_3d", "psz_delta_5d", "rdv_sz_delta_3d", "rdv_sz_delta_5d",
 ]
@@ -79,7 +79,7 @@ def _init_signal_quality_table(conn: sqlite3.Connection) -> None:
         symbol TEXT NOT NULL,
         signal_date TEXT NOT NULL,
         signal_type TEXT NOT NULL,
-        conviction_score REAL,
+        signal_strength REAL,
         entry_close REAL,
         avg_del_val REAL,
         volume_tier TEXT,
@@ -92,7 +92,6 @@ def _init_signal_quality_table(conn: sqlite3.Connection) -> None:
         coherence REAL, price_slope_z REAL, rdv_slope_z REAL,
         mcs_composite REAL, atr_20 REAL,
         price_distance_30 REAL, velocity_30_norm REAL, cwc_slope REAL,
-        accum_score REAL, diverg_score REAL,
         psz_delta_3d REAL, psz_delta_5d REAL,
         rdv_sz_delta_3d REAL, rdv_sz_delta_5d REAL,
         run_date TEXT NOT NULL,
@@ -110,7 +109,7 @@ def _init_signal_quality_table(conn: sqlite3.Connection) -> None:
     CREATE INDEX IF NOT EXISTS idx_sq_tier ON {REPORT_TABLE} (volume_tier);
     """)
     # Migrate: add new columns to existing tables
-    for col in ("accum_score", "diverg_score", "psz_delta_3d", "psz_delta_5d", "rdv_sz_delta_3d", "rdv_sz_delta_5d"):
+    for col in ("signal_strength", "psz_delta_3d", "psz_delta_5d", "rdv_sz_delta_3d", "rdv_sz_delta_5d"):
         try:
             conn.execute(f"ALTER TABLE {REPORT_TABLE} ADD COLUMN {col} REAL")
         except sqlite3.OperationalError:
@@ -123,9 +122,8 @@ def _init_signal_quality_table(conn: sqlite3.Connection) -> None:
 # ---------------------------------------------------------------------------
 
 def _get_thresholds_hash(conn: sqlite3.Connection) -> str:
-    config = config_manager.get_config(conn)
-    th = config["thresholds"]
-    raw = str(sorted(th.items()))
+    flat = config_manager.get_flat_config(conn)
+    raw = str(sorted(flat.items()))
     return hashlib.md5(raw.encode()).hexdigest()[:12]
 
 
@@ -189,7 +187,7 @@ def _extract_signals(ledger: pd.DataFrame, symbol: str) -> list[dict]:
             "symbol": symbol,
             "signal_date": str(row["date"])[:10],
             "signal_type": row["integrated_state"],
-            "conviction_score": float(row["conviction_score"]) if pd.notna(row["conviction_score"]) else None,
+            "signal_strength": float(row["signal_strength"]) if pd.notna(row.get("signal_strength")) else None,
             "entry_close": float(row["close"]),
             "avg_del_val": round(avg_del_val, 2),
             "volume_tier": tier,
@@ -329,7 +327,7 @@ def _print_report(conn: sqlite3.Connection, th_hash: str, run_date: str) -> None
 
     # Feature comparison: hits vs misses at 5d horizon
     print(f"\n  --- FEATURE ANALYSIS (5d horizon, hits vs misses) ---")
-    analysis_cols = [c for c in FEATURE_COLS if c in df.columns and c != "conviction_score"]
+    analysis_cols = [c for c in FEATURE_COLS if c in df.columns and c != "signal_strength"]
     valid_5d = df[df["hit_5d"].notna()].copy()
     if valid_5d.empty:
         print("    No valid 5d signals for feature analysis.")
@@ -498,7 +496,7 @@ def _progress(i, total, sym, n_signals, t_start, error=None):
 
 def _insert_signals(conn: sqlite3.Connection, signals: list[dict]) -> None:
     cols = [
-        "symbol", "signal_date", "signal_type", "conviction_score", "entry_close",
+        "symbol", "signal_date", "signal_type", "signal_strength", "entry_close",
         "avg_del_val", "volume_tier",
         "ret_3d", "ret_5d", "ret_10d",
         "mfe_3d", "mfe_5d", "mfe_10d",
@@ -507,7 +505,7 @@ def _insert_signals(conn: sqlite3.Connection, signals: list[dict]) -> None:
         "cwc", "rdv", "rdv_consistency",
         "cwvap_dist", "delivery_pct", "pdd_30",
         "coherence", "price_slope_z", "rdv_slope_z",
-        "mcs_composite", "atr_20", "accum_score", "diverg_score",
+        "mcs_composite", "atr_20",
         "price_distance_30", "velocity_30_norm", "cwc_slope",
         "psz_delta_3d", "psz_delta_5d",
         "rdv_sz_delta_3d", "rdv_sz_delta_5d",

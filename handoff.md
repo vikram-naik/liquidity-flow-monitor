@@ -1,280 +1,169 @@
 # Handoff — Liquidity Flow Monitor
 
 ## Current Status
-The conviction-gated 2-marker system (Demand / Supply) is **live in production**
-with gate diagnostics UI. The current binary-gate architecture is being replaced
-with a **Unified Weighted Scoring Model** (see architecture plan below).
+The **Unified Weighted Scoring Model (v2)** is live. Binary gates have been
+replaced with continuous factor scoring (0-1) and weighted signal_strength (0-100).
 
-**Current focus:** Implement the unified scoring rearchitecture.
+**Current focus:** Run signal quality report (Run 5) with PDD disabled + rebalanced weights,
+then add `mcs_delta` as a new scoring factor.
 
 ---
 
 ## What's Live Now
 
-### Conviction-Gated Demand/Supply Markers
-Two markers with per-marker binary gates + dual conviction scoring:
+### Unified Weighted Scoring (v2) — 2026-03-08
+Replaced the binary-gate conviction system with continuous factor scoring.
 
-- **Demand** — price below CWVAP + all gates pass → green arrow below bar
-- **Supply** — price above CWVAP + all gates pass → red arrow above bar
-- **Three scores** per signal: `accum_score`, `diverg_score`, `conviction_score` (blend)
+**Direction detection: Dual-Score (factors decide)** — 2026-03-09
+No separate direction classifier. Every bar is scored for BOTH Demand and Supply.
+The stronger score wins. Direction emerges from the directional factors themselves.
 
-**Per-marker conviction gates (all must pass):**
+How it works per bar:
+```
+demand_strength, demand_details = _score_bar(row, "Demand", factors)
+supply_strength, supply_details = _score_bar(row, "Supply", factors)
 
-| Gate | Demand Default | Supply Default |
-|------|----------------|----------------|
-| CWC Gate (≤) | 0.75 | 0.65 |
-| RDV Gate (≥) | 0.6 | 0.6 |
-| RDV Consistency (≥) | 0 | 2 |
-| Price Slope Z | ≤ 0 | ≥ 0.2 |
-| PSZ Delta 3d | ≥ 0 (turning up) | ≤ 0 (turning down) |
-| Coherence (≥) | 0.5 | 0.5 |
-
-**Dual conviction scoring:**
-
-| Accumulation Score (50%) | Weight | Divergence Score (50%) | Weight |
-|--------------------------|--------|------------------------|--------|
-| CWC (1-cwc) | 25% | PSZ Delta (inflection) | 40% |
-| RDV | 20% | PDD (price-delivery) | 35% |
-| RDV Consistency | 15% | PSZ Extreme (stretched) | 25% |
-| CWVAP Depth | 15% | | |
-| Coherence | 15% | | |
-| Delivery % | 10% | | |
-
-`conviction_score = 50% * accum_score + 50% * diverg_score`
-
-### Gate Diagnostics UI (2026-03-08)
-- **Backend-driven**: `rule_engine.classify_with_gates()` returns per-gate `{attr, val, lo, hi, passed}` for every rule on every bar
-- **`gate_results`** column added to DataFrame + `UI_COLUMNS` → sent to UI as JSON
-- **Sidebar** shows ✔/✘ per gate for both Demand and Supply rules on every bar hover
-- No business logic in JS — UI just renders what backend sends
-- Sidebar layout: Search → Engine State (with gate diagnostics) → Watchlist
-- Settings panel now shows **all 12 gate thresholds** (was 7)
-
-### Signal Quality Analysis
-A monthly self-correction loop: run the engine on all stocks, measure outcomes.
-
-**Script:** `scripts/signal_quality_report.py`
-```bash
-venv/bin/python3 scripts/signal_quality_report.py              # full run
-venv/bin/python3 scripts/signal_quality_report.py --limit 50   # test subset
+if demand > supply and demand >= min_strength → Demand signal
+if supply > demand and supply >= min_strength → Supply signal
+otherwise → No Signal (shows winner's direction + details)
 ```
 
-**UI Explorer:** `/de/signal-quality` — AG Grid (v35.1.0) with floating filters
+**Directional factor scoring matrix:**
 
-### Other Live Features
-- **Trading Holidays** — `nse_trading_holidays` table, `is_trading_holiday()` checks
-- **Screener** — `scripts/run_screener.py`, `--min-conviction` filter
-- **Cache** — Redis-based, `de:` and `sq:` prefixes, `delete_pattern()` for bulk flush
-- **Dynamic Panels** — user-configurable chart sub-panels via Settings → Panels tab
+| Factor | Scoring Fn | Demand scores high when... | Supply scores high when... |
+|--------|-----------|---------------------------|--------------------------|
+| PSZ | counter_directional | price_slope_z < 0 (falling) | price_slope_z > 0 (rising) |
+| PSZ Delta | directional | psz_delta > 0 (turning up) | psz_delta < 0 (turning down) |
+| RSZ Delta | directional | rdv_sz_delta > 0 (delivery rising) | rdv_sz_delta < 0 (delivery falling) |
+| Regime | higher_is_better | regime_score (context-aware) | regime_score (context-aware) |
+| CWC, RSZ, Coherence | non-directional | Same score both sides | Same score both sides |
+
+**Regime context scoring** (replaces static per-regime scores):
+
+| Context | Score | Example |
+|---------|-------|---------|
+| Counter-trend | 1.0 | Supply in uptrend, Demand in downtrend |
+| Transition | 0.5 | Either direction in transition regime |
+| Trend-aligned | 0.3 | Demand in uptrend, Supply in downtrend |
+| No trend | 0.15 | Either direction in notrend regime |
+
+Regime score is computed per-direction per-bar (not a static column). A Supply signal
+in an uptrend gets regime=1.0, while Demand in the same bar gets regime=0.3.
+
+**Worked example — downtrend bar (PSZ=+0.3, PSZ Delta=-0.05, RSZ Delta=-0.08):**
+- Demand: PSZ=0 (positive=bad for demand), PSZ Delta=0, RSZ Delta=0, Regime=1.0 (counter) → low
+- Supply: PSZ=0.75 (positive=good for supply), PSZ Delta=0.33, RSZ Delta=0.53, Regime=0.3 (aligned) → high
+- Winner: Supply ✓
+
+**Worked example — uptrend bar turning down (PSZ=-0.15, PSZ Delta=-0.04, RSZ Delta=+0.06):**
+- Demand: PSZ=0.375 (negative=good for demand), PSZ Delta=0, RSZ Delta=0.4, Regime=0.3 (aligned)
+- Supply: PSZ=0 (negative=bad for supply), PSZ Delta=0.27, RSZ Delta=0, Regime=1.0 (counter)
+- Winner: depends on non-directional factors — no hard gate, continuous competition
+
+**Current factors (7 active):**
+
+| Factor | Column | Scoring Fn | Weight | Description |
+|--------|--------|-----------|--------|-------------|
+| PSZ Delta | psz_delta_3d | directional | 20% | Price slope inflection (Tier 1 primary) |
+| RSZ Delta | rdv_sz_delta_3d | directional | 10% | Delivery slope inflection (Tier 1 primary) |
+| PSZ | price_slope_z | counter_directional | 15% | Price slope (requires: psz_delta) |
+| RSZ | rdv_slope_z | abs_higher_is_better | 10% | Delivery slope z-score (requires: rsz_delta) |
+| CWC | cwc | lower_is_better | 5% | Cross-window coherence (requires any delta) |
+| Coherence | coherence | higher_is_better | 5% | Multi-timeframe alignment (requires any delta) |
+| Regime | regime_score | higher_is_better | 5% | Direction-aware regime context (standalone) |
+| ~~PDD~~ | ~~pdd_30~~ | ~~abs_higher_is_better~~ | ~~disabled~~ | ~~Negatively correlated with returns~~ |
+
+**`requires` system:** Child factor's score is capped by parent's score.
+- `requires.factor: X` — single parent cap
+- `requires.any: [X, Y]` — cap by max(parent scores)
+
+**Tiered factor hierarchy:**
+- Tier 1 (Primary): PSZ Delta, RSZ Delta — no requirements, computed first
+- Tier 2 (Level): PSZ requires psz_delta, RSZ requires rsz_delta
+- Tier 3 (Confirmation): CWC, Coherence require any: [psz_delta, rsz_delta]
+- Tier 4 (Context): Regime — standalone
+
+This prevents both: (a) saturated absolute values propping up signals without inflection,
+and (b) structural factors (CWC, Coherence) pushing dead signals over the threshold
+when neither delta shows meaningful change.
+
+**Scoring functions** (`scoring/functions.py`):
+- `higher_is_better` — linear ramp: value/max_value, capped at 1.0
+- `lower_is_better` — inverted: 1 - value/ref_value
+- `abs_higher_is_better` — absolute magnitude: |value|/max_value
+- `directional` — Demand wants positive, Supply wants negative
+- `counter_directional` — Demand wants negative (adverse), Supply wants positive
+- `count_ratio` — count/max_count (currently unused, was for rdv_consistency)
+
+**Adding a factor:** YAML-only (zero code change) unless a new scoring function is needed.
+
+**Adding a scoring function:** `@register("name")` decorator in functions.py (3 lines).
+
+### UI
+- **Sidebar:** Scoring progress bars per factor with raw value + contribution (weighted score × 100)
+- **Total row:** Sum of contributions = signal_strength
+- **No Signal bars:** Show `scoring_direction` (Demand/Supply) so user sees which side was evaluated
+- **Settings:** Auto-generated from API — weight sliders per factor per direction, min_signal_strength
+- **No hardcoded JS** — UI renders whatever the backend sends
+
+### Key Architecture Files
+- `src/divergence_engine/regime.py` — ADX/DMI regime classifier (uptrend/downtrend/notrend/transition)
+- `src/divergence_engine/scoring/__init__.py` — `compute_signal_strength()`, dual-score direction, `_regime_context_score()`
+- `src/divergence_engine/scoring/functions.py` — scoring function registry
+- `src/divergence_engine/config/default_rules.yaml` — v2 schema: settings + factors + regime config
+- `src/divergence_engine/config_manager.py` — flat config for UI, v2 override merging
+- `src/divergence_engine/analysis_integrated.py` — thin wrapper delegating to scoring package
+- `src/divergence_engine/chart.py` — `signal_strength` + `scoring_details` + `regime` in UI_COLUMNS
+- `src/divergence_engine/engine.py` — Module 1.5 regime, `signal_strength` + `regime` in EngineResult.latest
+
+### Legacy (can be deleted)
+- `src/divergence_engine/rule_engine.py` — binary gate engine, no longer called
+- `src/divergence_engine/state_types.py` — `MarketContext` dataclass, only used by rule_engine
 
 ---
 
 ## Signal Quality Run History
 
-### Run 1 — Baseline (912K signals, old gates, no delta)
-| Segment | 5d Hit | 10d Hit | Avg 5d Ret |
-|---------|--------|---------|------------|
-| All | 49.0% | 49.2% | +0.52% |
-| Demand | 49.1% | 50.2% | +0.52% |
-| Large-cap Demand | 54.2% | 55.1% | +0.37% |
+### Runs 1-3 (v1 binary gates — historical baseline)
 
-### Run 2 — PSZ Delta + Dual Scoring (129K signals, 2026-03-07)
-86% signal reduction. New gates: psz_delta_3d, relaxed CWC/PSZ for Demand.
+| Run | Config | All 5d Hit | Large Demand (elite) | n |
+|-----|--------|-----------|---------------------|---|
+| 1 | Old gates, no delta | 49.0% | 54.2% | 912K |
+| 2 | + PSZ delta + dual scoring | 49.2% | 57.1% (high accum+coh) | 129K |
+| 3 | Coherence in accum_score | 49.2% | 58.1% (high accum+coh) | 129K |
 
-| Segment | 5d Hit | 10d Hit | Avg 5d Ret | n |
-|---------|--------|---------|------------|---|
-| All | 49.2% | 49.9% | +0.06% | 128,541 |
-| Demand | 48.8% | 51.0% | +0.43% | 83,847 |
-| Supply | 49.9% | 47.7% | -0.64% | 44,694 |
-| Large Demand | 51.7% | 53.4% | +0.06% | 5,639 |
-| **Large Demand (high accum + high coh)** | **57.1%** | **56.3%** | **+0.80%** | **382** |
+Key findings: coherence strongest discriminator, conviction score doesn't discriminate,
+binary gates kill good signals → motivated v2 rearchitecture.
 
-### Run 3 — Coherence moved to accum_score (128K signals, 2026-03-08)
-Same signal count (gates unchanged), scoring recalibrated.
+### Run 4 — v2 unified scoring + tiered requires (2026-03-09)
+Config: tiered requires (delta gates level + confirmation), PDD enabled at 15%.
+973K signals, 2176 symbols.
 
-| Segment | 5d Hit | 10d Hit | Avg 5d Ret | n |
-|---------|--------|---------|------------|---|
-| All | 49.2% | 49.9% | +0.06% | 128,541 |
-| **Large Demand (high accum + high coh)** | **58.1%** | **56.8%** | **+0.70%** | **544** |
+| Segment | 5d Hit | 5d Avg Ret | n |
+|---------|--------|-----------|---|
+| All | 49.5% | +0.16% | 973K |
+| Demand | 46.7% | +0.57% | 474K |
+| Supply | 52.1% | -0.23% | 500K |
+| Large | 49.1% | -0.03% | 59K |
+| Mid | 49.0% | -0.01% | 150K |
 
-Key: elite segment grew (382→544) and improved (57.1%→58.1%) after coherence fix.
+Key findings:
+- Supply signals outperform Demand (52.1% vs 46.7%)
+- PDD is actively harmful: r=-0.043 with returns, Q4 hit=37.6% for Supply → disabled
+- `mcs_delta` identified as strongest unused predictor (5.4% Q1→Q4 spread, r=+0.089 Supply)
+- MFM useful for Demand (r=+0.071)
 
-### Key Findings Across All Runs
-- **Coherence is the strongest discriminator** in large-caps: Q4 hit=53.6% vs Q1=48.1%
-- **Accumulation score correlates with returns** (Q4: +0.65% vs Q1: +0.35%)
-- **Conviction score (composite) doesn't discriminate well** across broad universe — all quartiles hover 48-50%
-- **Binary gates kill good signals**: a bar failing one gate by 0.01 gets zero signal
-- **This motivates the unified weighted scoring rearchitecture** (see below)
+### Run 5 — post PDD removal + weight rebalance (PENDING)
+Changes: PDD disabled, CWC/Coherence reduced to 5% each.
 
 ---
 
-## NEXT: Unified Weighted Scoring Model — Architecture Plan
-
-### Why
-Binary gates are too deterministic — a bar with CWC=0.76 (fails by 0.01) and everything else stellar gets **zero signal**. The conviction score only decorates survivors, not ranking all candidates. Additionally, CWVAP direction (price above/below CWVAP) is too rigid — signals are missed when price closes barely on the wrong side.
-
-### Core Concept
-Replace binary gates + separate conviction scoring with a **single unified weighted scoring model**:
-- Each factor contributes a **continuous score (0→1)** via a registered scoring function
-- Weighted sum produces **signal_strength (0→100)**
-- Signal fires if `signal_strength >= min_signal_strength` (configurable, default 40)
-- CWVAP direction uses an **ATR-based tolerance band** instead of hard zero boundary
-
-### New YAML Config Schema (v2)
-
-```yaml
-schema_version: 2
-
-settings:
-  min_signal_strength: 40        # 0-100, minimum to fire a signal
-  direction_tolerance_atr: 0.3   # CWVAP tolerance band as fraction of ATR
-
-factors:
-  cwc:
-    column: cwc
-    scoring: lower_is_better     # registered scoring function name
-    normalize:
-      ref_value: 1.0
-    weight:
-      demand: 0.20
-      supply: 0.20
-    ui:
-      label: "CWC"
-      description: "Cross-Window Coherence"
-      format: ".2f"
-
-  rdv:
-    column: rdv
-    scoring: higher_is_better
-    normalize:
-      max_value: 2.0
-    weight:
-      demand: 0.15
-      supply: 0.15
-    ui:
-      label: "RDV"
-      format: ".1f"
-
-  # ... (see full schema in architecture plan)
-```
-
-### New Module Structure
-
-```
-src/divergence_engine/
-    scoring/
-        __init__.py          # compute_signal_strength() — main entry point
-        functions.py         # scoring function registry + built-in functions
-        config_schema.py     # Pydantic models for YAML validation (optional)
-```
-
-### Scoring Function Registry
-
-```python
-# functions.py — decorator-based registry
-@register("higher_is_better")
-def _higher(value, params, direction): ...
-
-@register("lower_is_better")
-def _lower(value, params, direction): ...
-
-@register("abs_higher_is_better")
-def _abs_higher(value, params, direction): ...
-
-@register("directional")
-def _directional(value, params, direction): ...
-```
-
-Adding a new scoring function = write a 3-line function + reference by name in YAML.
-
-### Data Flow
-
-```
-Modules 1-6 (UNCHANGED) → DataFrame with all columns
-    ↓
-Module 7: scoring.compute_signal_strength(df)
-    For each bar:
-    1. _determine_direction(cwvap_dist, atr_20) → Demand/Supply/None
-    2. For each factor in YAML config:
-       a. Read column value from row
-       b. Apply scoring_fn(value, normalize_params, direction)
-       c. Multiply score × weight
-       d. Record in scoring_details[]
-    3. signal_strength = weighted_sum / total_weight × 100
-    4. Fire signal if signal_strength >= min_signal_strength
-    ↓
-DataFrame + integrated_state, signal_strength, scoring_details
-    ↓
-chart.py → JSON → API → UI renders scoring_details as progress bars
-```
-
-### UI Changes
-- **No business logic in JS** — backend sends `scoring_details` per bar with `{factor, score, weight, weighted, ui: {label, format}}`
-- **Settings auto-generated from API** — DELETE hardcoded `THRESHOLD_META`, `GROUPS`, `GATE_LABELS`
-- **Sidebar** renders factor breakdown with progress bars instead of ✔/✘
-- **Settings panel** auto-builds weight sliders per factor from `/de/api/config/state-rules` response
-
-### CWVAP Direction Tolerance Band
-```python
-tolerance_pct = (atr_20 * direction_tolerance_atr / close) * 100
-if cwvap_dist < -tolerance_pct: → Demand
-if cwvap_dist > +tolerance_pct: → Supply
-else: → No Signal (ambiguous)
-```
-
-### Adding a New Scoring Factor (zero code change path)
-1. Ensure upstream pipeline produces the column (e.g., `new_metric` in Module 5)
-2. Add entry to `factors:` in `default_rules.yaml` with column, scoring function, weight, ui metadata
-3. Done. No changes to scoring engine, API, UI, chart serialization.
-
-If a new scoring function type is needed:
-4. Add a `@register("new_fn_name")` function in `functions.py` (3 lines)
-
-### Migration Path (6 phases)
-1. **Backend foundation** — create `scoring/` package, new YAML schema, config_manager v2 support
-2. **Pipeline integration** — replace `analysis_integrated.apply_integrated_matrix()` call
-3. **API changes** — serve factor UI metadata, accept weight overrides
-4. **UI changes** — auto-generated settings, scoring breakdown sidebar
-5. **Scripts** — update signal_quality_report.py and run_screener.py
-6. **Cleanup** — delete rule_engine.py, remove MarketContext
-
-### Files to Create / Modify / Delete
-
-**Create:**
-- `src/divergence_engine/scoring/__init__.py`
-- `src/divergence_engine/scoring/functions.py`
-- `src/divergence_engine/scoring/config_schema.py`
-
-**Modify:**
-- `src/divergence_engine/config/default_rules.yaml` — complete rewrite to v2
-- `src/divergence_engine/config_manager.py` — schema versioning, v2 overrides
-- `src/divergence_engine/analysis_integrated.py` — delegate to scoring package
-- `src/divergence_engine/state_types.py` — remove MarketContext
-- `src/divergence_engine/chart.py` — replace gate_results with scoring_details
-- `src/divergence_engine/engine.py` — update import, EngineResult
-- `src/api/main.py` — config endpoints serve v2 shape
-- `src/web/js/divergence_engine.js` — auto-generated settings + scoring breakdown
-- `src/web/divergence_engine.html` — rename gate diagnostics div
-- `src/web/css/divergence_engine.css` — scoring progress bar styles
-- `scripts/signal_quality_report.py` — use signal_strength
-- `scripts/run_screener.py` — use signal_strength
-
-**Delete:**
-- `src/divergence_engine/rule_engine.py` — replaced by scoring package
-
----
-
-## Files Changed (2026-03-08 Session)
-
-| File | Change |
-|------|--------|
-| `src/divergence_engine/analysis_integrated.py` | Moved coherence to accum_score (non-inverted, 15%), removed from diverg_score. Uses `classify_with_gates()` to capture per-gate results. |
-| `src/divergence_engine/config/default_rules.yaml` | New weights: accum (CWC 25%, RDV 20%, RDV cons 15%, depth 15%, del 10%, coherence 15%), diverg (psz_delta 40%, PDD 35%, psz_extreme 25%). Added coherence gate (≥0.5) for both markers. Demand PSZ gate relaxed to -0.1. User modified: demand_rdv_consistency_gate=0, demand_price_slope_z_gate=0. |
-| `src/divergence_engine/rule_engine.py` | Added `classify_with_gates()` returning per-gate `{attr, val, lo, hi, passed}` |
-| `src/divergence_engine/chart.py` | Added `psz_delta_3d`, `pdd_30`, `gate_results` to UI_COLUMNS |
-| `src/web/js/divergence_engine.js` | Gate diagnostics sidebar (renders backend gate_results), all 12 gate thresholds in settings, removed redundant variable rows, engine state moved above watchlist |
-| `src/web/divergence_engine.html` | Added gate-diagnostics div, reordered sidebar (engine state above watchlist) |
-| `src/web/css/divergence_engine.css` | Gate diagnostics styles (pass=green, fail=red) |
+## Other Live Features
+- **Trading Holidays** — `nse_trading_holidays` table, `is_trading_holiday()` checks
+- **Screener** — `scripts/run_screener.py`, `--min-strength` filter
+- **Cache** — Redis-based, `de:` and `sq:` prefixes, `delete_pattern()` for bulk flush
+- **Dynamic Panels** — user-configurable chart sub-panels (including PDD 30) via Settings → Panels tab
+- **Signal Quality** — `scripts/signal_quality_report.py` + `/de/signal-quality` UI
 
 ---
 
@@ -285,10 +174,18 @@ If a new scoring function type is needed:
 
 ---
 
+## Backlog
+- **Add `mcs_delta` as scoring factor** — strongest unused predictor. 5.4% Q1→Q4 hit spread,
+  r=+0.089 for Supply. Low redundancy with existing deltas (r=0.105 with rdv_sz_delta).
+  Decision needed: Tier 1 (primary, ungated) or Tier 3 (gated by deltas).
+  Column: `mcs_delta`, scoring: `directional`, normalize max_value TBD.
+- **Add `mfm` as scoring factor** — r=+0.071 for Demand specifically. Would be `directional`
+  (Demand wants positive MFM, Supply wants negative). Lower priority than mcs_delta.
+- **Multi-thread signal quality report** — per-symbol runs are independent/IO-bound, use ThreadPoolExecutor
+- **Tier-specific weights** — different factor weights for Large/Mid/Small/Micro tiers
+
 ## Dev Notes
 - Always use `venv/bin/python3` to run scripts
-- `config_manager.py` is threshold-key agnostic
-- Dead features (zero ML importance): `dvl_rate_10/30/60/120`, `cwvap_lag_3d`
 - Always use latest versions of external libs — verify availability before use
-- Flush `de:*` Redis cache after any gate/scoring change
-- Re-run `signal_quality_report.py` after any gate change to measure impact
+- Flush `de:*` Redis cache after any scoring/weight change
+- Re-run `signal_quality_report.py` after any scoring change to measure impact

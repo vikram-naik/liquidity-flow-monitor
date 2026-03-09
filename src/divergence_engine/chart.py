@@ -24,12 +24,13 @@ UI_COLUMNS = [
     "price_slope_z", "rdv_slope_z",
     "coherence_raw", "coherence",
     "integrated_state",
-    # Conviction marker data
-    "conviction_score", "accum_score", "diverg_score",
+    "regime",
+    # Unified scoring data
+    "signal_strength", "scoring_direction",
     "cwvap_dist", "rdv", "cwc",
     "rdv_consistency", "delivery_pct", "atr_20",
     "psz_delta_3d", "pdd_30",
-    "gate_results",
+    "scoring_details",
 ]
 
 

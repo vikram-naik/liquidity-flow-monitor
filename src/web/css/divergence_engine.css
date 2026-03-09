@@ -1073,21 +1073,23 @@ div[class*="apply-common-tooltip"] {
   background: #f8514922;
 }
 
-/* Gate Diagnostics */
-.gate-section { margin-top: 10px; }
-.gate-section h4 {
-  font-size: 10px; color: #8b949e; text-transform: uppercase;
-  letter-spacing: 0.5px; margin-bottom: 4px; padding-bottom: 3px;
-  border-bottom: 1px solid #21262d;
-}
-.gate-row {
+/* Scoring Breakdown */
+.scoring-section { margin-top: 10px; }
+.scoring-row {
   display: flex; align-items: center; gap: 6px;
-  padding: 2px 0; font-size: 11px;
+  padding: 3px 0; font-size: 11px;
 }
-.gate-icon { width: 14px; text-align: center; flex-shrink: 0; font-size: 10px; }
-.gate-label { color: #8b949e; flex: 1; min-width: 55px; }
-.gate-val { font-family: 'JetBrains Mono', monospace; font-size: 10px; min-width: 48px; text-align: right; }
-.gate-threshold { font-family: 'JetBrains Mono', monospace; font-size: 9px; color: #484f58; min-width: 48px; text-align: right; }
-.gate-pass { color: #3fb950; }
-.gate-fail { color: #f85149; }
+.scoring-label { color: #8b949e; width: 90px; flex-shrink: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.scoring-weight { font-size: 9px; color: #484f58; }
+.scoring-bar-wrap {
+  flex: 1; height: 6px; background: #21262d; border-radius: 3px; overflow: hidden; min-width: 40px;
+}
+.scoring-bar { height: 100%; border-radius: 3px; transition: width 0.2s ease; }
+.scoring-val { font-family: 'JetBrains Mono', monospace; font-size: 10px; min-width: 36px; text-align: right; color: #c9d1d9; }
+.scoring-contrib { font-family: 'JetBrains Mono', monospace; font-size: 10px; min-width: 28px; text-align: right; color: #8b949e; }
+.scoring-total {
+  display: flex; align-items: center; gap: 6px;
+  padding: 5px 0 2px; margin-top: 4px; font-size: 11px; font-weight: 600;
+  border-top: 1px solid #21262d;
+}
 

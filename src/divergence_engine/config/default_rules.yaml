@@ -1,67 +1,170 @@
-# Conviction-Gated Marker System — Default Configuration
+# Unified Weighted Scoring Model — Default Configuration (v2)
 #
-# Two markers (Demand / Supply) with per-marker conviction gates and scoring.
-# User overrides are stored in the database (user_settings table).
+# Replaces binary gates with continuous scoring. Each factor contributes
+# a score (0-1) via a registered scoring function. Weighted sum produces
+# signal_strength (0-100). Signal fires if >= min_signal_strength.
+
+schema_version: 2
 
 # ----------------------------------------------------------------
-# Tunable Thresholds (per-marker: demand_ / supply_ prefixes)
+# Global Settings
 # ----------------------------------------------------------------
-thresholds:
-  # Demand Conviction Gates
-  demand_cwc_gate: 0.75            # CWC must be <= this
-  demand_rdv_gate: 0.6             # RDV must be >= this
-  demand_rdv_consistency_gate: 0   # Days with above-avg delivery in last 5
-  demand_price_slope_z_gate: 0  # price_slope_z must be <= this
-  demand_psz_delta_3d_gate: 0.0   # psz_delta_3d must be >= this (slope turning up)
-  demand_coherence_gate: 0.5       # coherence must be >= this
-
-  # Supply Conviction Gates
-  supply_cwc_gate: 0.65
-  supply_rdv_gate: 0.6
-  supply_rdv_consistency_gate: 2
-  supply_price_slope_z_gate: 0.2   # price_slope_z must be >= this
-  supply_psz_delta_3d_gate: 0.0   # psz_delta_3d must be <= this (slope turning down)
-  supply_coherence_gate: 0.5       # coherence must be >= this
-
-  # Accumulation Score Weights (must sum to 1.0)
-  w_acc_cwc: 0.25
-  w_acc_rdv: 0.20
-  w_acc_rdv_consistency: 0.15
-  w_acc_cwvap_depth: 0.15
-  w_acc_delivery_pct: 0.10
-  w_acc_coherence: 0.15
-
-  # Divergence Score Weights (must sum to 1.0)
-  w_div_psz_delta: 0.40
-  w_div_pdd: 0.35
-  w_div_psz_extreme: 0.25
-
-  # Conviction = blend of accumulation + divergence
-  w_conviction_accum: 0.50
-  w_conviction_diverg: 0.50
+settings:
+  min_signal_strength: 40          # 0-100, minimum to fire a signal
+  regime:
+    adx_length: 14
+    adx_trend_entry: 25.0
+    adx_trend_exit: 20.0
+    min_di_gap: 2.0
+    scores:
+      counter_trend: 1.0    # Supply in uptrend, Demand in downtrend
+      trend_aligned: 0.3    # Demand in uptrend, Supply in downtrend
+      transition: 0.5
+      notrend: 0.15
 
 # ----------------------------------------------------------------
-# Classification Rules (evaluated in priority order, first match wins)
+# Scoring Factors
 # ----------------------------------------------------------------
-rules:
-  - name: "Demand"
-    priority: 10
-    conditions:
-      cwvap_dist: { max: 0 }
-      cwc: { max: "$demand_cwc_gate" }
-      rdv: { min: "$demand_rdv_gate" }
-      rdv_consistency: { min: "$demand_rdv_consistency_gate" }
-      price_slope_z: { max: "$demand_price_slope_z_gate" }
-      psz_delta_3d: { min: "$demand_psz_delta_3d_gate" }
-      coherence: { min: "$demand_coherence_gate" }
+# Each factor maps a DataFrame column to a continuous 0-1 score.
+# Weights are per-direction (demand/supply) and will be normalised.
+#
+# scoring: name of a registered scoring function in functions.py
+# normalize: parameters passed to the scoring function
+# requires: { factor: X } — child capped by parent's score
+#           { any: [X, Y] } — child capped by max(parent scores)
+# weight: per-direction weights (higher = more important)
+# ui: metadata for auto-generated settings + sidebar display
+# ----------------------------------------------------------------
+# IMPORTANT: Factor order matters — parents must appear before children.
+# Tier 1 (Primary):      psz_delta, rsz_delta  — inflection indicators
+# Tier 2 (Level):        price_slope_z, rsz    — requires respective delta
+# Tier 3 (Confirmation): cwc, coherence          — requires any delta
+# Tier 4 (Context):      regime_alignment      — standalone
+# ----------------------------------------------------------------
+factors:
+  # --- Tier 1: Primary (deltas — no requirements) ---
+  psz_delta:
+    column: psz_delta_3d
+    scoring: directional
+    normalize:
+      max_value: 0.15
+    weight:
+      demand: 0.20
+      supply: 0.20
+    ui:
+      label: "PSZ Delta"
+      description: "Price slope inflection (3-day change)"
+      format: ".3f"
 
-  - name: "Supply"
-    priority: 20
-    conditions:
-      cwvap_dist: { min: 0 }
-      cwc: { max: "$supply_cwc_gate" }
-      rdv: { min: "$supply_rdv_gate" }
-      rdv_consistency: { min: "$supply_rdv_consistency_gate" }
-      price_slope_z: { min: "$supply_price_slope_z_gate" }
-      psz_delta_3d: { max: "$supply_psz_delta_3d_gate" }
-      coherence: { min: "$supply_coherence_gate" }
+  rsz_delta:
+    column: rdv_sz_delta_3d
+    scoring: directional
+    normalize:
+      max_value: 0.15
+    weight:
+      demand: 0.10
+      supply: 0.10
+    ui:
+      label: "RSZ Delta"
+      description: "Delivery slope inflection (3-day change)"
+      format: ".3f"
+
+  # --- Tier 2: Level (requires own delta) ---
+  price_slope_z:
+    column: price_slope_z
+    scoring: counter_directional
+    normalize:
+      max_value: 0.4
+    requires:
+      factor: psz_delta
+    weight:
+      demand: 0.15
+      supply: 0.15
+    ui:
+      label: "PSZ"
+      description: "Price slope z-score (Demand: falling, Supply: rising)"
+      format: ".2f"
+
+  rsz:
+    column: rdv_slope_z
+    scoring: abs_higher_is_better
+    normalize:
+      max_value: 0.4
+    requires:
+      factor: rsz_delta
+    weight:
+      demand: 0.10
+      supply: 0.10
+    ui:
+      label: "RSZ"
+      description: "Delivery slope z-score (rising = institutional participation)"
+      format: ".2f"
+
+  # --- Tier 3: Confirmation (requires any delta) ---
+  cwc:
+    column: cwc
+    scoring: lower_is_better
+    normalize:
+      ref_value: 1.0
+    requires:
+      any: [psz_delta, rsz_delta]
+    weight:
+      demand: 0.05
+      supply: 0.05
+    ui:
+      label: "CWC"
+      description: "Cross-Window Coherence (lower = more coherent)"
+      format: ".2f"
+
+  coherence:
+    column: coherence
+    scoring: higher_is_better
+    normalize:
+      max_value: 1.0
+    requires:
+      any: [psz_delta, rsz_delta]
+    weight:
+      demand: 0.05
+      supply: 0.05
+    ui:
+      label: "Coherence"
+      description: "Multi-timeframe trend alignment"
+      format: ".2f"
+
+  # pdd: DISABLED — negatively correlated with returns (r=-0.043).
+  #   Q4 (highest PDD) has worst hit rate: 46.2% overall, 37.6% Supply.
+  #   Extreme divergence is a trap, not a signal.
+  # pdd:
+  #   column: pdd_30
+  #   scoring: abs_higher_is_better
+  #   normalize:
+  #     max_value: 20.0
+  #   requires:
+  #     any: [psz_delta, rsz_delta]
+  #   weight:
+  #     demand: 0.15
+  #     supply: 0.15
+  #   ui:
+  #     label: "PDD"
+  #     description: "Price-Delivery Divergence (30d)"
+  #     format: ".1f"
+
+  # --- Tier 4: Context (standalone) ---
+  regime_alignment:
+    column: regime_score
+    scoring: higher_is_better
+    normalize:
+      max_value: 1.0
+    weight:
+      demand: 0.05
+      supply: 0.05
+    ui:
+      label: "Regime"
+      description: "ADX/DMI trend alignment (uptrend/downtrend=1.0, transition=0.5, notrend=0.15)"
+      format: ".2f"
+
+# ----------------------------------------------------------------
+# Legacy v1 keys (kept for config_manager override compatibility)
+# ----------------------------------------------------------------
+thresholds: {}
+rules: []
