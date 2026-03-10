@@ -70,6 +70,12 @@ def get_flat_config(db_conn=None) -> dict:
     settings = config.get("settings", {})
     flat["min_signal_strength"] = settings.get("min_signal_strength", 40)
 
+    # Delta windows
+    delta_windows = settings.get("delta_windows", {})
+    flat["delta_window_psz_delta"] = delta_windows.get("psz_delta", 3)
+    flat["delta_window_rsz_delta"] = delta_windows.get("rsz_delta", 3)
+    flat["delta_window_mcs_delta"] = delta_windows.get("mcs_delta", 5)
+
     # Factor weights
     for fname, fcfg in config.get("factors", {}).items():
         weights = fcfg.get("weight", {})
@@ -86,6 +92,12 @@ def get_flat_defaults() -> dict:
 
     settings = defaults.get("settings", {})
     flat["min_signal_strength"] = settings.get("min_signal_strength", 40)
+
+    # Delta windows
+    delta_windows = settings.get("delta_windows", {})
+    flat["delta_window_psz_delta"] = delta_windows.get("psz_delta", 3)
+    flat["delta_window_rsz_delta"] = delta_windows.get("rsz_delta", 3)
+    flat["delta_window_mcs_delta"] = delta_windows.get("mcs_delta", 5)
 
     for fname, fcfg in defaults.get("factors", {}).items():
         weights = fcfg.get("weight", {})
@@ -166,9 +178,18 @@ def get_factors_ui_meta(db_conn=None) -> list[dict]:
 
 def _apply_v2_overrides(config: dict, overrides: dict) -> None:
     """Apply flat user overrides to hierarchical v2 config (in-place)."""
+    settings = config.setdefault("settings", {})
+
     # Settings overrides
     if "min_signal_strength" in overrides:
-        config.setdefault("settings", {})["min_signal_strength"] = overrides["min_signal_strength"]
+        settings["min_signal_strength"] = overrides["min_signal_strength"]
+
+    # Delta window overrides: delta_window_{factor}
+    delta_windows = settings.setdefault("delta_windows", {})
+    for key, val in overrides.items():
+        if key.startswith("delta_window_"):
+            factor_name = key[len("delta_window_"):]
+            delta_windows[factor_name] = int(val)
 
     # Weight overrides: weight_{factor}_{direction}
     factors = config.get("factors", {})

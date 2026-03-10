@@ -4,8 +4,8 @@
 The **Unified Weighted Scoring Model (v2)** is live. Binary gates have been
 replaced with continuous factor scoring (0-1) and weighted signal_strength (0-100).
 
-**Current focus:** Run signal quality report (Run 5) with PDD disabled + rebalanced weights,
-then add `mcs_delta` as a new scoring factor.
+**Current focus:** Run signal quality report (Run 5) with PDD disabled, `mcs_delta` added,
+and rebalanced weights (all factors sum to 100%).
 
 ---
 
@@ -35,6 +35,7 @@ otherwise → No Signal (shows winner's direction + details)
 | PSZ | counter_directional | price_slope_z < 0 (falling) | price_slope_z > 0 (rising) |
 | PSZ Delta | directional | psz_delta > 0 (turning up) | psz_delta < 0 (turning down) |
 | RSZ Delta | directional | rdv_sz_delta > 0 (delivery rising) | rdv_sz_delta < 0 (delivery falling) |
+| MCS Delta | directional | mcs_delta > 0 (momentum rising) | mcs_delta < 0 (momentum falling) |
 | Regime | higher_is_better | regime_score (context-aware) | regime_score (context-aware) |
 | CWC, RSZ, Coherence | non-directional | Same score both sides | Same score both sides |
 
@@ -60,12 +61,13 @@ in an uptrend gets regime=1.0, while Demand in the same bar gets regime=0.3.
 - Supply: PSZ=0 (negative=bad for supply), PSZ Delta=0.27, RSZ Delta=0, Regime=1.0 (counter)
 - Winner: depends on non-directional factors — no hard gate, continuous competition
 
-**Current factors (7 active):**
+**Current factors (8 active, weights sum to 100%):**
 
 | Factor | Column | Scoring Fn | Weight | Description |
 |--------|--------|-----------|--------|-------------|
-| PSZ Delta | psz_delta_3d | directional | 20% | Price slope inflection (Tier 1 primary) |
-| RSZ Delta | rdv_sz_delta_3d | directional | 10% | Delivery slope inflection (Tier 1 primary) |
+| PSZ Delta | psz_delta_3d | directional | 25% | Price slope inflection (Tier 1 primary) |
+| RSZ Delta | rdv_sz_delta_3d | directional | 15% | Delivery slope inflection (Tier 1 primary) |
+| MCS Delta | mcs_delta | directional | 20% | MCS momentum shift, 5-day (Tier 1 primary) |
 | PSZ | price_slope_z | counter_directional | 15% | Price slope (requires: psz_delta) |
 | RSZ | rdv_slope_z | abs_higher_is_better | 10% | Delivery slope z-score (requires: rsz_delta) |
 | CWC | cwc | lower_is_better | 5% | Cross-window coherence (requires any delta) |
@@ -78,9 +80,9 @@ in an uptrend gets regime=1.0, while Demand in the same bar gets regime=0.3.
 - `requires.any: [X, Y]` — cap by max(parent scores)
 
 **Tiered factor hierarchy:**
-- Tier 1 (Primary): PSZ Delta, RSZ Delta — no requirements, computed first
+- Tier 1 (Primary): PSZ Delta, RSZ Delta, MCS Delta — no requirements, computed first
 - Tier 2 (Level): PSZ requires psz_delta, RSZ requires rsz_delta
-- Tier 3 (Confirmation): CWC, Coherence require any: [psz_delta, rsz_delta]
+- Tier 3 (Confirmation): CWC, Coherence require any: [psz_delta, rsz_delta, mcs_delta]
 - Tier 4 (Context): Regime — standalone
 
 This prevents both: (a) saturated absolute values propping up signals without inflection,
@@ -100,6 +102,7 @@ when neither delta shows meaningful change.
 **Adding a scoring function:** `@register("name")` decorator in functions.py (3 lines).
 
 ### UI
+- **Sidebar Expansion:** New `>` button expands the sidebar to show both Demand and Supply scoring details side-by-side, with the dominant signal anchored on the left.
 - **Sidebar:** Scoring progress bars per factor with raw value + contribution (weighted score × 100)
 - **Total row:** Sum of contributions = signal_strength
 - **No Signal bars:** Show `scoring_direction` (Demand/Supply) so user sees which side was evaluated
@@ -153,8 +156,10 @@ Key findings:
 - `mcs_delta` identified as strongest unused predictor (5.4% Q1→Q4 spread, r=+0.089 Supply)
 - MFM useful for Demand (r=+0.071)
 
-### Run 5 — post PDD removal + weight rebalance (PENDING)
-Changes: PDD disabled, CWC/Coherence reduced to 5% each.
+### Run 5 — PDD removed + MCS Delta added + weight rebalance (PENDING)
+Changes: PDD disabled, `mcs_delta` added at Tier 1 (20%, directional, max_value=0.3),
+weights rebalanced to sum to 100% (PSZ Delta 25%, RSZ Delta 15%, MCS Delta 20%,
+PSZ 15%, RSZ 10%, CWC 5%, Coherence 5%, Regime 5%).
 
 ---
 
@@ -162,7 +167,7 @@ Changes: PDD disabled, CWC/Coherence reduced to 5% each.
 - **Trading Holidays** — `nse_trading_holidays` table, `is_trading_holiday()` checks
 - **Screener** — `scripts/run_screener.py`, `--min-strength` filter
 - **Cache** — Redis-based, `de:` and `sq:` prefixes, `delete_pattern()` for bulk flush
-- **Dynamic Panels** — user-configurable chart sub-panels (including PDD 30) via Settings → Panels tab
+- **Dynamic Panels** — user-configurable chart sub-panels (PDD 30, MCS Delta, etc.) via Settings → Panels tab
 - **Signal Quality** — `scripts/signal_quality_report.py` + `/de/signal-quality` UI
 
 ---
@@ -175,10 +180,6 @@ Changes: PDD disabled, CWC/Coherence reduced to 5% each.
 ---
 
 ## Backlog
-- **Add `mcs_delta` as scoring factor** — strongest unused predictor. 5.4% Q1→Q4 hit spread,
-  r=+0.089 for Supply. Low redundancy with existing deltas (r=0.105 with rdv_sz_delta).
-  Decision needed: Tier 1 (primary, ungated) or Tier 3 (gated by deltas).
-  Column: `mcs_delta`, scoring: `directional`, normalize max_value TBD.
 - **Add `mfm` as scoring factor** — r=+0.071 for Demand specifically. Would be `directional`
   (Demand wants positive MFM, Supply wants negative). Lower priority than mcs_delta.
 - **Multi-thread signal quality report** — per-symbol runs are independent/IO-bound, use ThreadPoolExecutor

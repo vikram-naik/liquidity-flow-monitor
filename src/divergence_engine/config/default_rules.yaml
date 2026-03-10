@@ -11,6 +11,10 @@ schema_version: 2
 # ----------------------------------------------------------------
 settings:
   min_signal_strength: 40          # 0-100, minimum to fire a signal
+  delta_windows:
+    psz_delta: 2                   # rolling diff period for PSZ Delta
+    rsz_delta: 2                   # rolling diff period for RSZ Delta
+    mcs_delta: 3                   # rolling diff period for MCS Delta
   regime:
     adx_length: 14
     adx_trend_entry: 25.0
@@ -49,8 +53,8 @@ factors:
     normalize:
       max_value: 0.15
     weight:
-      demand: 0.20
-      supply: 0.20
+      demand: 0.25
+      supply: 0.25
     ui:
       label: "PSZ Delta"
       description: "Price slope inflection (3-day change)"
@@ -62,11 +66,24 @@ factors:
     normalize:
       max_value: 0.15
     weight:
-      demand: 0.10
-      supply: 0.10
+      demand: 0.15
+      supply: 0.15
     ui:
       label: "RSZ Delta"
       description: "Delivery slope inflection (3-day change)"
+      format: ".3f"
+
+  mcs_delta:
+    column: mcs_delta
+    scoring: directional
+    normalize:
+      max_value: 0.5
+    weight:
+      demand: 0.15
+      supply: 0.15
+    ui:
+      label: "MCS Delta"
+      description: "MCS momentum shift (5-day change, strongest pred5ictor)"
       format: ".3f"
 
   # --- Tier 2: Level (requires own delta) ---
@@ -75,8 +92,8 @@ factors:
     scoring: counter_directional
     normalize:
       max_value: 0.4
-    requires:
-      factor: psz_delta
+    # requires:
+    #   factor: psz_delta
     weight:
       demand: 0.15
       supply: 0.15
@@ -90,11 +107,11 @@ factors:
     scoring: abs_higher_is_better
     normalize:
       max_value: 0.4
-    requires:
-      factor: rsz_delta
+    # requires:
+    #   factor: rsz_delta
     weight:
-      demand: 0.10
-      supply: 0.10
+      demand: 0.15
+      supply: 0.15
     ui:
       label: "RSZ"
       description: "Delivery slope z-score (rising = institutional participation)"
@@ -107,7 +124,7 @@ factors:
     normalize:
       ref_value: 1.0
     requires:
-      any: [psz_delta, rsz_delta]
+      any: [psz_delta, rsz_delta, mcs_delta]
     weight:
       demand: 0.05
       supply: 0.05
@@ -122,7 +139,7 @@ factors:
     normalize:
       max_value: 1.0
     requires:
-      any: [psz_delta, rsz_delta]
+      any: [psz_delta, rsz_delta, mcs_delta]
     weight:
       demand: 0.05
       supply: 0.05

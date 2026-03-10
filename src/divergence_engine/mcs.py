@@ -25,8 +25,9 @@ class MoneyCompositeScore:
     (from :class:`BaseCalculator`).
     """
 
-    def __init__(self, window: int = 30) -> None:
+    def __init__(self, window: int = 30, delta_window: int = 5) -> None:
         self.window = window
+        self.delta_window = delta_window
 
     # ------------------------------------------------------------------
     # Public API
@@ -42,8 +43,8 @@ class MoneyCompositeScore:
         # 5.2 MCS_MFM — rolling Pearson(MFM_TP, RDV)
         df["mcs_mfm"] = df["mfm_tp"].rolling(window=w, min_periods=10).corr(df["rdv"])
 
-        # 5.3 MCS_delta — 5-bar rate of change
-        df["mcs_delta"] = df["mcs"] - df["mcs"].shift(5)
+        # 5.3 MCS_delta — configurable rate of change
+        df["mcs_delta"] = df["mcs"] - df["mcs"].shift(self.delta_window)
 
         # 5.4 MCS_composite — blended signal
         df["mcs_composite"] = 0.6 * df["mcs"].fillna(0) + 0.4 * df["mcs_mfm"].fillna(0)

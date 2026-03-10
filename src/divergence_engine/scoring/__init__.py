@@ -182,6 +182,10 @@ def compute_signal_strength(
     strengths = []
     details_list = []
     scoring_dirs = []
+    demand_strengths = []
+    supply_strengths = []
+    demand_details_list = []
+    supply_details_list = []
 
     for _, r in df.iterrows():
         row_dict = r.to_dict()
@@ -196,6 +200,10 @@ def compute_signal_strength(
             strengths.append(None)
             details_list.append(None)
             scoring_dirs.append(None)
+            demand_strengths.append(None)
+            supply_strengths.append(None)
+            demand_details_list.append(None)
+            supply_details_list.append(None)
             continue
 
         # Compute regime context score for each direction and inject into row
@@ -228,10 +236,18 @@ def compute_signal_strength(
         strengths.append(winner_strength)
         details_list.append(winner_details)
         scoring_dirs.append(winner_dir)
+        demand_strengths.append(demand_strength)
+        supply_strengths.append(supply_strength)
+        demand_details_list.append(demand_details)
+        supply_details_list.append(supply_details)
 
     df["integrated_state"] = states
     df["signal_strength"] = strengths
     df["scoring_details"] = details_list
     df["scoring_direction"] = scoring_dirs
+    df["demand_strength"] = demand_strengths
+    df["supply_strength"] = supply_strengths
+    df["demand_details"] = demand_details_list
+    df["supply_details"] = supply_details_list
 
     return df

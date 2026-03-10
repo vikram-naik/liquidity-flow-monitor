@@ -29,8 +29,10 @@ UI_COLUMNS = [
     "signal_strength", "scoring_direction",
     "cwvap_dist", "rdv", "cwc",
     "rdv_consistency", "delivery_pct", "atr_20",
-    "psz_delta_3d", "pdd_30",
+    "psz_delta_3d", "pdd_30", "mcs_delta",
     "scoring_details",
+    "demand_strength", "supply_strength",
+    "demand_details", "supply_details",
 ]
 
 

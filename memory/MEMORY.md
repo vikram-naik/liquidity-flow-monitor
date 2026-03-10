@@ -26,13 +26,14 @@ Always use `venv/bin/python3` to run scripts. Never use the system Python.
 Continuous factor scoring replaces binary gates. See `handoff.md` for full details.
 - `scoring/__init__.py` — `compute_signal_strength()`, regime-aware direction detection
 - `scoring/functions.py` — registry: `higher_is_better`, `lower_is_better`, `abs_higher_is_better`, `directional`, `counter_directional`, `count_ratio`
-- YAML v2: `settings` + `factors` (7 active: PSZ Delta 20%, RSZ Delta 10%, PSZ 15%, RSZ 10%, CWC 5%, Coherence 5%, Regime 5%)
+- YAML v2: `settings` + `factors` (8 active, weights sum to 100%: PSZ Delta 25%, RSZ Delta 15%, MCS Delta 20%, PSZ 15%, RSZ 10%, CWC 5%, Coherence 5%, Regime 5%)
 - PDD **disabled** — negatively correlated with returns (r=-0.043), Q4 hit=37.6% Supply
+- MCS Delta added 2026-03-10 — strongest predictor (r=+0.089 Supply, 5.4% Q1→Q4 spread), Tier 1 ungated, `directional`, max_value=0.3
 - `requires` system: child score capped by parent. `{factor: X}` single parent, `{any: [X,Y]}` max of parents
-- Tiered hierarchy: T1 deltas (psz_delta, rsz_delta) → T2 levels (PSZ, RSZ) → T3 confirmation (CWC, Coherence) → T4 context (Regime)
+- Tiered hierarchy: T1 deltas (psz_delta, rsz_delta, mcs_delta) → T2 levels (PSZ, RSZ) → T3 confirmation (CWC, Coherence) → T4 context (Regime)
 - Factor order in YAML matters — parents must appear before children
-- Output: `signal_strength` (0-100), `scoring_details` (per-factor breakdown), `integrated_state`
-- UI: progress bars + contributions in sidebar, auto-generated weight sliders in settings
+- Output: `signal_strength` (0-100), `scoring_details`, `integrated_state`, `demand_details`, `supply_details`, `demand_strength`, `supply_strength`
+- UI: progress bars + contributions, auto-generated settings sliders, expandable sidebar for side-by-side Demand vs Supply comparison
 - **Direction detection**: regime-based (uptrend→Demand, downtrend→Supply, transition/notrend→strict CWVAP)
 - **Regime alignment factor**: scores 1.0 (trending), 0.5 (transition), 0.15 (notrend) — no hard gates
 - `rule_engine.py` — legacy, no longer called (can be deleted)
@@ -84,8 +85,7 @@ Continuous factor scoring replaces binary gates. See `handoff.md` for full detai
 - **Always use latest versions** of frameworks/libs. Verify actual version availability via CDN/registry before using.
 
 ## Backlog
-- **Add `mcs_delta` as scoring factor** — strongest unused predictor, see handoff.md for details
 - **Add `mfm` as scoring factor** — Demand-specific (r=+0.071), lower priority
-- **Run 5 signal quality report** — with PDD disabled + CWC/Coherence at 5%
+- **Run 5 signal quality report** — with MCS Delta added + PDD disabled + rebalanced weights
 - **Multi-thread signal quality report** — per-symbol runs are independent/IO-bound, use ThreadPoolExecutor
 - **Tier-specific weights**: Different factor weights for Large/Mid/Small/Micro tiers

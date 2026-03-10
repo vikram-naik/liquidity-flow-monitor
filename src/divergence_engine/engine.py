@@ -35,6 +35,7 @@ from src.divergence_engine.mcs import MoneyCompositeScore
 from src.divergence_engine.analysis import compute_trend_participation
 from src.divergence_engine.analysis_integrated import apply_integrated_matrix
 from src.divergence_engine.regime import classify_market_regime
+from src.divergence_engine import config_manager as _config_mgr
 from src.divergence_engine.utils import load_symbol_data, validate_dataframe, WINDOWS
 from src.divergence_engine.aggregator import resample_ohlc_delivery, VALID_MODES
 from src.cache import get_cache
@@ -99,6 +100,12 @@ class EngineResult:
             "price_slope_z": _safe(row.get("price_slope_z", 0), decimals=4),
             "rdv_slope_z": _safe(row.get("rdv_slope_z", 0), decimals=4),
             "regime": row.get("regime", "notrend"),
+            "scoring_details": row.get("scoring_details", []),
+            "scoring_direction": row.get("scoring_direction", "None"),
+            "demand_strength": _safe(row.get("demand_strength"), decimals=1),
+            "supply_strength": _safe(row.get("supply_strength"), decimals=1),
+            "demand_details": row.get("demand_details", []),
+            "supply_details": row.get("supply_details", []),
         }
 
     def export(self, path: str | None = None) -> str:
@@ -187,6 +194,20 @@ class DivergenceEngine:
         # Reset index for clean row-based access
         df = df.reset_index(drop=True)
 
+        # --- Read delta window settings from scoring config (incl. user overrides) ---
+        import sqlite3
+        from src.database import DB_PATH
+        _conn = sqlite3.connect(DB_PATH, timeout=10)
+        _conn.row_factory = sqlite3.Row
+        try:
+            scoring_cfg = _config_mgr.get_config(_conn)
+        finally:
+            _conn.close()
+        delta_windows = scoring_cfg.get("settings", {}).get("delta_windows", {})
+        psz_delta_w = delta_windows.get("psz_delta", 3)
+        rsz_delta_w = delta_windows.get("rsz_delta", 3)
+        mcs_delta_w = delta_windows.get("mcs_delta", 5)
+
         # Module 1 — Base Calculations
         base = BaseCalculator()
         df = base.compute_all(df)
@@ -207,11 +228,15 @@ class DivergenceEngine:
         df = cwc.compute_all(df)
 
         # Module 5 — Money Composite Score
-        mcs = MoneyCompositeScore()
+        mcs = MoneyCompositeScore(delta_window=mcs_delta_w)
         df = mcs.compute_all(df)
 
         # Module 6 — Trend Participation Analysis
-        df = compute_trend_participation(df)
+        df = compute_trend_participation(
+            df,
+            psz_delta_window=psz_delta_w,
+            rsz_delta_window=rsz_delta_w,
+        )
 
         # Module 7 — Integrated State Matrix (rules-based)
         df = apply_integrated_matrix(df)

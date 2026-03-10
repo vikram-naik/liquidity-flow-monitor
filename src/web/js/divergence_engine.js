@@ -23,7 +23,8 @@
         "atr_20": { label: "ATR (20)" },
         "cwvap_dist": { label: "CWVAP Dist %" },
         "delivery_pct": { label: "Delivery %" },
-        "pdd": { label: "PDD (30)" }
+        "pdd": { label: "PDD (30)" },
+        "mcs_delta": { label: "MCS Delta" }
     };
 
     function getActivePanels() {
@@ -54,6 +55,20 @@
         sidebarBtn.classList.toggle("active");
         // No manual reflow call here; ResizeObserver will catch the width change
     });
+
+    var expandBtn = document.getElementById("btn-expand-sidebar");
+    if (expandBtn) {
+        expandBtn.addEventListener("click", function() {
+            sidebarEl.classList.toggle("expanded");
+            if (sidebarEl.classList.contains("expanded")) {
+                expandBtn.innerHTML = "&lt;";
+                expandBtn.title = "Collapse Details";
+            } else {
+                expandBtn.innerHTML = "&gt;";
+                expandBtn.title = "Compare Signals";
+            }
+        });
+    }
 
     var chartInstances = [];
 
@@ -123,7 +138,7 @@
         var markerList = [];
         var timeToIndex = {};
         var pZ = [], rZ = [], cRaw = [], cSmooth = [];
-        var rdvArr = [], cwcArr = [], rdvConsArr = [], atrArr = [], distArr = [], delPctArr = [], pddArr = [];
+        var rdvArr = [], cwcArr = [], rdvConsArr = [], atrArr = [], distArr = [], delPctArr = [], pddArr = [], mcsArr = [];
 
         for (var i = 0; i < ledger.length; i++) {
             var r = ledger[i];
@@ -152,6 +167,7 @@
             if (r.cwvap_dist != null) distArr.push({ time: t, value: r.cwvap_dist }); else distArr.push({ time: t });
             if (r.delivery_pct != null) delPctArr.push({ time: t, value: r.delivery_pct }); else delPctArr.push({ time: t });
             if (r.pdd_30 != null) pddArr.push({ time: t, value: r.pdd_30 }); else pddArr.push({ time: t });
+            if (r.mcs_delta != null) mcsArr.push({ time: t, value: r.mcs_delta }); else mcsArr.push({ time: t });
 
             if (r.delivery_qty != null) {
                 var mfm = r.mfm != null ? r.mfm : 0;
@@ -328,6 +344,12 @@
                var sZ = c.addSeries(LC.LineSeries, { color: "#424242", lineWidth: 1, lineStyle: 2, lastValueVisible: false, priceLineVisible: false });
                sZ.setData(pddArr.map(d => ({ time: d.time, value: 0 })));
                legConfig.push({ api: sPdd, label: "PDD", col: "pdd_30", color: "#ff7043" });
+            } else if (panelKey === "mcs_delta") {
+               var sMcs = c.addSeries(LC.LineSeries, { color: "#ab47bc", lineWidth: 2, lastValueVisible: false, priceLineVisible: false });
+               sMcs.setData(mcsArr);
+               var sZ = c.addSeries(LC.LineSeries, { color: "#424242", lineWidth: 1, lineStyle: 2, lastValueVisible: false, priceLineVisible: false });
+               sZ.setData(mcsArr.map(d => ({ time: d.time, value: 0 })));
+               legConfig.push({ api: sMcs, label: "MCS Δ", col: "mcs_delta", color: "#ab47bc" });
             }
 
             allLegConfigs.push({ id: "legSub" + i, config: legConfig });
@@ -489,37 +511,56 @@
             return;
         }
 
-        var html = '<div class="scoring-section">';
-        var totalWeighted = 0, totalWeight = 0;
-        l.scoring_details.forEach(function(f) {
-            var pct = Math.round(f.score * 100);
-            var barColor = pct >= 70 ? "#3fb950" : (pct >= 40 ? "#d29922" : "#8b949e");
-            var label = (f.ui && f.ui.label) ? f.ui.label : f.factor;
-            var weightPct = Math.round(f.weight * 100);
-            totalWeighted += f.weighted;
-            totalWeight += f.weight;
-            html += '<div class="scoring-row">'
-                + '<span class="scoring-label">' + label + ' <span class="scoring-weight">(' + weightPct + '%)</span></span>'
+        function renderScoringCol(detailsArr, title, isDominant, totalScore) {
+            if (!detailsArr || !Array.isArray(detailsArr)) return '';
+            var colClass = "compare-col" + (isDominant ? " dominant" : "");
+            var html = '<div class="' + colClass + '"><div class="compare-col-hdr">' + title + ' (' + fmt(totalScore, 1) + ')</div><div class="scoring-section">';
+            var totalWeighted = 0, totalWeight = 0;
+            detailsArr.forEach(function(f) {
+                var pct = Math.round(f.score * 100);
+                var barColor = pct >= 70 ? "#3fb950" : (pct >= 40 ? "#d29922" : "#8b949e");
+                var label = (f.ui && f.ui.label) ? f.ui.label : f.factor;
+                var weightPct = Math.round(f.weight * 100);
+                totalWeighted += f.weighted;
+                totalWeight += f.weight;
+                html += '<div class="scoring-row">'
+                    + '<span class="scoring-label">' + label + ' <span class="scoring-weight">(' + weightPct + '%)</span></span>'
+                    + '<div class="scoring-bar-wrap">'
+                    + '<div class="scoring-bar" style="width:' + pct + '%; background:' + barColor + '"></div>'
+                    + '</div>'
+                    + '<span class="scoring-val">' + fmt(f.raw_value, 2) + '</span>'
+                    + '<span class="scoring-contrib">' + (f.weighted * 100).toFixed(1) + '</span>'
+                    + '</div>';
+            });
+            var totalPct = totalWeight > 0 ? Math.round((totalWeighted / totalWeight) * 100) : 0;
+            var totalColor = totalPct >= 70 ? "#3fb950" : (totalPct >= 40 ? "#d29922" : "#8b949e");
+            html += '<div class="scoring-total">'
+                + '<span class="scoring-label">Total</span>'
                 + '<div class="scoring-bar-wrap">'
-                + '<div class="scoring-bar" style="width:' + pct + '%; background:' + barColor + '"></div>'
+                + '<div class="scoring-bar" style="width:' + totalPct + '%; background:' + totalColor + '"></div>'
                 + '</div>'
-                + '<span class="scoring-val">' + fmt(f.raw_value, 2) + '</span>'
-                + '<span class="scoring-contrib">' + (f.weighted * 100).toFixed(1) + '</span>'
-                + '</div>';
-        });
-        // Total row
-        var totalPct = totalWeight > 0 ? Math.round((totalWeighted / totalWeight) * 100) : 0;
-        var totalColor = totalPct >= 70 ? "#3fb950" : (totalPct >= 40 ? "#d29922" : "#8b949e");
-        html += '<div class="scoring-total">'
-            + '<span class="scoring-label">Total</span>'
-            + '<div class="scoring-bar-wrap">'
-            + '<div class="scoring-bar" style="width:' + totalPct + '%; background:' + totalColor + '"></div>'
-            + '</div>'
-            + '<span class="scoring-val"></span>'
-            + '<span class="scoring-contrib" style="color:' + totalColor + '">' + totalPct + '</span>'
-            + '</div>';
-        html += '</div>';
-        diagEl.innerHTML = html;
+                + '<span class="scoring-val"></span>'
+                + '<span class="scoring-contrib" style="color:' + totalColor + '">' + totalPct + '</span>'
+                + '</div></div></div>';
+            return html;
+        }
+
+        if (l.demand_details && l.supply_details) {
+            var domDir = l.scoring_direction;
+            var isDemandDom = domDir === "Demand" || (l.demand_strength >= l.supply_strength);
+            
+            var domHtml = isDemandDom 
+                ? renderScoringCol(l.demand_details, "Demand", true, l.demand_strength)
+                : renderScoringCol(l.supply_details, "Supply", true, l.supply_strength);
+            var nonDomHtml = isDemandDom
+                ? renderScoringCol(l.supply_details, "Supply", false, l.supply_strength)
+                : renderScoringCol(l.demand_details, "Demand", false, l.demand_strength);
+
+            diagEl.innerHTML = '<div class="compare-container">' + domHtml + nonDomHtml + '</div>';
+        } else {
+            // Fallback to legacy single column
+            diagEl.innerHTML = renderScoringCol(l.scoring_details, "Details", true, l.signal_strength);
+        }
     }
 
     // --- Search & Watchlist Logic ---
@@ -800,6 +841,25 @@
             + '<span class="val-display' + (mssModified ? ' modified' : '') + '" id="sv-min_signal_strength">' + mss + '</span>'
             + '</div>';
 
+        // --- Delta window settings ---
+        html += '<div class="setting-group"><h4>Delta Windows</h4>';
+        var deltaKeys = [
+            {key: "delta_window_psz_delta", label: "PSZ Delta", min: 1, max: 10, step: 1, def: 3},
+            {key: "delta_window_rsz_delta", label: "RSZ Delta", min: 1, max: 10, step: 1, def: 3},
+            {key: "delta_window_mcs_delta", label: "MCS Delta", min: 1, max: 15, step: 1, def: 5},
+        ];
+        deltaKeys.forEach(function(d) {
+            var val = settingsCurrent[d.key] != null ? settingsCurrent[d.key] : (settingsDefaults[d.key] || d.def);
+            var defVal = settingsDefaults[d.key] || d.def;
+            var isModified = val !== defVal;
+            html += '<div class="setting-row">'
+                + '<label>' + d.label + ' window</label>'
+                + '<input type="range" id="s-' + d.key + '" min="' + d.min + '" max="' + d.max + '" step="' + d.step + '" value="' + val + '">'
+                + '<span class="val-display' + (isModified ? ' modified' : '') + '" id="sv-' + d.key + '">' + val + '</span>'
+                + '</div>';
+        });
+        html += '</div>';
+
         html += '</div>';
 
         // --- Factor weights (auto-generated from API) ---
@@ -824,10 +884,14 @@
 
         // Bind live update on all sliders
         var allKeys = ["min_signal_strength"];
+        var intKeys = ["min_signal_strength", "delta_window_psz_delta", "delta_window_rsz_delta", "delta_window_mcs_delta"];
+        intKeys.forEach(function(k) { allKeys.push(k); });
         settingsFactors.forEach(function(f) {
             allKeys.push("weight_" + f.factor + "_demand");
             allKeys.push("weight_" + f.factor + "_supply");
         });
+        // De-duplicate
+        allKeys = allKeys.filter(function(v, i, a) { return a.indexOf(v) === i; });
         allKeys.forEach(function(key) {
             var slider = document.getElementById("s-" + key);
             if (!slider) return;
@@ -835,7 +899,7 @@
             slider.addEventListener("input", function () {
                 var v = parseFloat(this.value);
                 settingsCurrent[key] = v;
-                var isInt = (key === "min_signal_strength");
+                var isInt = intKeys.indexOf(key) >= 0;
                 display.textContent = isInt ? v : v.toFixed(2);
                 display.classList.toggle("modified", v !== (settingsDefaults[key] || 0));
             });

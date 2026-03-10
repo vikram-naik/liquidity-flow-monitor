@@ -76,7 +76,10 @@
 
       <!-- Engine State (moved above watchlist) -->
       <div class="sidebar-section sidebar-bottom">
-        <h3>Engine State</h3>
+        <div class="state-hdr" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+          <h3 style="margin-bottom: 0;">Engine State</h3>
+          <button id="btn-expand-sidebar" class="mini-btn" style="width: 24px; height: 24px; padding: 0; line-height: 22px; text-align: center; border-radius: 4px; background: transparent; border: 1px solid #30363d; color: #8b949e;" title="Compare Signals">&gt;</button>
+        </div>
         <div id="sidebar-annotations">
           <table class="ann-table" id="state-table">
             <!-- Populated by JS -->

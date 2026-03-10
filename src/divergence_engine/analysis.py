@@ -108,11 +108,20 @@ def compute_trend_participation(
     mcs_col:        str = "mcs_composite",
     mcs_slope_col:  str = "mcs_composite_slope",
     slope_window:   int = 10,
+    psz_delta_window: int = 3,
+    rsz_delta_window: int = 3,
 ) -> pd.DataFrame:
     """
     Trend Participation Engine — computes slopes and coherence.
 
     Outputs: price_slope_z, rdv_slope_z, coherence_raw, coherence
+
+    Parameters
+    ----------
+    psz_delta_window : int
+        Rolling diff period for PSZ delta (default 3).
+    rsz_delta_window : int
+        Rolling diff period for RSZ delta (default 3).
     """
     df = df.copy()
     col_map = {c.lower(): c for c in df.columns}
@@ -131,9 +140,9 @@ def compute_trend_participation(
     df["price_slope_z"] = _rolling_slope_z(df[close_col], slope_window).round(4)
     df["rdv_slope_z"]   = _rolling_slope_z(df[rdv_col],   slope_window).round(4)
 
-    df["psz_delta_3d"]    = df["price_slope_z"].diff(3).fillna(0.0).round(4)
+    df["psz_delta_3d"]    = df["price_slope_z"].diff(psz_delta_window).fillna(0.0).round(4)
     df["psz_delta_5d"]    = df["price_slope_z"].diff(5).fillna(0.0).round(4)
-    df["rdv_sz_delta_3d"] = df["rdv_slope_z"].diff(3).fillna(0.0).round(4)
+    df["rdv_sz_delta_3d"] = df["rdv_slope_z"].diff(rsz_delta_window).fillna(0.0).round(4)
     df["rdv_sz_delta_5d"] = df["rdv_slope_z"].diff(5).fillna(0.0).round(4)
 
     p_a = _pillar_a_slope_alignment(df["price_slope_z"], df["rdv_slope_z"])
