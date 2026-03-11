@@ -74,13 +74,16 @@
         </div>
       </div>
 
-      <!-- Engine State (moved above watchlist) -->
+      <!-- Engine State (collapsible) -->
       <div class="sidebar-section sidebar-bottom">
-        <div class="state-hdr" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+        <div class="state-hdr" id="engine-state-toggle" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0; cursor: pointer; user-select: none;">
           <h3 style="margin-bottom: 0;">Engine State</h3>
-          <button id="btn-expand-sidebar" class="mini-btn" style="width: 24px; height: 24px; padding: 0; line-height: 22px; text-align: center; border-radius: 4px; background: transparent; border: 1px solid #30363d; color: #8b949e;" title="Compare Signals">&gt;</button>
+          <div style="display: flex; gap: 4px; align-items: center;">
+            <button id="btn-expand-sidebar" class="mini-btn" style="width: 24px; height: 24px; padding: 0; line-height: 22px; text-align: center; border-radius: 4px; background: transparent; border: 1px solid #30363d; color: #8b949e;" title="Compare Signals">&gt;</button>
+            <span id="engine-state-chevron" style="color: #8b949e; font-size: 14px; transition: transform 0.2s;">▼</span>
+          </div>
         </div>
-        <div id="sidebar-annotations">
+        <div id="engine-state-content" style="margin-top: 12px;">
           <table class="ann-table" id="state-table">
             <!-- Populated by JS -->
           </table>

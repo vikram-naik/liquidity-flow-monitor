@@ -27,9 +27,10 @@ UI_COLUMNS = [
     "regime",
     # Unified scoring data
     "signal_strength", "scoring_direction",
-    "cwvap_dist", "rdv", "cwc",
-    "rdv_consistency", "delivery_pct", "atr_20",
-    "psz_delta_3d", "pdd_30", "mcs_delta",
+    "cwvap_dist", "rdv", "cwc", "cdvl", "gradient_shape",
+    "psz_delta_2d", "psz_delta_4d", "psz_delta_9d",
+    "rsz_delta_2d", "rsz_delta_4d", "rsz_delta_9d",
+    "mcs_delta_2d", "mcs_delta_4d", "mcs_delta_9d", "pdd_30",
     "scoring_details",
     "demand_strength", "supply_strength",
     "demand_details", "supply_details",

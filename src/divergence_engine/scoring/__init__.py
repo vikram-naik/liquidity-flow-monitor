@@ -55,10 +55,29 @@ def _regime_context_score(
     return scores_cfg.get("notrend", 0.15)
 
 
+def _count_converging_families(
+    computed_scores: dict[str, float],
+    convergence_cfg: dict,
+) -> int:
+    """Count how many delta families have at least one window firing.
+
+    A family "fires" if its best window score exceeds the threshold.
+    """
+    threshold = convergence_cfg.get("threshold", 0.3)
+    families = convergence_cfg.get("delta_families", {})
+    count = 0
+    for _family_name, factor_names in families.items():
+        best = max(computed_scores.get(f, 0.0) for f in factor_names)
+        if best >= threshold:
+            count += 1
+    return count
+
+
 def _score_bar(
     row: dict,
     direction: str,
     factors: dict,
+    convergence_cfg: dict | None = None,
 ) -> tuple[float, list[dict]]:
     """Score a single bar against all factors.
 
@@ -88,7 +107,7 @@ def _score_bar(
 
         # Apply scoring function
         scoring_fn = get_scoring_fn(scoring_fn_name)
-        score = scoring_fn(float(raw_value), normalize_params, direction)
+        score = scoring_fn(raw_value, normalize_params, direction)
 
         # Cap by prerequisite factor's score (relative scaling)
         requires = factor_cfg.get("requires")
@@ -117,7 +136,7 @@ def _score_bar(
             "score": round(score, 4),
             "weight": weight,
             "weighted": round(weighted, 4),
-            "raw_value": round(float(raw_value), 4),
+            "raw_value": raw_value if isinstance(raw_value, str) else round(float(raw_value), 4),
             "ui": {
                 "label": ui_cfg.get("label", factor_name),
                 "description": ui_cfg.get("description", ""),
@@ -126,9 +145,33 @@ def _score_bar(
         })
 
     if total_weight > 0:
-        signal_strength = (weighted_sum / total_weight) * 100
+        base_strength = (weighted_sum / total_weight) * 100
     else:
-        signal_strength = 0.0
+        base_strength = 0.0
+
+    # --- Convergence multiplier ---
+    conv_mult = 1.0
+    conv_count = 0
+    if convergence_cfg:
+        conv_count = _count_converging_families(computed_scores, convergence_cfg)
+        multipliers = convergence_cfg.get("multipliers", {})
+        conv_mult = multipliers.get(conv_count, 1.0)
+
+    signal_strength = min(base_strength * conv_mult, 100.0)
+
+    # Append convergence info as a meta-detail for UI transparency
+    details.append({
+        "factor": "_convergence",
+        "score": round(conv_mult, 4),
+        "weight": 0.0,
+        "weighted": 0.0,
+        "raw_value": conv_count,
+        "ui": {
+            "label": "Convergence",
+            "description": f"{conv_count}/3 delta families firing → {conv_mult:.2f}×",
+            "format": "d",
+        },
+    })
 
     return round(signal_strength, 1), details
 
@@ -170,6 +213,7 @@ def compute_signal_strength(
         "counter_trend": 1.0, "trend_aligned": 0.3,
         "transition": 0.5, "notrend": 0.15,
     })
+    convergence_cfg = settings.get("convergence")
 
     # --- Derived columns ---
     df["cwvap_dist"] = ((df["close"] / df["cwvap"] - 1) * 100).round(4)
@@ -212,11 +256,11 @@ def compute_signal_strength(
 
         # Score Demand
         row_dict["regime_score"] = demand_regime_score
-        demand_strength, demand_details = _score_bar(row_dict, "Demand", factors)
+        demand_strength, demand_details = _score_bar(row_dict, "Demand", factors, convergence_cfg)
 
         # Score Supply
         row_dict["regime_score"] = supply_regime_score
-        supply_strength, supply_details = _score_bar(row_dict, "Supply", factors)
+        supply_strength, supply_details = _score_bar(row_dict, "Supply", factors, convergence_cfg)
 
         # Winner determines direction
         if demand_strength >= supply_strength:

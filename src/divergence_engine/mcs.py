@@ -8,7 +8,7 @@ Key outputs:
 - **MCS**: 30-day rolling Pearson(TP, RDV) — price vs delivery direction.
 - **MCS_MFM**: 30-day rolling Pearson(MFM_TP, RDV) — intraday pressure
   vs delivery commitment.
-- **MCS_delta**: 5-bar change in MCS (momentum of alignment).
+- **MCS_delta**: change in MCS over multiple windows (e.g. mcs_delta_5d).
 - **MCS_composite**: 0.6 × MCS + 0.4 × MCS_MFM — primary money-flow
   health score (range: −1 to +1).
 """
@@ -25,9 +25,9 @@ class MoneyCompositeScore:
     (from :class:`BaseCalculator`).
     """
 
-    def __init__(self, window: int = 30, delta_window: int = 5) -> None:
+    def __init__(self, window: int = 30, delta_windows: list[int] | None = None) -> None:
         self.window = window
-        self.delta_window = delta_window
+        self.delta_windows = delta_windows or [5]
 
     # ------------------------------------------------------------------
     # Public API
@@ -43,8 +43,9 @@ class MoneyCompositeScore:
         # 5.2 MCS_MFM — rolling Pearson(MFM_TP, RDV)
         df["mcs_mfm"] = df["mfm_tp"].rolling(window=w, min_periods=10).corr(df["rdv"])
 
-        # 5.3 MCS_delta — configurable rate of change
-        df["mcs_delta"] = df["mcs"] - df["mcs"].shift(self.delta_window)
+        # 5.3 MCS_deltas — configurable rates of change
+        for w_delta in self.delta_windows:
+            df[f"mcs_delta_{w_delta}d"] = df["mcs"] - df["mcs"].shift(w_delta)
 
         # 5.4 MCS_composite — blended signal
         df["mcs_composite"] = 0.6 * df["mcs"].fillna(0) + 0.4 * df["mcs_mfm"].fillna(0)

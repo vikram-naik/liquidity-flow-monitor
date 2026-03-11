@@ -43,6 +43,7 @@ class DVLLedger:
         for n in self.windows:
             df = self._compute_window(df, n)
         df = self._classify_gradient(df)
+        df = self._compute_cdvl(df)
         return df
 
     # ------------------------------------------------------------------
@@ -158,6 +159,27 @@ class DVLLedger:
             # else: stays "sideways" (default)
 
         df["gradient_shape"] = shapes
+        return df
+
+    def _compute_cdvl(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Compute Composite Delivery Velocity (CDVL).
+
+        CDVL = Σ(Velocity_n_norm × DVL_rate_n) / Σ(DVL_rate_n).
+        Provides a continuous float baseline for volume direction/momentum.
+        """
+        numerator = pd.Series(0.0, index=df.index)
+        denominator = pd.Series(0.0, index=df.index)
+
+        for n in self.windows:
+            vel = df[f"velocity_{n}_norm"]
+            weight = df[f"dvl_rate_{n}"]
+
+            # Only weight valid velocities
+            valid = vel.notna() & np.isfinite(vel)
+            numerator += (vel * weight).where(valid, 0.0)
+            denominator += weight.where(valid, 0.0)
+
+        df["cdvl"] = np.where(denominator > 0, numerator / denominator, 0.0)
         return df
 
     # ------------------------------------------------------------------

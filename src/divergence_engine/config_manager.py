@@ -70,11 +70,17 @@ def get_flat_config(db_conn=None) -> dict:
     settings = config.get("settings", {})
     flat["min_signal_strength"] = settings.get("min_signal_strength", 40)
 
-    # Delta windows
+    # Delta windows (converted to comma-separated strings for UI)
     delta_windows = settings.get("delta_windows", {})
-    flat["delta_window_psz_delta"] = delta_windows.get("psz_delta", 3)
-    flat["delta_window_rsz_delta"] = delta_windows.get("rsz_delta", 3)
-    flat["delta_window_mcs_delta"] = delta_windows.get("mcs_delta", 5)
+    
+    def _list_to_str(val, default):
+        if isinstance(val, list):
+            return ",".join(map(str, val))
+        return str(val) if val is not None else str(default)
+
+    flat["delta_window_psz_delta"] = _list_to_str(delta_windows.get("psz_delta"), "2,4,9")
+    flat["delta_window_rsz_delta"] = _list_to_str(delta_windows.get("rsz_delta"), "2,4,9")
+    flat["delta_window_mcs_delta"] = _list_to_str(delta_windows.get("mcs_delta"), "2,4,9")
 
     # Factor weights
     for fname, fcfg in config.get("factors", {}).items():
@@ -93,11 +99,17 @@ def get_flat_defaults() -> dict:
     settings = defaults.get("settings", {})
     flat["min_signal_strength"] = settings.get("min_signal_strength", 40)
 
-    # Delta windows
+    # Delta windows (converted to comma-separated strings for UI)
     delta_windows = settings.get("delta_windows", {})
-    flat["delta_window_psz_delta"] = delta_windows.get("psz_delta", 3)
-    flat["delta_window_rsz_delta"] = delta_windows.get("rsz_delta", 3)
-    flat["delta_window_mcs_delta"] = delta_windows.get("mcs_delta", 5)
+    
+    def _list_to_str(val, default):
+        if isinstance(val, list):
+            return ",".join(map(str, val))
+        return str(val) if val is not None else str(default)
+
+    flat["delta_window_psz_delta"] = _list_to_str(delta_windows.get("psz_delta"), "2,4,9")
+    flat["delta_window_rsz_delta"] = _list_to_str(delta_windows.get("rsz_delta"), "2,4,9")
+    flat["delta_window_mcs_delta"] = _list_to_str(delta_windows.get("mcs_delta"), "2,4,9")
 
     for fname, fcfg in defaults.get("factors", {}).items():
         weights = fcfg.get("weight", {})
@@ -189,7 +201,13 @@ def _apply_v2_overrides(config: dict, overrides: dict) -> None:
     for key, val in overrides.items():
         if key.startswith("delta_window_"):
             factor_name = key[len("delta_window_"):]
-            delta_windows[factor_name] = int(val)
+            if isinstance(val, str) and "," in val:
+                delta_windows[factor_name] = [int(x.strip()) for x in val.split(",") if x.strip()]
+            else:
+                try:
+                    delta_windows[factor_name] = [int(val)]
+                except (ValueError, TypeError):
+                    delta_windows[factor_name] = val
 
     # Weight overrides: weight_{factor}_{direction}
     factors = config.get("factors", {})

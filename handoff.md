@@ -1,18 +1,19 @@
 # Handoff — Liquidity Flow Monitor
 
 ## Current Status
-The **Unified Weighted Scoring Model (v2)** is live. Binary gates have been
-replaced with continuous factor scoring (0-1) and weighted signal_strength (0-100).
+The **Unified Weighted Scoring Model (v2.2)** is live. v2.2 adds intensity
+discrimination via power-law scoring curves and a convergence multiplier.
 
-**Current focus:** Run signal quality report (Run 5) with PDD disabled, `mcs_delta` added,
-and rebalanced weights (all factors sum to 100%).
+**Current focus:** Run signal quality report (Run 5) with v2.2 scoring to
+measure impact of intensity changes on hit rates.
 
 ---
 
 ## What's Live Now
 
-### Unified Weighted Scoring (v2) — 2026-03-08
+### Unified Weighted Scoring (v2.2) — 2026-03-11
 Replaced the binary-gate conviction system with continuous factor scoring.
+v2.2 adds intensity discrimination via power-law exponents and convergence multiplier.
 
 **Direction detection: Dual-Score (factors decide)** — 2026-03-09
 No separate direction classifier. Every bar is scored for BOTH Demand and Supply.
@@ -61,19 +62,24 @@ in an uptrend gets regime=1.0, while Demand in the same bar gets regime=0.3.
 - Supply: PSZ=0 (negative=bad for supply), PSZ Delta=0.27, RSZ Delta=0, Regime=1.0 (counter)
 - Winner: depends on non-directional factors — no hard gate, continuous competition
 
-**Current factors (8 active, weights sum to 100%):**
+**Current factors (15 active, weights sum to exactly 1.00/100%):**
+
+> **v2.2 Intensity scoring**: Delta factors use `exponent: 1.5`, level factors use
+> `exponent: 1.3`. Scoring: `(linear_score) ^ exponent` — suppresses weak, preserves strong.
+> Post-scoring convergence multiplier: 0/3 families → 0.85×, 1→1.0×, 2→1.10×, 3→1.20×.
 
 | Factor | Column | Scoring Fn | Weight | Description |
 |--------|--------|-----------|--------|-------------|
-| PSZ Delta | psz_delta_3d | directional | 25% | Price slope inflection (Tier 1 primary) |
-| RSZ Delta | rdv_sz_delta_3d | directional | 15% | Delivery slope inflection (Tier 1 primary) |
-| MCS Delta | mcs_delta | directional | 20% | MCS momentum shift, 5-day (Tier 1 primary) |
-| PSZ | price_slope_z | counter_directional | 15% | Price slope (requires: psz_delta) |
-| RSZ | rdv_slope_z | abs_higher_is_better | 10% | Delivery slope z-score (requires: rsz_delta) |
-| CWC | cwc | lower_is_better | 5% | Cross-window coherence (requires any delta) |
-| Coherence | coherence | higher_is_better | 5% | Multi-timeframe alignment (requires any delta) |
-| Regime | regime_score | higher_is_better | 5% | Direction-aware regime context (standalone) |
-| ~~PDD~~ | ~~pdd_30~~ | ~~abs_higher_is_better~~ | ~~disabled~~ | ~~Negatively correlated with returns~~ |
+| PSZ Δ (2, 4, 9) | psz_delta_Xd | directional | 15% (Σ) | Price slope momentum turning points |
+| RSZ Δ (2, 4, 9) | rsz_delta_Xd | directional | 10% (Σ) | Delivery slope momentum turning points |
+| MCS Δ (2, 4, 9) | mcs_delta_Xd | directional | 20% (Σ) | Price/Delivery correlation momentum |
+| CDVL | cdvl | directional | 10% | Composite Delivery Velocity (Macro 10-120d volume momentum) |
+| PSZ | price_slope_z | abs_higher_is_better | 15% | Price slope z-score |
+| RSZ | rdv_slope_z | abs_higher_is_better | 10% | Delivery slope z-score |
+| CWC | cwc | lower_is_better | 5% | Cross-window coherence (noise filter) |
+| Coherence | coherence | higher_is_better | 5% | Multi-timeframe trend alignment |
+| Regime | regime_score | higher_is_better | 5% | Direction-aware Price Trend context |
+| Volume Phase | gradient_shape | categorical_map | 5% | Direction-aware Institutional Volume phase multiplier |
 
 **`requires` system:** Child factor's score is capped by parent's score.
 - `requires.factor: X` — single parent cap
@@ -89,13 +95,20 @@ This prevents both: (a) saturated absolute values propping up signals without in
 and (b) structural factors (CWC, Coherence) pushing dead signals over the threshold
 when neither delta shows meaningful change.
 
+**Convergence multiplier** (`scoring/__init__.py`):
+- Counts how many delta families (PSZ, RSZ, MCS) have ≥1 window scoring ≥0.3
+- 0 families → 0.85×, 1 → 1.0×, 2 → 1.10×, 3 → 1.20×
+- Applied post-scoring as: `signal_strength = base_strength × multiplier`
+- Config-driven via `settings.convergence` in YAML
+
 **Scoring functions** (`scoring/functions.py`):
 - `higher_is_better` — linear ramp: value/max_value, capped at 1.0
 - `lower_is_better` — inverted: 1 - value/ref_value
 - `abs_higher_is_better` — absolute magnitude: |value|/max_value
 - `directional` — Demand wants positive, Supply wants negative
 - `counter_directional` — Demand wants negative (adverse), Supply wants positive
-- `count_ratio` — count/max_count (currently unused, was for rdv_consistency)
+- `count_ratio` — count/max_count (currently unused)
+- `categorical_map` — dynamically maps raw strings (e.g. `sideways`) to float config scores using a demand/supply dict lookup
 
 **Adding a factor:** YAML-only (zero code change) unless a new scoring function is needed.
 

@@ -108,8 +108,8 @@ def compute_trend_participation(
     mcs_col:        str = "mcs_composite",
     mcs_slope_col:  str = "mcs_composite_slope",
     slope_window:   int = 10,
-    psz_delta_window: int = 3,
-    rsz_delta_window: int = 3,
+    psz_delta_windows: list[int] | None = None,
+    rsz_delta_windows: list[int] | None = None,
 ) -> pd.DataFrame:
     """
     Trend Participation Engine — computes slopes and coherence.
@@ -118,12 +118,14 @@ def compute_trend_participation(
 
     Parameters
     ----------
-    psz_delta_window : int
-        Rolling diff period for PSZ delta (default 3).
-    rsz_delta_window : int
-        Rolling diff period for RSZ delta (default 3).
+    psz_delta_windows : list[int]
+        Rolling diff periods for PSZ delta (default [3]).
+    rsz_delta_windows : list[int]
+        Rolling diff periods for RSZ delta (default [3]).
     """
     df = df.copy()
+    psz_delta_windows = psz_delta_windows or [3]
+    rsz_delta_windows = rsz_delta_windows or [3]
     col_map = {c.lower(): c for c in df.columns}
     def _resolve(name: str, required: bool = True):
         r = col_map.get(name.lower(), name)
@@ -140,10 +142,11 @@ def compute_trend_participation(
     df["price_slope_z"] = _rolling_slope_z(df[close_col], slope_window).round(4)
     df["rdv_slope_z"]   = _rolling_slope_z(df[rdv_col],   slope_window).round(4)
 
-    df["psz_delta_3d"]    = df["price_slope_z"].diff(psz_delta_window).fillna(0.0).round(4)
-    df["psz_delta_5d"]    = df["price_slope_z"].diff(5).fillna(0.0).round(4)
-    df["rdv_sz_delta_3d"] = df["rdv_slope_z"].diff(rsz_delta_window).fillna(0.0).round(4)
-    df["rdv_sz_delta_5d"] = df["rdv_slope_z"].diff(5).fillna(0.0).round(4)
+    for w in psz_delta_windows:
+        df[f"psz_delta_{w}d"] = df["price_slope_z"].diff(w).fillna(0.0).round(4)
+        
+    for w in rsz_delta_windows:
+        df[f"rsz_delta_{w}d"] = df["rdv_slope_z"].diff(w).fillna(0.0).round(4)
 
     p_a = _pillar_a_slope_alignment(df["price_slope_z"], df["rdv_slope_z"])
     p_b = _pillar_b_mcs_confirmation(df[mcs_col], df[mcs_slope_col], df["price_slope_z"])

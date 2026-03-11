@@ -204,9 +204,9 @@ class DivergenceEngine:
         finally:
             _conn.close()
         delta_windows = scoring_cfg.get("settings", {}).get("delta_windows", {})
-        psz_delta_w = delta_windows.get("psz_delta", 3)
-        rsz_delta_w = delta_windows.get("rsz_delta", 3)
-        mcs_delta_w = delta_windows.get("mcs_delta", 5)
+        psz_delta_w = delta_windows.get("psz_delta", [2, 4, 9])
+        rsz_delta_w = delta_windows.get("rsz_delta", [2, 4, 9])
+        mcs_delta_w = delta_windows.get("mcs_delta", [2, 4, 9])
 
         # Module 1 — Base Calculations
         base = BaseCalculator()
@@ -228,14 +228,14 @@ class DivergenceEngine:
         df = cwc.compute_all(df)
 
         # Module 5 — Money Composite Score
-        mcs = MoneyCompositeScore(delta_window=mcs_delta_w)
+        mcs = MoneyCompositeScore(delta_windows=mcs_delta_w)
         df = mcs.compute_all(df)
 
         # Module 6 — Trend Participation Analysis
         df = compute_trend_participation(
             df,
-            psz_delta_window=psz_delta_w,
-            rsz_delta_window=rsz_delta_w,
+            psz_delta_windows=psz_delta_w,
+            rsz_delta_windows=rsz_delta_w,
         )
 
         # Module 7 — Integrated State Matrix (rules-based)

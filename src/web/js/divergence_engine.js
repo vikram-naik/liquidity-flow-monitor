@@ -24,7 +24,7 @@
         "cwvap_dist": { label: "CWVAP Dist %" },
         "delivery_pct": { label: "Delivery %" },
         "pdd": { label: "PDD (30)" },
-        "mcs_delta": { label: "MCS Delta" }
+        "mcs_delta": { label: "MCS Δ" }
     };
 
     function getActivePanels() {
@@ -58,7 +58,8 @@
 
     var expandBtn = document.getElementById("btn-expand-sidebar");
     if (expandBtn) {
-        expandBtn.addEventListener("click", function() {
+        expandBtn.addEventListener("click", function(e) {
+            e.stopPropagation(); // Don't trigger collapse toggle
             sidebarEl.classList.toggle("expanded");
             if (sidebarEl.classList.contains("expanded")) {
                 expandBtn.innerHTML = "&lt;";
@@ -66,6 +67,22 @@
             } else {
                 expandBtn.innerHTML = "&gt;";
                 expandBtn.title = "Compare Signals";
+            }
+        });
+    }
+
+    // Engine State collapsible toggle
+    var engineToggle = document.getElementById("engine-state-toggle");
+    var engineContent = document.getElementById("engine-state-content");
+    var engineChevron = document.getElementById("engine-state-chevron");
+    if (engineToggle && engineContent) {
+        engineToggle.addEventListener("click", function(e) {
+            // Don't collapse if clicking the expand button
+            if (e.target.closest("#btn-expand-sidebar")) return;
+            var isHidden = engineContent.style.display === "none";
+            engineContent.style.display = isHidden ? "" : "none";
+            if (engineChevron) {
+                engineChevron.textContent = isHidden ? "▼" : "▶";
             }
         });
     }
@@ -138,7 +155,7 @@
         var markerList = [];
         var timeToIndex = {};
         var pZ = [], rZ = [], cRaw = [], cSmooth = [];
-        var rdvArr = [], cwcArr = [], rdvConsArr = [], atrArr = [], distArr = [], delPctArr = [], pddArr = [], mcsArr = [];
+        var rdvArr = [], cwcArr = [], rdvConsArr = [], atrArr = [], distArr = [], delPctArr = [], pddArr = [], mcsArr2d = [], mcsArr4d = [], mcsArr9d = [];
 
         for (var i = 0; i < ledger.length; i++) {
             var r = ledger[i];
@@ -167,7 +184,9 @@
             if (r.cwvap_dist != null) distArr.push({ time: t, value: r.cwvap_dist }); else distArr.push({ time: t });
             if (r.delivery_pct != null) delPctArr.push({ time: t, value: r.delivery_pct }); else delPctArr.push({ time: t });
             if (r.pdd_30 != null) pddArr.push({ time: t, value: r.pdd_30 }); else pddArr.push({ time: t });
-            if (r.mcs_delta != null) mcsArr.push({ time: t, value: r.mcs_delta }); else mcsArr.push({ time: t });
+            if (r.mcs_delta_2d != null) mcsArr2d.push({ time: t, value: r.mcs_delta_2d }); else mcsArr2d.push({ time: t });
+            if (r.mcs_delta_4d != null) mcsArr4d.push({ time: t, value: r.mcs_delta_4d }); else mcsArr4d.push({ time: t });
+            if (r.mcs_delta_9d != null) mcsArr9d.push({ time: t, value: r.mcs_delta_9d }); else mcsArr9d.push({ time: t });
 
             if (r.delivery_qty != null) {
                 var mfm = r.mfm != null ? r.mfm : 0;
@@ -193,12 +212,13 @@
             var stateStr = r.integrated_state || "No Signal";
             if (stateStr === "Demand" || stateStr === "Supply") {
                 var isDemand = stateStr === "Demand";
-                var sigStr = r.signal_strength != null ? r.signal_strength : "";
+                var sigStr = r.signal_strength != null ? Math.round(r.signal_strength) : "";
                 markerList.push({
                     time: t,
                     position: isDemand ? "belowBar" : "aboveBar",
                     color: stateColorMap[stateStr],
                     shape: isDemand ? "arrowUp" : "arrowDown",
+                    text: sigStr !== "" ? String(sigStr) : "",
                     stateText: stateStr + (sigStr !== "" ? " (" + sigStr + ")" : "")
                 });
             }
@@ -345,11 +365,17 @@
                sZ.setData(pddArr.map(d => ({ time: d.time, value: 0 })));
                legConfig.push({ api: sPdd, label: "PDD", col: "pdd_30", color: "#ff7043" });
             } else if (panelKey === "mcs_delta") {
-               var sMcs = c.addSeries(LC.LineSeries, { color: "#ab47bc", lineWidth: 2, lastValueVisible: false, priceLineVisible: false });
-               sMcs.setData(mcsArr);
+               var sMcs2 = c.addSeries(LC.LineSeries, { color: "#e1bee7", lineWidth: 1, lastValueVisible: false, priceLineVisible: false });
+               sMcs2.setData(mcsArr2d);
+               var sMcs4 = c.addSeries(LC.LineSeries, { color: "#ab47bc", lineWidth: 2, lastValueVisible: false, priceLineVisible: false });
+               sMcs4.setData(mcsArr4d);
+               var sMcs9 = c.addSeries(LC.LineSeries, { color: "#4a148c", lineWidth: 1, lineStyle: 2, lastValueVisible: false, priceLineVisible: false });
+               sMcs9.setData(mcsArr9d);
                var sZ = c.addSeries(LC.LineSeries, { color: "#424242", lineWidth: 1, lineStyle: 2, lastValueVisible: false, priceLineVisible: false });
-               sZ.setData(mcsArr.map(d => ({ time: d.time, value: 0 })));
-               legConfig.push({ api: sMcs, label: "MCS Δ", col: "mcs_delta", color: "#ab47bc" });
+               sZ.setData(mcsArr4d.map(d => ({ time: d.time, value: 0 })));
+               legConfig.push({ api: sMcs2, label: "MCS Δ (2d)", col: "mcs_delta_2d", color: "#e1bee7" });
+               legConfig.push({ api: sMcs4, label: "MCS Δ (4d)", col: "mcs_delta_4d", color: "#ab47bc" });
+               legConfig.push({ api: sMcs9, label: "MCS Δ (9d)", col: "mcs_delta_9d", color: "#4a148c", dashed: true });
             }
 
             allLegConfigs.push({ id: "legSub" + i, config: legConfig });
@@ -515,14 +541,17 @@
             if (!detailsArr || !Array.isArray(detailsArr)) return '';
             var colClass = "compare-col" + (isDominant ? " dominant" : "");
             var html = '<div class="' + colClass + '"><div class="compare-col-hdr">' + title + ' (' + fmt(totalScore, 1) + ')</div><div class="scoring-section">';
-            var totalWeighted = 0, totalWeight = 0;
+            var convergenceDetail = null;
             detailsArr.forEach(function(f) {
+                // Extract convergence meta-detail separately
+                if (f.factor === "_convergence") {
+                    convergenceDetail = f;
+                    return;
+                }
                 var pct = Math.round(f.score * 100);
                 var barColor = pct >= 70 ? "#3fb950" : (pct >= 40 ? "#d29922" : "#8b949e");
                 var label = (f.ui && f.ui.label) ? f.ui.label : f.factor;
                 var weightPct = Math.round(f.weight * 100);
-                totalWeighted += f.weighted;
-                totalWeight += f.weight;
                 html += '<div class="scoring-row">'
                     + '<span class="scoring-label">' + label + ' <span class="scoring-weight">(' + weightPct + '%)</span></span>'
                     + '<div class="scoring-bar-wrap">'
@@ -532,15 +561,30 @@
                     + '<span class="scoring-contrib">' + (f.weighted * 100).toFixed(1) + '</span>'
                     + '</div>';
             });
-            var totalPct = totalWeight > 0 ? Math.round((totalWeighted / totalWeight) * 100) : 0;
-            var totalColor = totalPct >= 70 ? "#3fb950" : (totalPct >= 40 ? "#d29922" : "#8b949e");
+            // Convergence multiplier row (shown between factors and total)
+            if (convergenceDetail) {
+                var convCount = convergenceDetail.raw_value;
+                var convMult = convergenceDetail.score;
+                var convColor = convCount >= 3 ? "#3fb950" : (convCount >= 2 ? "#d29922" : "#8b949e");
+                html += '<div class="scoring-row" style="border-top:1px solid rgba(139,148,158,0.2); margin-top:4px; padding-top:4px;">'
+                    + '<span class="scoring-label">Convergence <span class="scoring-weight">(' + convCount + '/3)</span></span>'
+                    + '<div class="scoring-bar-wrap">'
+                    + '<div class="scoring-bar" style="width:100%; background:' + convColor + '; opacity:0.4"></div>'
+                    + '</div>'
+                    + '<span class="scoring-val"></span>'
+                    + '<span class="scoring-contrib" style="color:' + convColor + '">' + convMult.toFixed(2) + '×</span>'
+                    + '</div>';
+            }
+            // Total row — use the actual totalScore which already includes convergence
+            var totalPctDisplay = Math.round(totalScore);
+            var totalColor = totalPctDisplay >= 70 ? "#3fb950" : (totalPctDisplay >= 40 ? "#d29922" : "#8b949e");
             html += '<div class="scoring-total">'
                 + '<span class="scoring-label">Total</span>'
                 + '<div class="scoring-bar-wrap">'
-                + '<div class="scoring-bar" style="width:' + totalPct + '%; background:' + totalColor + '"></div>'
+                + '<div class="scoring-bar" style="width:' + totalPctDisplay + '%; background:' + totalColor + '"></div>'
                 + '</div>'
                 + '<span class="scoring-val"></span>'
-                + '<span class="scoring-contrib" style="color:' + totalColor + '">' + totalPct + '</span>'
+                + '<span class="scoring-contrib" style="color:' + totalColor + '">' + fmt(totalScore, 1) + '</span>'
                 + '</div></div></div>';
             return html;
         }
@@ -842,20 +886,19 @@
             + '</div>';
 
         // --- Delta window settings ---
-        html += '<div class="setting-group"><h4>Delta Windows</h4>';
+        html += '<div class="setting-group"><h4>Δ Windows</h4>';
         var deltaKeys = [
-            {key: "delta_window_psz_delta", label: "PSZ Delta", min: 1, max: 10, step: 1, def: 3},
-            {key: "delta_window_rsz_delta", label: "RSZ Delta", min: 1, max: 10, step: 1, def: 3},
-            {key: "delta_window_mcs_delta", label: "MCS Delta", min: 1, max: 15, step: 1, def: 5},
+            {key: "delta_window_psz_delta", label: "PSZ Δ (csv)", def: "2,4,9"},
+            {key: "delta_window_rsz_delta", label: "RSZ Δ (csv)", def: "2,4,9"},
+            {key: "delta_window_mcs_delta", label: "MCS Δ (csv)", def: "2,4,9"},
         ];
         deltaKeys.forEach(function(d) {
             var val = settingsCurrent[d.key] != null ? settingsCurrent[d.key] : (settingsDefaults[d.key] || d.def);
             var defVal = settingsDefaults[d.key] || d.def;
             var isModified = val !== defVal;
-            html += '<div class="setting-row">'
-                + '<label>' + d.label + ' window</label>'
-                + '<input type="range" id="s-' + d.key + '" min="' + d.min + '" max="' + d.max + '" step="' + d.step + '" value="' + val + '">'
-                + '<span class="val-display' + (isModified ? ' modified' : '') + '" id="sv-' + d.key + '">' + val + '</span>'
+            html += '<div class="setting-row" style="grid-template-columns: 2fr 3fr;">'
+                + '<label>' + d.label + '</label>'
+                + '<input type="text" id="s-' + d.key + '" value="' + val + '" style="background:var(--bg-layer); border:1px solid var(--border-color); color:var(--text-primary); padding:4px;">'
                 + '</div>';
         });
         html += '</div>';
@@ -884,8 +927,10 @@
 
         // Bind live update on all sliders
         var allKeys = ["min_signal_strength"];
-        var intKeys = ["min_signal_strength", "delta_window_psz_delta", "delta_window_rsz_delta", "delta_window_mcs_delta"];
+        var intKeys = ["min_signal_strength"];
+        var strKeys = ["delta_window_psz_delta", "delta_window_rsz_delta", "delta_window_mcs_delta"];
         intKeys.forEach(function(k) { allKeys.push(k); });
+        strKeys.forEach(function(k) { allKeys.push(k); });
         settingsFactors.forEach(function(f) {
             allKeys.push("weight_" + f.factor + "_demand");
             allKeys.push("weight_" + f.factor + "_supply");
