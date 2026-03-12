@@ -31,11 +31,19 @@ class GrindMarker(MarkerInterface):
         origin_price = df[['price_open', 'prev_close']].min(axis=1)
         dist_origin_davwap = (origin_price - df['davwap']) / df['atr_50']
 
+        # Shared priority suppression series
+        priority_flags = ['is_exhaustion', 'is_bearish_absorption', 'is_spring', 'is_distribution', 'is_ignition', 'is_coil']
+        is_suppressed = pd.Series(False, index=df.index)
+        for flag in priority_flags:
+            if flag in df.columns:
+                is_suppressed |= df[flag].fillna(False)
+
         # Day 1: Expansion >= 0.5 ATR, near DAVWAP, +MFM
         is_grind_day1 = (
             (df['price_close'] - origin_price >= 0.5 * df['atr_50']) &
             (dist_origin_davwap.abs() <= 1.0) &
-            (df['mfm'] > 0)
+            (df['mfm'] > 0) &
+            (~is_suppressed)
         )
 
         price_close_prev1 = df['price_close'].shift(1)
@@ -46,7 +54,8 @@ class GrindMarker(MarkerInterface):
         is_grind_day2 = (
             is_grind_day1.shift(1, fill_value=False) &
             (df['price_close'] > price_close_prev1) &
-            (df['price_close'] - origin_prev1 >= 0.8 * atr_prev1)
+            (df['price_close'] - origin_prev1 >= 0.8 * atr_prev1) &
+            (~is_suppressed)
         )
 
         origin_prev2 = origin_price.shift(2)
@@ -59,12 +68,13 @@ class GrindMarker(MarkerInterface):
             (df['price_close'] > price_close_prev1) &
             (df['price_close'] - origin_prev2 >= 1.2 * atr_prev2) &
             (df['dvl_slope_5'] > 0) &
-            (df['mcs'] > mcs_prev3)
+            (df['mcs'] > mcs_prev3) &
+            (~is_suppressed)
         )
 
         df['grind_level'] = 0
 
-        # Retroactive valid assignment
+        # Retroactive valid assignment (completed 3-day set)
         df.loc[is_grind_day3, 'grind_level'] = 3
         df.loc[is_grind_day3.shift(-1, fill_value=False), 'grind_level'] = 2
         df.loc[is_grind_day3.shift(-2, fill_value=False), 'grind_level'] = 1
@@ -73,22 +83,21 @@ class GrindMarker(MarkerInterface):
         if len(df) > 0:
             last_idx = df.index[-1]
 
+            # If today matches G2 criteria AND it's not already part of a completed G3
             if is_grind_day2.at[last_idx] and df.at[last_idx, 'grind_level'] == 0:
                 df.at[last_idx, 'grind_level'] = 2
                 if len(df) > 1:
                     prev_idx = df.index[-2]
-                    df.at[prev_idx, 'grind_level'] = 1
+                    # Only ghost the G1 if it wasn't already assigned (safety check)
+                    if df.at[prev_idx, 'grind_level'] == 0:
+                        df.at[prev_idx, 'grind_level'] = 1
 
+            # If today matches G1 criteria AND it's not already part of a completed sequence
             elif is_grind_day1.at[last_idx] and df.at[last_idx, 'grind_level'] == 0:
                 df.at[last_idx, 'grind_level'] = 1
 
-        # Mutual Exclusion: Suppress if higher-priority (tactical/initiation) markers triggered on this candle
-        priority_flags = ['is_exhaustion', 'is_bearish_absorption', 'is_spring', 'is_distribution', 'is_ignition', 'is_coil']
-        for flag in priority_flags:
-            if flag in df.columns:
-                df.loc[df[flag].fillna(False), 'grind_level'] = 0
-
         return df
+
 
     def debug_info(self, df: pd.DataFrame, row_idx: int) -> list[dict]:
         r = df.iloc[row_idx]

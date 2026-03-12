@@ -1641,3 +1641,52 @@ window.resolveConfirm = function (val) {
         }, 300);
     }
 })();
+
+// ─── Watchlist Keyboard Navigation ────────────────────────────
+document.addEventListener('keydown', (e) => {
+    // Ignore if the user is typing in an input, textarea, or select field
+    const activeTagName = document.activeElement ? document.activeElement.tagName : '';
+    if (activeTagName === 'INPUT' || activeTagName === 'TEXTAREA' || activeTagName === 'SELECT') {
+        return;
+    }
+
+    // Only handle Up and Down arrow keys
+    if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+        // Get all currently rendered watchlist items in their visual order
+        const items = Array.from(document.querySelectorAll('#wl-items .wl-item'));
+        if (items.length === 0) return;
+
+        // Find the index of the currently active item
+        const activeIndex = items.findIndex(item => item.classList.contains('active'));
+        
+        // If nothing is active, default to the first one on Down arrow
+        let targetIndex = -1;
+        if (activeIndex === -1) {
+            if (e.key === 'ArrowDown') targetIndex = 0;
+        } else {
+            if (e.key === 'ArrowUp' && activeIndex > 0) {
+                targetIndex = activeIndex - 1;
+            } else if (e.key === 'ArrowDown' && activeIndex < items.length - 1) {
+                targetIndex = activeIndex + 1;
+            }
+        }
+
+        // If a valid target was found, load it
+        if (targetIndex !== -1) {
+            e.preventDefault(); // Prevent page scrolling
+            
+            // Extract the symbol. The symbol is in the first span inside the flex container.
+            const targetItem = items[targetIndex];
+            const symbolSpan = targetItem.querySelector('span');
+            if (symbolSpan && symbolSpan.textContent) {
+                // Call the existing loadSymbol function
+                if (typeof window.loadSymbol === 'function') {
+                    window.loadSymbol(symbolSpan.textContent.trim());
+                    
+                    // Optional: Scroll the targeted item into view
+                    targetItem.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+                }
+            }
+        }
+    }
+});

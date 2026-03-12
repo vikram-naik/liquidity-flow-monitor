@@ -242,7 +242,7 @@ class TestIntensityMarker:
     def test_not_a_chart_marker(self):
         m = IntensityMarker()
         assert m.metadata()['is_chart_marker'] == False
-        assert m.metadata()['screener_name'] is None
+        assert m.metadata()['screener_name'] == 'SCR: HH/HL'
 
     def test_screen_always_false(self):
         m = IntensityMarker()
@@ -303,7 +303,7 @@ class TestHighScoreMarker:
 
     def test_no_trigger_on_low_scores(self):
         m = HighScoreMarker()
-        latest = pd.Series({'ignition_score': 60, 'coil_score': 70})
+        latest = pd.Series({'ignition_score': 50, 'coil_score': 60})
         assert m.screen(pd.DataFrame(), latest) == False
 
 

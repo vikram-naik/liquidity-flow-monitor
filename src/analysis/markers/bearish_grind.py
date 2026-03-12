@@ -31,11 +31,19 @@ class BearishGrindMarker(MarkerInterface):
         origin_price = df[['price_open', 'prev_close']].max(axis=1)
         dist_origin_davwap = (origin_price - df['davwap']) / df['atr_50']
 
+        # Shared priority suppression series
+        priority_flags = ['is_exhaustion', 'is_bearish_absorption', 'is_spring', 'is_distribution', 'is_ignition', 'is_coil']
+        is_suppressed = pd.Series(False, index=df.index)
+        for flag in priority_flags:
+            if flag in df.columns:
+                is_suppressed |= df[flag].fillna(False)
+
         # Day 1: Downward Expansion >= 0.5 ATR, near DAVWAP, -MFM
         is_bg_day1 = (
             (origin_price - df['price_close'] >= 0.5 * df['atr_50']) &
             (dist_origin_davwap.abs() <= 1.0) &
-            (df['mfm'] < 0)
+            (df['mfm'] < 0) &
+            (~is_suppressed)
         )
 
         price_close_prev1 = df['price_close'].shift(1)
@@ -46,7 +54,8 @@ class BearishGrindMarker(MarkerInterface):
         is_bg_day2 = (
             is_bg_day1.shift(1, fill_value=False) &
             (df['price_close'] < price_close_prev1) &
-            (origin_prev1 - df['price_close'] >= 0.8 * atr_prev1)
+            (origin_prev1 - df['price_close'] >= 0.8 * atr_prev1) &
+            (~is_suppressed)
         )
 
         origin_prev2 = origin_price.shift(2)
@@ -59,12 +68,13 @@ class BearishGrindMarker(MarkerInterface):
             (df['price_close'] < price_close_prev1) &
             (origin_prev2 - df['price_close'] >= 1.2 * atr_prev2) &
             (df['dvl_slope_5'] < 0) &
-            (df['mcs'] < mcs_prev3)
+            (df['mcs'] < mcs_prev3) &
+            (~is_suppressed)
         )
 
         df['bearish_grind_level'] = 0
 
-        # Retroactive valid assignment
+        # Retroactive valid assignment (completed 3-day set)
         df.loc[is_bg_day3, 'bearish_grind_level'] = 3
         df.loc[is_bg_day3.shift(-1, fill_value=False), 'bearish_grind_level'] = 2
         df.loc[is_bg_day3.shift(-2, fill_value=False), 'bearish_grind_level'] = 1
@@ -73,22 +83,21 @@ class BearishGrindMarker(MarkerInterface):
         if len(df) > 0:
             last_idx = df.index[-1]
 
+            # If today matches BG2 criteria AND it's not already part of a completed BG3
             if is_bg_day2.at[last_idx] and df.at[last_idx, 'bearish_grind_level'] == 0:
                 df.at[last_idx, 'bearish_grind_level'] = 2
                 if len(df) > 1:
                     prev_idx = df.index[-2]
-                    df.at[prev_idx, 'bearish_grind_level'] = 1
+                    # Only ghost the BG1 if it wasn't already assigned (safety check)
+                    if df.at[prev_idx, 'bearish_grind_level'] == 0:
+                        df.at[prev_idx, 'bearish_grind_level'] = 1
 
+            # If today matches BG1 criteria AND it's not already part of a completed sequence
             elif is_bg_day1.at[last_idx] and df.at[last_idx, 'bearish_grind_level'] == 0:
                 df.at[last_idx, 'bearish_grind_level'] = 1
 
-        # Mutual Exclusion: Suppress if higher-priority (tactical/initiation) markers triggered on this candle
-        priority_flags = ['is_exhaustion', 'is_bearish_absorption', 'is_spring', 'is_distribution', 'is_ignition', 'is_coil']
-        for flag in priority_flags:
-            if flag in df.columns:
-                df.loc[df[flag].fillna(False), 'bearish_grind_level'] = 0
-
         return df
+
 
     def debug_info(self, df: pd.DataFrame, row_idx: int) -> list[dict]:
         r = df.iloc[row_idx]
