@@ -56,6 +56,12 @@ FEATURE_COLS = [
     "psz_delta_3d", "psz_delta_5d", "rdv_sz_delta_3d", "rdv_sz_delta_5d",
 ]
 
+# Additional columns captured for CEI signals
+CEI_FEATURE_COLS = [
+    "cei", "cei_raw", "cei_slope",
+    "accum_div", "distrib_div",
+]
+
 REPORT_TABLE = "signal_quality"
 
 # Delivery value tiers (avg daily delivery_qty * close)
@@ -109,11 +115,22 @@ def _init_signal_quality_table(conn: sqlite3.Connection) -> None:
     CREATE INDEX IF NOT EXISTS idx_sq_tier ON {REPORT_TABLE} (volume_tier);
     """)
     # Migrate: add new columns to existing tables
-    for col in ("signal_strength", "psz_delta_3d", "psz_delta_5d", "rdv_sz_delta_3d", "rdv_sz_delta_5d"):
+    migrate_cols = [
+        "signal_strength", "psz_delta_3d", "psz_delta_5d",
+        "rdv_sz_delta_3d", "rdv_sz_delta_5d",
+        # CEI columns
+        "cei", "cei_raw", "cei_slope",
+        "accum_div", "distrib_div",
+        "signal_source",
+        # CEI slope-exit metrics
+        "exit_ret", "exit_mfe", "exit_mae", "exit_bars", "exit_hit",
+    ]
+    for col in migrate_cols:
         try:
             conn.execute(f"ALTER TABLE {REPORT_TABLE} ADD COLUMN {col} REAL")
         except sqlite3.OperationalError:
             pass  # column already exists
+    # signal_source is TEXT, but ALTER doesn't let us change type — it works fine
     conn.commit()
 
 
@@ -197,6 +214,158 @@ def _extract_signals(ledger: pd.DataFrame, symbol: str) -> list[dict]:
             val = row.get(col)
             sig[col] = float(val) if pd.notna(val) else None
         signals.append(sig)
+
+    return signals
+
+
+def _extract_cei_signals(ledger: pd.DataFrame, symbol: str) -> list[dict]:
+    """Extract CEI-based Demand/Supply signals with feature snapshots."""
+    signals = []
+    if "cei_signal" not in ledger.columns:
+        return signals
+
+    mask = ledger["cei_signal"].isin(["Demand", "Supply"])
+    signal_rows = ledger[mask]
+
+    avg_del_val = _compute_avg_delivery_value(ledger)
+    tier = _classify_tier(avg_del_val)
+
+    for idx, row in signal_rows.iterrows():
+        sig = {
+            "symbol": symbol,
+            "signal_date": str(row["date"])[:10],
+            "signal_type": row["cei_signal"],
+            "signal_strength": round(float(row["cei"]) * 100, 1) if pd.notna(row.get("cei")) else None,
+            "entry_close": float(row["close"]),
+            "avg_del_val": round(avg_del_val, 2),
+            "volume_tier": tier,
+            "_idx": idx,
+        }
+        for col in FEATURE_COLS:
+            val = row.get(col)
+            sig[col] = float(val) if pd.notna(val) else None
+        for col in CEI_FEATURE_COLS:
+            val = row.get(col)
+            sig[col] = float(val) if pd.notna(val) else None
+        signals.append(sig)
+
+    return signals
+
+
+def _watchlist_symbols(conn: sqlite3.Connection, name: str) -> list[str]:
+    """Return symbols in a named watchlist."""
+    rows = conn.execute("""
+        SELECT wi.symbol FROM watchlist_items wi
+        JOIN watchlists w ON w.id = wi.watchlist_id
+        WHERE UPPER(w.name) = UPPER(?)
+        ORDER BY wi.symbol
+    """, (name,)).fetchall()
+    return [r[0] for r in rows]
+
+
+def _compute_cei_exit_metrics(
+    ledger: pd.DataFrame,
+    signals: list[dict],
+) -> list[dict]:
+    """Compute entry-to-exit returns using CEI reversal + CWVAP confirmation.
+
+    Exit rules (compound — both conditions must be true):
+      Demand — exit when CEI < 0 (evidence flipped) AND close < CWVAP
+      Supply — exit when CEI > 0 (evidence flipped) AND close > CWVAP
+
+    Supply gate: only act on Supply signals where entry price is below
+    CWVAP (bearish context — trend already working in our favour). Supply
+    signals above CWVAP are still shown in the UI but excluded from
+    exit metrics (exit_* fields set to None).
+
+    Metrics per signal: exit_ret, exit_mfe, exit_mae, exit_bars, exit_hit.
+    """
+    closes = ledger["close"].values
+    highs = ledger["high"].values
+    lows = ledger["low"].values
+    cei_vals = ledger["cei"].values if "cei" in ledger.columns else None
+    cwvap_vals = ledger["cwvap"].values if "cwvap" in ledger.columns else None
+    n = len(closes)
+
+    for sig in signals:
+        idx = sig["_idx"]
+        entry = sig["entry_close"]
+        is_demand = sig["signal_type"] == "Demand"
+
+        if cei_vals is None or cwvap_vals is None or idx >= n - 1:
+            sig["exit_ret"] = None
+            sig["exit_mfe"] = None
+            sig["exit_mae"] = None
+            sig["exit_bars"] = None
+            sig["exit_hit"] = None
+            continue
+
+        entry_cwvap = cwvap_vals[idx]
+
+        # Supply gate: only act when price is below CWVAP at entry
+        if not is_demand and (np.isnan(entry_cwvap) or entry >= entry_cwvap):
+            sig["exit_ret"] = None
+            sig["exit_mfe"] = None
+            sig["exit_mae"] = None
+            sig["exit_bars"] = None
+            sig["exit_hit"] = None
+            continue
+
+        # Scan forward for exit condition
+        # Demand: compound — CEI < 0 AND close < CWVAP
+        # Supply (below CWVAP entries): CEI > 0 alone (distribution over)
+        exit_idx = None
+        for j in range(idx + 1, n):
+            cei_j = cei_vals[j]
+            close_j = closes[j]
+            cwvap_j = cwvap_vals[j]
+
+            if np.isnan(cei_j):
+                continue
+
+            if is_demand and not np.isnan(cwvap_j) and cei_j < 0 and close_j < cwvap_j:
+                exit_idx = j
+                break
+            elif not is_demand and cei_j > 0:
+                exit_idx = j
+                break
+
+        if exit_idx is None:
+            # No exit triggered — signal still open
+            sig["exit_ret"] = None
+            sig["exit_mfe"] = None
+            sig["exit_mae"] = None
+            sig["exit_bars"] = None
+            sig["exit_hit"] = None
+            continue
+
+        # Return (directional)
+        exit_close = closes[exit_idx]
+        ret = ((exit_close / entry) - 1) * 100
+        if not is_demand:
+            ret = -ret
+        sig["exit_ret"] = round(ret, 4)
+        sig["exit_bars"] = exit_idx - idx
+        sig["exit_hit"] = 1 if ret > 0 else 0
+
+        # MFE / MAE over holding period
+        fwd_highs = highs[idx + 1: exit_idx + 1]
+        fwd_lows = lows[idx + 1: exit_idx + 1]
+
+        if len(fwd_highs) == 0:
+            sig["exit_mfe"] = 0.0
+            sig["exit_mae"] = 0.0
+            continue
+
+        if is_demand:
+            mfe = ((fwd_highs.max() / entry) - 1) * 100
+            mae = ((fwd_lows.min() / entry) - 1) * 100
+        else:
+            mfe = ((entry - fwd_lows.min()) / entry) * 100
+            mae = ((fwd_highs.max() - entry) / entry) * 100
+
+        sig["exit_mfe"] = round(mfe, 4)
+        sig["exit_mae"] = round(mae, 4)
 
     return signals
 
@@ -308,6 +477,42 @@ def _print_report(conn: sqlite3.Connection, th_hash: str, run_date: str) -> None
     for label, subset in [("ALL", df), ("DEMAND", demand), ("SUPPLY", supply)]:
         _print_hit_table(label, subset)
 
+    # CEI slope-exit returns
+    if "exit_hit" in df.columns and df["exit_hit"].notna().any():
+        print(f"\n  --- CEI VALUE-EXIT (hold until CEI reverses + price crosses CWVAP) ---")
+        for label, subset in [("ALL", df), ("DEMAND", demand), ("SUPPLY", supply)]:
+            valid = subset[subset["exit_hit"].notna()]
+            if valid.empty:
+                continue
+            hit_rate = valid["exit_hit"].mean() * 100
+            avg_ret = valid["exit_ret"].mean()
+            avg_mfe = valid["exit_mfe"].dropna().mean()
+            avg_mae = valid["exit_mae"].dropna().mean()
+            avg_bars = valid["exit_bars"].mean()
+            med_bars = valid["exit_bars"].median()
+            print(
+                f"    {label:<8s}: hit={hit_rate:5.1f}%  avg_ret={avg_ret:+6.2f}%  "
+                f"avg_mfe={avg_mfe:+6.2f}%  avg_mae={avg_mae:+6.2f}%  "
+                f"avg_hold={avg_bars:.1f}bars  med_hold={med_bars:.0f}bars  "
+                f"(n={len(valid)})"
+            )
+
+        # Slope-exit by tier
+        print(f"\n  --- CEI VALUE-EXIT BY VOLUME TIER ---")
+        for tier in ["Large", "Mid", "Small", "Micro"]:
+            tier_df = df[(df["volume_tier"] == tier) & df["exit_hit"].notna()]
+            if tier_df.empty:
+                continue
+            hit_rate = tier_df["exit_hit"].mean() * 100
+            avg_ret = tier_df["exit_ret"].mean()
+            avg_bars = tier_df["exit_bars"].mean()
+            n_sym = tier_df["symbol"].nunique()
+            print(
+                f"    {tier:<8s}: hit={hit_rate:5.1f}%  avg_ret={avg_ret:+6.2f}%  "
+                f"avg_hold={avg_bars:.1f}bars  "
+                f"(n={len(tier_df)}, {n_sym} symbols)"
+            )
+
     # Tier breakdown
     print(f"\n  --- BY VOLUME TIER (5d horizon) ---")
     for tier in ["Large", "Mid", "Small", "Micro"]:
@@ -383,6 +588,9 @@ def main():
     parser.add_argument("--symbol", type=str, default="", help="Run for a single symbol")
     parser.add_argument("--limit", type=int, default=0, help="Limit symbols (0=all)")
     parser.add_argument("--min-days", type=int, default=MIN_CALENDAR_DAYS, help="Min calendar days of data")
+    parser.add_argument("--source", type=str, default="scoring", choices=["scoring", "cei"],
+                        help="Signal source: 'scoring' (per-bar integrated_state) or 'cei' (CEI threshold crossings)")
+    parser.add_argument("--watchlist", type=str, default="", help="Filter to symbols in a named watchlist")
     args = parser.parse_args()
 
     conn = get_db_connection()
@@ -394,13 +602,21 @@ def main():
 
     if args.symbol:
         symbols = [args.symbol.upper()]
+    elif args.watchlist:
+        symbols = _watchlist_symbols(conn, args.watchlist)
+        if not symbols:
+            print(f"ERROR: Watchlist '{args.watchlist}' not found or empty.")
+            return
     else:
         symbols = _eligible_symbols(conn, args.min_days)
         if args.limit > 0:
             symbols = symbols[:args.limit]
 
-    print(f"Signal Quality Report")
+    source_label = "CEI markers" if args.source == "cei" else "Per-bar scoring"
+    print(f"Signal Quality Report  [{source_label}]")
     print(f"  Symbols: {len(symbols)}  |  Thresholds: {th_hash}  |  Date: {run_date}")
+    if args.watchlist:
+        print(f"  Watchlist: {args.watchlist}")
     print(f"  Horizons: {HORIZONS} trading days")
     print()
 
@@ -432,10 +648,17 @@ def main():
             result = engine.run()
             ledger = result.ledger
 
-            signals = _extract_signals(ledger, sym)
+            if args.source == "cei":
+                signals = _extract_cei_signals(ledger, sym)
+            else:
+                signals = _extract_signals(ledger, sym)
             if not signals:
                 _progress(i, len(symbols), sym, 0, t_start)
                 continue
+
+            # CEI exit metrics must run before forward metrics (which pops _idx)
+            if args.source == "cei":
+                signals = _compute_cei_exit_metrics(ledger, signals)
 
             signals = _compute_forward_metrics(ledger, signals)
 
@@ -452,6 +675,7 @@ def main():
             for sig in signals:
                 sig["run_date"] = run_date
                 sig["thresholds_hash"] = th_hash
+                sig["signal_source"] = args.source
 
             _insert_signals(conn, signals)
             total_signals += len(signals)
@@ -509,6 +733,12 @@ def _insert_signals(conn: sqlite3.Connection, signals: list[dict]) -> None:
         "price_distance_30", "velocity_30_norm", "cwc_slope",
         "psz_delta_3d", "psz_delta_5d",
         "rdv_sz_delta_3d", "rdv_sz_delta_5d",
+        # CEI columns
+        "cei", "cei_raw", "cei_slope",
+        "accum_div", "distrib_div",
+        "signal_source",
+        # CEI slope-exit metrics
+        "exit_ret", "exit_mfe", "exit_mae", "exit_bars", "exit_hit",
         "run_date", "thresholds_hash",
     ]
     placeholders = ", ".join(["?"] * len(cols))

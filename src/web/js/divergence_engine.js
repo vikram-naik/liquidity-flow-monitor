@@ -17,6 +17,7 @@
     var PANEL_DEFINITIONS = {
         "slopes": { label: "Price / RDV Z-Scores" },
         "coherence": { label: "Coherence" },
+        "cei": { label: "CEI" },
         "rdv": { label: "RDV" },
         "cwc": { label: "CWC" },
         "rdv_consistency": { label: "RDV Consistency" },
@@ -32,7 +33,7 @@
             var conf = JSON.parse(localStorage.getItem("de_panel_config"));
             if (Array.isArray(conf) && conf.length > 0) return conf;
         } catch (e) {}
-        return ["slopes", "coherence"]; // defaults
+        return ["slopes", "coherence", "cei"]; // defaults
     }
 
     var params = new URLSearchParams(window.location.search);
@@ -155,6 +156,7 @@
         var markerList = [];
         var timeToIndex = {};
         var pZ = [], rZ = [], cRaw = [], cSmooth = [];
+        var ceiArr = [], ceiSlopeArr = [];
         var rdvArr = [], cwcArr = [], rdvConsArr = [], atrArr = [], distArr = [], delPctArr = [], pddArr = [], mcsArr2d = [], mcsArr4d = [], mcsArr9d = [];
 
         for (var i = 0; i < ledger.length; i++) {
@@ -187,6 +189,8 @@
             if (r.mcs_delta_2d != null) mcsArr2d.push({ time: t, value: r.mcs_delta_2d }); else mcsArr2d.push({ time: t });
             if (r.mcs_delta_4d != null) mcsArr4d.push({ time: t, value: r.mcs_delta_4d }); else mcsArr4d.push({ time: t });
             if (r.mcs_delta_9d != null) mcsArr9d.push({ time: t, value: r.mcs_delta_9d }); else mcsArr9d.push({ time: t });
+            if (r.cei != null) ceiArr.push({ time: t, value: r.cei }); else ceiArr.push({ time: t });
+            if (r.cei_slope != null) ceiSlopeArr.push({ time: t, value: r.cei_slope }); else ceiSlopeArr.push({ time: t });
 
             if (r.delivery_qty != null) {
                 var mfm = r.mfm != null ? r.mfm : 0;
@@ -197,7 +201,7 @@
             }
         }
 
-        // --- Marker Logic (Demand/Supply Conviction Markers) ---
+        // --- Marker Logic (CEI-based Demand/Supply Markers) ---
         var stateColorMap = {
             "Demand": "#00e676",
             "Supply": "#ef5350"
@@ -209,17 +213,17 @@
             var t = r.date ? (r.date.includes(" ") ? r.date.split(" ")[0] : r.date) : null;
             if (!t) continue;
 
-            var stateStr = r.integrated_state || "No Signal";
-            if (stateStr === "Demand" || stateStr === "Supply") {
-                var isDemand = stateStr === "Demand";
-                var sigStr = r.signal_strength != null ? Math.round(r.signal_strength) : "";
+            var ceiSig = r.cei_signal;
+            if (ceiSig === "Demand" || ceiSig === "Supply") {
+                var isDemand = ceiSig === "Demand";
+                var ceiIntensity = r.cei_slope != null ? Math.round(Math.abs(r.cei_slope) * 1000) : "";
                 markerList.push({
                     time: t,
                     position: isDemand ? "belowBar" : "aboveBar",
-                    color: stateColorMap[stateStr],
+                    color: stateColorMap[ceiSig],
                     shape: isDemand ? "arrowUp" : "arrowDown",
-                    text: sigStr !== "" ? String(sigStr) : "",
-                    stateText: stateStr + (sigStr !== "" ? " (" + sigStr + ")" : "")
+                    text: ceiIntensity !== "" ? String(ceiIntensity) : "",
+                    stateText: ceiSig + (ceiIntensity !== "" ? " (CEI " + ceiIntensity + ")" : "")
                 });
             }
         }
@@ -328,6 +332,26 @@
                 sCSmooth.setData(cSmooth);
                 legConfig.push({ api: sCRaw, label: "Coh Raw", col: "coherence_raw", color: "#b39ddb", dashed: true });
                 legConfig.push({ api: sCSmooth, label: "Coh", col: "coherence", color: "#ce93d8" });
+            } else if (panelKey === "cei") {
+                // CEI histogram (green above zero, red below) + line + zero ref
+                var ceiHistData = ceiArr.map(function(d) {
+                    if (d.value == null) return { time: d.time };
+                    return {
+                        time: d.time, value: d.value,
+                        color: d.value >= 0 ? "rgba(38,166,154,0.45)" : "rgba(239,83,80,0.45)"
+                    };
+                });
+                var sCeiHist = c.addSeries(LC.HistogramSeries, { priceScaleId: "cei", priceLineVisible: false, lastValueVisible: false });
+                sCeiHist.setData(ceiHistData);
+                c.priceScale("cei").applyOptions({ visible: false });
+                var sCeiLine = c.addSeries(LC.LineSeries, { color: "#64ffda", lineWidth: 2, lastValueVisible: false, priceLineVisible: false });
+                sCeiLine.setData(ceiArr);
+                var sCeiSlope = c.addSeries(LC.LineSeries, { color: "#b388ff", lineWidth: 1, lineStyle: 2, lastValueVisible: false, priceLineVisible: false });
+                sCeiSlope.setData(ceiSlopeArr);
+                var sZero = c.addSeries(LC.LineSeries, { color: "#424242", lineWidth: 1, lineStyle: 2, lastValueVisible: false, priceLineVisible: false });
+                sZero.setData(ceiArr.map(d => ({ time: d.time, value: 0 })));
+                legConfig.push({ api: sCeiLine, label: "CEI", col: "cei", color: "#64ffda" });
+                legConfig.push({ api: sCeiSlope, label: "CEI Slope", col: "cei_slope", color: "#b388ff", dashed: true });
             } else if (panelKey === "rdv") {
                var s1 = c.addSeries(LC.LineSeries, { color: "#81c784", lineWidth: 2, lastValueVisible: false, priceLineVisible: false });
                s1.setData(rdvArr);
@@ -512,9 +536,12 @@
     function buildSidebarAnnotations(l) {
         if (!l) return;
         function fmt(v, d) { return (v != null && typeof v === "number" && !isNaN(v)) ? v.toFixed(d || 2) : (v || "\u2014"); }
-        var intState = l.integrated_state || "No Signal";
+        var ceiState = l.cei_signal || null;
+        var intState = ceiState || "No Signal";
         var scoringDir = l.scoring_direction || null;
-        var sigStr = l.signal_strength != null ? " (" + fmt(l.signal_strength, 1) + ")" : "";
+        var ceiVal = l.cei != null ? fmt(l.cei, 3) : null;
+        var ceiIntensity = l.cei_slope != null ? Math.round(Math.abs(l.cei_slope) * 1000) : null;
+        var sigStr = ceiState ? " (" + ceiIntensity + ")" : "";
         // For No Signal, append the scoring direction so user knows which side was evaluated
         if (intState === "No Signal" && scoringDir) {
             sigStr += " " + scoringDir;
@@ -524,9 +551,11 @@
         var regime = l.regime || "\u2014";
         var regimeColor = regime === "uptrend" ? "#3fb950" : (regime === "downtrend" ? "#ef5350" : (regime === "transition" ? "#d29922" : "#8b949e"));
 
+        var ceiColor = l.cei != null ? (l.cei >= 0 ? "#3fb950" : "#ef5350") : "#8b949e";
         document.getElementById("state-table").innerHTML =
             "<tr><td colspan='2' style='text-align:center; padding: 10px; background: rgba(0,0,0,0.2);'><strong style='color:" + stateColor + "'>" + intState + sigStr + "</strong></td></tr>" +
             "<tr><td>Date</td><td class='val'>" + (l.date ? l.date.split("T")[0] : "\u2014") + "</td></tr>" +
+            "<tr><td>CEI</td><td class='val' style='color:" + ceiColor + "'>" + (ceiVal || "\u2014") + "</td></tr>" +
             "<tr><td>Regime</td><td class='val' style='color:" + regimeColor + "'>" + regime + "</td></tr>";
 
         // Scoring breakdown (replaces gate diagnostics)

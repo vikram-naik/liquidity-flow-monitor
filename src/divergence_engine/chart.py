@@ -34,6 +34,9 @@ UI_COLUMNS = [
     "scoring_details",
     "demand_strength", "supply_strength",
     "demand_details", "supply_details",
+    # CEI (Module 7.5)
+    "cei_raw", "cei", "cei_slope", "cei_signal",
+    "accum_div", "distrib_div",
 ]
 
 

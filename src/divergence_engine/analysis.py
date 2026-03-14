@@ -148,6 +148,14 @@ def compute_trend_participation(
     for w in rsz_delta_windows:
         df[f"rsz_delta_{w}d"] = df["rdv_slope_z"].diff(w).fillna(0.0).round(4)
 
+    # Accumulation/Distribution Divergence features (CEI inputs)
+    # accum_div: positive when price is falling AND delivery is rising
+    # distrib_div: positive when price is rising AND delivery is falling
+    psz = df["price_slope_z"]
+    rsz = df["rdv_slope_z"]
+    df["accum_div"] = (rsz.clip(lower=0) * (-psz).clip(lower=0)).round(4)
+    df["distrib_div"] = ((-rsz).clip(lower=0) * psz.clip(lower=0)).round(4)
+
     p_a = _pillar_a_slope_alignment(df["price_slope_z"], df["rdv_slope_z"])
     p_b = _pillar_b_mcs_confirmation(df[mcs_col], df[mcs_slope_col], df["price_slope_z"])
     p_c = _pillar_c_cwc_coherence(df[cwc_slope_col])

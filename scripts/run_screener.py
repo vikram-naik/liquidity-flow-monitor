@@ -3,10 +3,10 @@
 run_screener.py — NIFTY 500 Stock Screener
 ──────────────────────────────────────────────────────────────────────────
 Scans all NIFTY 500 symbols through the Divergence Engine and populates
-two screener watchlists:
+two screener watchlists based on CEI signals:
 
-    SCR: Demand  — Demand markers with strength >= threshold
-    SCR: Supply  — Supply markers with strength >= threshold
+    SCR: Long   — CEI Demand signal with intensity >= threshold
+    SCR: Short  — CEI Supply signal with intensity >= threshold
 
 Usage:
     python scripts/run_screener.py                  # full NIFTY 500 scan
@@ -32,10 +32,10 @@ from src.divergence_engine.engine import DivergenceEngine
 # Screener Configuration
 # ─────────────────────────────────────────────────────────────────────────────
 
-STRENGTH_THRESHOLD = 50
+CEI_INTENSITY_THRESHOLD = 2  # abs(cei_slope) × 1000 >= 2
 
-DEMAND_WL_NAME = "SCR: Demand"
-SUPPLY_WL_NAME = "SCR: Supply"
+LONG_WL_NAME = "SCR: Long"
+SHORT_WL_NAME = "SCR: Short"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -105,7 +105,8 @@ def main():
     parser = argparse.ArgumentParser(description="NIFTY 500 Stock Screener")
     parser.add_argument("--limit", type=int, default=0, help="Limit symbols to scan (0 = all)")
     parser.add_argument("--dry-run", action="store_true", help="Print results without writing to DB")
-    parser.add_argument("--min-strength", type=float, default=STRENGTH_THRESHOLD, help="Minimum strength score")
+    parser.add_argument("--min-intensity", type=float, default=CEI_INTENSITY_THRESHOLD,
+                        help="Minimum CEI intensity (abs(cei)×100)")
     args = parser.parse_args()
 
     conn = get_db_connection()
@@ -113,11 +114,11 @@ def main():
     if args.limit > 0:
         symbols = symbols[: args.limit]
 
-    print(f"Screening {len(symbols)} symbols (strength >= {args.min_strength})...")
+    print(f"Screening {len(symbols)} symbols (CEI intensity >= {args.min_intensity})...")
     print()
 
-    demand_hits: list[tuple[str, str, float]] = []
-    supply_hits: list[tuple[str, str, float]] = []
+    long_hits: list[tuple[str, float, float]] = []   # (symbol, intensity, cei)
+    short_hits: list[tuple[str, float, float]] = []
     errors: list[tuple[str, str]] = []
 
     t_start = time.perf_counter()
@@ -128,22 +129,24 @@ def main():
             result = engine.run()
             latest = result.latest
 
-            integrated_state = latest.get("integrated_state", "No Signal")
-            strength = latest.get("signal_strength") or 0.0
+            cei_signal = latest.get("cei_signal")
+            cei_slope = latest.get("cei_slope") or 0.0
+            intensity = abs(cei_slope) * 1000
 
-            if strength >= args.min_strength:
-                if integrated_state == "Demand":
-                    demand_hits.append((sym, integrated_state, strength))
-                elif integrated_state == "Supply":
-                    supply_hits.append((sym, integrated_state, strength))
+            if cei_signal and intensity >= args.min_intensity:
+                if cei_signal == "Demand":
+                    long_hits.append((sym, intensity, cei_slope))
+                elif cei_signal == "Supply":
+                    short_hits.append((sym, intensity, cei_slope))
 
             # Progress indicator
+            label = cei_signal or "—"
             elapsed = time.perf_counter() - t_start
             rate = i / elapsed if elapsed > 0 else 0
             eta = (len(symbols) - i) / rate if rate > 0 else 0
             print(
-                f"\r  [{i}/{len(symbols)}] {sym:<20s} -> {integrated_state:<15s} "
-                f"conv={strength:.1f}  ({rate:.1f} sym/s, ETA {eta:.0f}s)",
+                f"\r  [{i}/{len(symbols)}] {sym:<20s} -> {label:<10s} "
+                f"slope={cei_slope:+.5f}  ({rate:.1f} sym/s, ETA {eta:.0f}s)",
                 end="", flush=True,
             )
         except Exception as e:
@@ -159,19 +162,19 @@ def main():
     print(f"  SCREENER RESULTS  ({elapsed_total:.1f}s)")
     print(f"{'=' * 70}")
 
-    # Sort by strength descending
-    demand_hits.sort(key=lambda x: -x[2])
-    supply_hits.sort(key=lambda x: -x[2])
+    # Sort by intensity descending
+    long_hits.sort(key=lambda x: -x[1])
+    short_hits.sort(key=lambda x: -x[1])
 
-    print(f"\n  {DEMAND_WL_NAME} ({len(demand_hits)} stocks)")
+    print(f"\n  {LONG_WL_NAME} ({len(long_hits)} stocks)")
     print(f"  {'-' * 50}")
-    for sym, state, conv in demand_hits:
-        print(f"    {sym:<20s} {state:<15s} {conv:.1f}")
+    for sym, intensity, slope in long_hits:
+        print(f"    {sym:<20s} slope={slope:+.5f}  intensity={intensity:.1f}")
 
-    print(f"\n  {SUPPLY_WL_NAME} ({len(supply_hits)} stocks)")
+    print(f"\n  {SHORT_WL_NAME} ({len(short_hits)} stocks)")
     print(f"  {'-' * 50}")
-    for sym, state, conv in supply_hits:
-        print(f"    {sym:<20s} {state:<15s} {conv:.1f}")
+    for sym, intensity, slope in short_hits:
+        print(f"    {sym:<20s} slope={slope:+.5f}  intensity={intensity:.1f}")
 
     if errors:
         print(f"\n  Errors ({len(errors)})")
@@ -183,15 +186,15 @@ def main():
     if args.dry_run:
         print(f"\n  [DRY RUN] No changes written to database.")
     else:
-        demand_wl_id = _ensure_watchlist(conn, DEMAND_WL_NAME)
-        supply_wl_id = _ensure_watchlist(conn, SUPPLY_WL_NAME)
+        long_wl_id = _ensure_watchlist(conn, LONG_WL_NAME)
+        short_wl_id = _ensure_watchlist(conn, SHORT_WL_NAME)
 
-        _delete_insert_items(conn, demand_wl_id, [s[0] for s in demand_hits])
-        _delete_insert_items(conn, supply_wl_id, [s[0] for s in supply_hits])
+        _delete_insert_items(conn, long_wl_id, [s[0] for s in long_hits])
+        _delete_insert_items(conn, short_wl_id, [s[0] for s in short_hits])
 
         print(f"\n  Watchlists updated:")
-        print(f"     {DEMAND_WL_NAME}: {len(demand_hits)} symbols (wl_id={demand_wl_id})")
-        print(f"     {SUPPLY_WL_NAME}: {len(supply_hits)} symbols (wl_id={supply_wl_id})")
+        print(f"     {LONG_WL_NAME}: {len(long_hits)} symbols (wl_id={long_wl_id})")
+        print(f"     {SHORT_WL_NAME}: {len(short_hits)} symbols (wl_id={short_wl_id})")
 
     conn.close()
 

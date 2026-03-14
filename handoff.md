@@ -4,8 +4,40 @@
 The **Unified Weighted Scoring Model (v2.2)** is live. v2.2 adds intensity
 discrimination via power-law scoring curves and a convergence multiplier.
 
-**Current focus:** Run signal quality report (Run 5) with v2.2 scoring to
-measure impact of intensity changes on hit rates.
+**Current focus:** **CEI signal fine-tuning (Phase 3.5)** — reducing false positives
+from noisy zero-crossings, rebalancing CEI feature weights with empirical data.
+
+**Completed today (2026-03-13):**
+1. **Delivery-Profile Value Area boundaries** — new `va_high`/`va_low` columns in
+   `cwvap.py`. Uses TPO-style expansion from POC bin: accumulate delivery outward until
+   70% (`va_pct`) of total delivery is captured. Per-window (`va_high_n`/`va_low_n`)
+   then composite via DVL-rate weighted average. Also computes `va_profile_width`
+   (VA width / ATR). These stay anchored at the consolidation zone because that's where
+   delivery actually happened — unlike Bollinger-style CVAH/CVAL which widen immediately
+   on breakout. Existing CVAH/CVAL kept as-is for `_classify_location` and `position_score`.
+2. **VA Spring redesigned as Marker Modifier (Design A)** — removed VA Spring from the
+   CEI evidence sum (was 5% weight, contributed ~0.016 to `cei_raw` — negligible, could
+   not overcome EMA lag). Now operates as a **marker override**: when spring score
+   exceeds `spring_threshold` (0.20), the marker logic checks `cei_raw` zero-crossings
+   instead of EMA-smoothed `cei`, bypassing smoothing lag on breakout bars. Philosophy:
+   spring energy is a discrete event (breakout after long containment), not a gradual
+   trend — running it through EMA destroys its timing value.
+   - GESHIP: Demand marker moved from Jan 30 → **Jan 28** (actual breakout bar, +5%)
+   - ABCAPITAL: Supply marker moved from Mar 11 → **Mar 4** (actual breakdown bar, -5%)
+3. Signal trigger changed from slope to CEI zero-crossings
+4. CEI feature max_value recalibration (P90-based)
+5. CEI weight rebalance: PSZ 25%→15%, MCS 20%→30%
+6. Cumulative divergence: rolling 20-bar sum
+7. RSZ–PSZ per-window confirmation: dampened 0.2× on sign disagreement
+
+**Previous session (complete):**
+- CEI markers replace scoring markers, slope zero-crossings, Supply CWVAP gate,
+  marker intensity, screener rewrite, EngineResult.latest expansion.
+
+**Next:**
+- VA trendlines on OHLC chart (draw va_high/va_low on Panel 1 for visual validation)
+- Intensity calculation to move into cei.py (currently in JS/screener) — parked
+- Run 5 signal quality report with current markers
 
 ---
 
@@ -176,9 +208,150 @@ PSZ 15%, RSZ 10%, CWC 5%, Coherence 5%, Regime 5%).
 
 ---
 
+## Cumulative Evidence Index (CEI) — Phases 1-2 Complete + Position Tuning
+
+### What it does
+Rolling net-directional-evidence score centered at zero. Positive = Demand evidence
+building (accumulation), negative = Supply evidence building (distribution).
+
+### Architecture
+- **Module 7.5** in pipeline: `src/divergence_engine/cei.py` — runs after scoring (Module 7)
+- Config: `cei` section in `default_rules.yaml` — all weights/params config-driven
+- Outputs: `cei_raw` (per-bar signed evidence × structure mult), `cei` (EMA smoothed), `cei_slope` (linreg)
+
+### CEI Formula
+```
+signed_score_i = clip(value / max_value, -1, +1)      # per feature
+pos_score      = f(close, cwvap, cpoc)                 # position awareness
+evidence       = Σ(weight_i × signed_score_i) + pos_weight × pos_score
+structure_mult = (0.5 + 0.5×coherence) × (0.5 + 0.5×cwc)  # 0.25–1.0
+cei_raw        = evidence × structure_mult
+cei            = EMA(cei_raw, span=10)
+cei_slope      = linreg_slope(cei, window=5)
+
+# Marker emission (with spring override):
+spring_score   = va_dwell(60) × breakout_direction     # computed separately
+if |spring_score| >= 0.20:
+    marker checks cei_raw zero-crossing               # bypass EMA lag
+else:
+    marker checks cei zero-crossing                    # normal smoothed path
+```
+
+### Feature weights (updated 2026-03-13)
+| Group | Weight | Features | max_value |
+|-------|--------|----------|-----------|
+| Price Δ | 15% | PSZ Δ 2d/4d/9d | 0.25/0.45/0.55 (P90) |
+| Delivery Δ | 20% | RSZ Δ 2d/4d/9d (dampened 0.2× when PSZ disagrees) | 0.23/0.35/0.40 (P90) |
+| Money Flow Δ | 30% | MCS Δ 2d/4d/9d | 0.50 |
+| Cumul Divergence | 15% | rolling 20-bar sum(accum_div - distrib_div) | 0.35 (P90) |
+| Position | 5% | CWVAP/CPOC price-position score | — |
+| Levels | 10% | PSZ, RSZ (signed) | 0.40 |
+| Macro Volume | 5% | CDVL | 0.15 |
+
+**Note:** VA Spring is **not** in the evidence sum. It operates as a marker modifier
+(see below).
+
+### Position Score (`position_score` in YAML, `_compute_position_scores()` in cei.py)
+Makes CEI aware of where price sits relative to institutional cost basis. Prevents
+false positives when delivery evidence is real but price hasn't confirmed.
+
+**CWVAP component (60%):** Percentage-based piecewise curve.
+- Sweet spot: -3% to 0% below CWVAP (peaks at -1.5%) → score 0.5 to 1.0
+- Above CWVAP: 0% to +6% → decays 0.5 to -0.5
+- Below value: -3% to -6% → decays 0.5 to -0.3
+- Deep below: -6% to -12% → decays -0.3 to -1.0
+
+**CPOC component (40%):** Linear ramp, saturates at ±5%. Above CPOC = positive (Demand).
+
+All thresholds config-driven for future UI settings exposure.
+
+**Backtest results (20 symbols, 2025-01 to 2026-03):**
+- Demand sweet spot (-3% to 0% CWVAP): 58.4% → **64.5%** hit rate at 10d
+- Demand false positive zone (<-3%): 51.4% → **35.5%** (correctly flagged)
+- Supply overall: 44.7% → **48.1%** hit rate (+3.4pp)
+- False positive zones (CEI>0 while price <-3% CWVAP): 421 → **288** bars (-32%)
+
+**Key scenario improvements:**
+- TCS (Feb 26): CEI no longer crosses positive during -10% decline
+- HDFCLIFE: CEI crosses negative Mar 11 (was Mar 12 — 1 bar earlier)
+- FACT breakout: CEI still goes positive on Mar 10, surges to +0.17 by Mar 12
+
+### Delivery-Profile Value Area (`cwvap.py`)
+Proper delivery-weighted VA boundaries replacing Bollinger-style CVAH/CVAL for VA Spring.
+
+**Problem:** CVAH/CVAL = `DVWAP ± rolling_std(close)` — widen immediately on breakout,
+destroying the box signal (GESHIP CVAH jumped 1145→1215 in 2 bars after breakout).
+
+**Solution:** Per-window TPO Value Area expansion from POC bin:
+1. Start with POC bin (argmax of delivery histogram)
+2. Expand outward: include adjacent bin with more delivery (tie → go lower)
+3. Stop when accumulated delivery >= `va_pct` (70%) of total
+4. `va_low_n = bin_edges[lo_idx]`, `va_high_n = bin_edges[hi_idx + 1]`
+5. Composite: DVL-rate weighted average across windows (same as CPOC)
+6. `va_profile_width = (va_high - va_low) / atr_20`
+
+**Config:** `settings.va_pct: 0.70` in YAML, passed to `CompositeVWAP(va_pct=...)`.
+
+**Columns:** `va_high_n`/`va_low_n` (per-window), `va_high`/`va_low` (composite),
+`va_profile_width`. Existing `cvah`/`cval` kept for `_classify_location` and `position_score`.
+
+### VA Spring — Marker Modifier (Design A)
+VA Spring detects breakouts after long VA containment. Originally a 5% weighted evidence
+term in the CEI sum — but at that weight it contributed ~0.016 to `cei_raw`, couldn't
+overcome EMA(10) inertia, and produced identical marker timing to having no spring at all.
+
+**Key insight:** Spring energy is a **discrete event** (breakout after long containment),
+not a gradual trend. Running it through EMA destroys its timing value. Delta features
+(PSZ, RSZ, MCS) need EMA filtering because they're noisy. Spring isn't noisy — it's
+either releasing or it isn't.
+
+**Design A — Spring Override:** When spring score exceeds `spring_threshold` (0.20), the
+marker logic checks `cei_raw` zero-crossings instead of EMA-smoothed `cei`:
+```
+if |spring_score| >= spring_threshold:
+    check cei_raw zero-crossing (bypasses EMA lag)
+else:
+    check cei (normal EMA-smoothed path)
+```
+
+**Config:** `cei.va_spring.spring_threshold: 0.20` — no `weight` key (not in evidence sum).
+
+**Validated results:**
+- GESHIP: Demand marker **Jan 28** (was Jan 30) — actual breakout bar (+5% move)
+- ABCAPITAL: Supply marker **Mar 4** (was Mar 11) — actual breakdown bar (-5% move)
+
+### Chart panel (`divergence_engine.js`)
+- Green/red histogram (area fill) + teal CEI line + purple dashed slope line + zero ref
+- Enabled by default in `getActivePanels()`
+
+### Phase status
+- **Phase 1** ✓ — Feature engineering + computation
+- **Phase 2** ✓ — Chart panel visualization
+- **Phase 2.5** ✓ — Position score tuning (CWVAP/CPOC awareness + CDVL rebalance)
+- **Phase 3** ✓ — CEI markers + screener (COMPLETE)
+  - ✓ `cei_signal`: CEI zero-crossings + cooldown (was slope zero-crossings)
+  - ✓ YAML config: `cooldown_bars: 5`, `supply_below_cwvap: true`
+  - ✓ JS markers: CEI replaces scoring markers
+  - ✓ Screener: `SCR: Long` / `SCR: Short` via CEI signals
+  - ✓ Supply CWVAP gate: Supply only fires when close < cwvap
+  - ✓ `EngineResult.latest` includes `close`, `cei`, `cei_slope`, `cei_signal`
+- **Phase 3.5** (IN PROGRESS) — CEI signal fine-tuning
+  - ✓ Signal trigger: slope zero-crossings → CEI zero-crossings
+  - ✓ max_value recalibration (P90-based from Nifty 50 empirical data)
+  - ✓ Weight rebalance: PSZ 25%→15%, MCS 20%→30%
+  - ✓ Cumulative divergence (rolling 20-bar sum replaces single-bar)
+  - ✓ RSZ–PSZ per-window confirmation (dampening 0.2× on sign disagreement)
+  - ✓ Delivery-Profile VA boundaries (`va_high`/`va_low`) — TPO 70% delivery volume area
+  - ✓ VA Spring → Marker Modifier (Design A): bypasses EMA on spring breakout bars
+  - ○ Intensity calculation in cei.py (parked)
+- **Phase 4** — Future: Trend-riding state machine (entry vs continuation markers),
+  phase machine + intensity labels for screener
+
+---
+
 ## Other Live Features
 - **Trading Holidays** — `nse_trading_holidays` table, `is_trading_holiday()` checks
-- **Screener** — `scripts/run_screener.py`, `--min-strength` filter
+- **Screener** — `scripts/run_screener.py`, CEI-based (`SCR: Long` / `SCR: Short`), `--min-intensity` filter (default 2)
 - **Cache** — Redis-based, `de:` and `sq:` prefixes, `delete_pattern()` for bulk flush
 - **Dynamic Panels** — user-configurable chart sub-panels (PDD 30, MCS Delta, etc.) via Settings → Panels tab
 - **Signal Quality** — `scripts/signal_quality_report.py` + `/de/signal-quality` UI
@@ -193,10 +366,22 @@ PSZ 15%, RSZ 10%, CWC 5%, Coherence 5%, Regime 5%).
 ---
 
 ## Backlog
-- **Add `mfm` as scoring factor** — r=+0.071 for Demand specifically. Would be `directional`
-  (Demand wants positive MFM, Supply wants negative). Lower priority than mcs_delta.
+- **Trend-riding state machine** — After entry signal, track "Active Long/Short" state.
+  While price > CWVAP (Demand) or < CWVAP (Supply), subsequent slope crossings show
+  continuation markers (different shape/color) instead of new entry signals. Exit state
+  when close crosses CWVAP against the trade. Weekly regime can serve as confirmation
+  layer (weekly CEI too laggy, but weekly regime is stable). See GLENMARK Feb 16-Mar 12
+  example: 3 Demand markers fired in a single +11% trend that never dropped below CWVAP.
+- **Supply exit fine-tuning** — CEI MFE +4.43% but exits at -0.43%. Study HDFCLIFE + others
+  visually. Consider: slope-based early exit, trailing value distance, min-hold period.
+- **Add `accum_divergence` factor** — `max(0, RSZ) × max(0, -PSZ)`: positive when price↓ + delivery↑ (accumulation).
+  `directional` scoring (Demand wants positive, Supply wants negative). Discovered via FACT investigation
+  (Feb-Mar 2026): RSZ rising to +0.26 during price decline was missed because PSZ/RSZ use `abs_higher_is_better`
+  (direction-agnostic). Requires weight rebalancing + signal quality re-run.
+- **Run 5 signal quality report** — with slope-crossing CEI markers
 - **Multi-thread signal quality report** — per-symbol runs are independent/IO-bound, use ThreadPoolExecutor
 - **Tier-specific weights** — different factor weights for Large/Mid/Small/Micro tiers
+- **VA trendlines on OHLC chart** — draw `va_high`/`va_low` (delivery-profile) as trendlines on Panel 1 for visual validation of box detection and breakout/breakdown signals
 
 ## Dev Notes
 - Always use `venv/bin/python3` to run scripts

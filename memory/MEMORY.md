@@ -12,15 +12,16 @@ Always use `venv/bin/python3` to run scripts. Never use the system Python.
 - Key tables: `nse_delivery_log`, `corporate_actions` (516 rows), `watchlists` (12), `watchlist_items` (1,203), `user_settings`, `symbol_anchors`, `nse_trading_holidays`, `signal_quality`.
 
 ## Current Production Pipeline
-8-module pipeline in `src/divergence_engine/`:
+9-module pipeline in `src/divergence_engine/`:
 1. `base_calc.py` — ATR20 (Wilder), RDV, MFM, TP, MFM_TP
 1.5. `regime.py` — ADX/DMI market regime classification (uptrend/downtrend/notrend/transition)
 2. `dvl_ledger.py` — DVL, DVL_rate, Velocity (norm), Price_distance, ARS, PDD per window [10,30,60,120]
-3. `cwvap.py` — DVWAP_n, POC_n, CWVAP, CPOC, POC_spread, CVAH/CVAL, price_location
+3. `cwvap.py` — DVWAP_n, POC_n, va_high_n/va_low_n, CWVAP, CPOC, POC_spread, va_high/va_low (delivery-profile VA), CVAH/CVAL (Bollinger-style, kept for location classifier), price_location
 4. `cwc.py` — Cross-Window Coherence, CWC_delta, CWC_slope
 5. `mcs.py` — MCS, MCS_MFM, MCS_composite, MCS_composite_slope
-6. `analysis.py` — price_slope_z, rdv_slope_z, coherence_raw, coherence, psz_delta_3d/5d
+6. `analysis.py` — price_slope_z, rdv_slope_z, coherence_raw, coherence, psz_delta_3d/5d, accum_div, distrib_div
 7. `analysis_integrated.py` → delegates to `scoring/` package
+7.5. `cei.py` — Cumulative Evidence Index (CEI): rolling net-directional-evidence score, EMA-smoothed
 
 ### Unified Scoring Model (v2.2 — LIVE)
 Continuous factor scoring replaces binary gates. See `handoff.md` for full details.
@@ -46,6 +47,8 @@ Continuous factor scoring replaces binary gates. See `handoff.md` for full detai
 - Regime classifier: `src/divergence_engine/regime.py`
 - Scoring package: `src/divergence_engine/scoring/` (__init__.py, functions.py)
 - Analysis (delegates to scoring): `src/divergence_engine/analysis_integrated.py`
+- CEI module: `src/divergence_engine/cei.py`
+- CEI design doc: `CEI_PLAN.md`
 - Rule engine (legacy, unused): `src/divergence_engine/rule_engine.py`
 - Rules config: `src/divergence_engine/config/default_rules.yaml`
 - Chart data: `src/divergence_engine/chart.py`
@@ -78,6 +81,10 @@ Continuous factor scoring replaces binary gates. See `handoff.md` for full detai
 - `get()`, `set(key, value, ttl)`, `delete(key)`, `clear()`, `delete_pattern(glob)`
 - Cache key prefixes: `de:` (engine results), `sq:` (signal quality API)
 
+## Production Pipeline (EOD)
+- `scripts/prod_run.sh` — runs in Docker: CA sync → NSE sync → NSE indices sync → Screener
+- Screener uses CEI signals from latest bar → `SCR: Long` / `SCR: Short` watchlists
+
 ## Data Ingestion
 - `src/agents/nse_agent.py` — NSE Bhavcopy download + smart_sync + holiday management
 - `scripts/sync_nse_ca.py` — corporate action sync from NSE API
@@ -86,8 +93,32 @@ Continuous factor scoring replaces binary gates. See `handoff.md` for full detai
 ## Dev Preferences
 - **Always use latest versions** of frameworks/libs. Verify actual version availability via CDN/registry before using.
 
+## CEI Status (end of day 2026-03-13)
+- **Phase 1** ✓ — Feature engineering + CEI computation
+- **Phase 2** ✓ — Chart panel visualization
+- **Phase 2.5** ✓ — Position score tuning (CWVAP/CPOC awareness + CDVL rebalance)
+- **Phase 3** ✓ — CEI markers + screener (COMPLETE)
+- **Phase 3.5** (IN PROGRESS) — CEI signal fine-tuning
+  - Signal trigger: **CEI zero-crossings** (was slope), 5-bar cooldown
+  - Supply CWVAP gate: Supply only fires when `close < cwvap`
+  - max_value recalibrated to P90 of Nifty 50 empirical distribution
+  - Weight rebalance: PSZ 25%→15%, MCS 20%→30% (price noise reduced, money flow prioritised)
+  - Cumulative divergence: rolling 20-bar sum replaces single-bar divergence
+  - RSZ–PSZ per-window confirmation: RSZ dampened 0.2× when PSZ sign disagrees
+  - Delivery-Profile VA boundaries (`va_high`/`va_low`): TPO-style 70% delivery volume area, replaces Bollinger-style CVAH/CVAL for VA Spring. Stays anchored at consolidation zone.
+  - VA Spring Energy: marker modifier (Design A) — bypasses EMA smoothing on breakout bars. When spring score > 0.20, markers check `cei_raw` zero-crossing instead of smoothed `cei`. No longer a weighted evidence term.
+  - Position score reduced 10%→5%
+  - Intensity calc in cei.py (parked)
+- **Phase 4** — Future: Trend-riding state machine (entry vs continuation markers)
+
+## Key Findings
+- [Supply Signal Dynamics](project_supply_dynamics.md) — root cause of Supply underperformance + current asymmetric exit rules
+
 ## Backlog
-- **Add `mfm` as scoring factor** — Demand-specific (r=+0.071), lower priority
-- **Run 5 signal quality report** — with v2.2 intensity scoring (power exponents + convergence)
-- **Multi-thread signal quality report** — per-symbol runs are independent/IO-bound, use ThreadPoolExecutor
+- **VA trendlines on OHLC chart** — draw va_high/va_low (delivery-profile) on Panel 1 for visual validation
+- **Intensity calculation in cei.py** — move from JS/screener into cei.py module
+- **Trend-riding state machine** — Entry vs continuation markers. GLENMARK example.
+- **Supply exit fine-tuning** — MFE +4.43% but exits at -0.43%
+- **Run 5 signal quality report** — with CEI zero-crossing markers
+- **Multi-thread signal quality report** — ThreadPoolExecutor
 - **Tier-specific weights**: Different factor weights for Large/Mid/Small/Micro tiers

@@ -34,6 +34,7 @@ from src.divergence_engine.dvl_ledger import DVLLedger
 from src.divergence_engine.mcs import MoneyCompositeScore
 from src.divergence_engine.analysis import compute_trend_participation
 from src.divergence_engine.analysis_integrated import apply_integrated_matrix
+from src.divergence_engine.cei import compute_cei
 from src.divergence_engine.regime import classify_market_regime
 from src.divergence_engine import config_manager as _config_mgr
 from src.divergence_engine.utils import load_symbol_data, validate_dataframe, WINDOWS
@@ -106,6 +107,11 @@ class EngineResult:
             "supply_strength": _safe(row.get("supply_strength"), decimals=1),
             "demand_details": row.get("demand_details", []),
             "supply_details": row.get("supply_details", []),
+            # CEI module
+            "close": _safe(row.get("close"), decimals=2),
+            "cei": _safe(row.get("cei"), decimals=5),
+            "cei_slope": _safe(row.get("cei_slope"), decimals=6),
+            "cei_signal": row.get("cei_signal"),
         }
 
     def export(self, path: str | None = None) -> str:
@@ -220,7 +226,8 @@ class DivergenceEngine:
         df = dvl.compute_all(df)
 
         # Module 3 — Composite VWAP
-        cwvap = CompositeVWAP()
+        va_pct = scoring_cfg.get("settings", {}).get("va_pct", 0.70)
+        cwvap = CompositeVWAP(va_pct=va_pct)
         df = cwvap.compute_all(df)
 
         # Module 4 — Cross-Window Coherence
@@ -240,6 +247,9 @@ class DivergenceEngine:
 
         # Module 7 — Integrated State Matrix (rules-based)
         df = apply_integrated_matrix(df)
+
+        # Module 7.5 — Cumulative Evidence Index (CEI)
+        df = compute_cei(df, scoring_cfg)
 
         # --- Cache result ---
         if use_cache and cache_key:
