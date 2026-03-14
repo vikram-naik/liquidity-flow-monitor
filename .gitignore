@@ -54,3 +54,6 @@ nesco_analysis.py
 nesco_final_report.txt
 results_v2.log
 results.log
+scripts/cei_crossing_validation_weekly.json
+.gitignore
+.gitignore

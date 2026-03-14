@@ -337,10 +337,15 @@ factors:
 cei:
   ema_span: 10                    # trading days for EMA smoothing
   slope_window: 5                 # bars for CEI slope (linreg)
-  # CEI-based markers (Phase 3) — slope zero-crossings + cooldown
+  # CEI-based markers (Phase 3) — zero-crossings + cooldown
   markers:
     cooldown_bars: 5                # no repeat marker within N bars
     supply_below_cwvap: true        # Supply only fires when close < cwvap
+    # Phase 3.5: Assister markers — cei_raw crosses cei (EMA)
+    # Earlier trend-change signals shown as diamond markers
+    assister:
+      enabled: true
+      cooldown_bars: 5              # separate cooldown for assisters
   # RSZ–PSZ per-window confirmation: dampen RSZ when PSZ disagrees in sign
   rsz_psz_confirmation:
     dampening: 0.2                  # RSZ contribution × 0.2 when signs disagree

@@ -56,6 +56,8 @@ Continuous factor scoring replaces binary gates. See `handoff.md` for full detai
 - Screener: `scripts/run_screener.py`
 - Signal quality: `scripts/signal_quality_report.py`
 - Signal quality UI: `src/web/signal_quality.html`, `src/web/js/signal_quality.js`
+- Backtester: `scripts/backtest_cei.py` — CEI signal backtester (long only)
+- Backtest handoff: `backtest_handoff.md`
 - DB helper: `src/database.py` (DB_PATH env var, default `liquidity_monitor.db`)
 - Cache: `src/cache/` (Redis — interface.py, redis_provider.py, factory.py)
 - Handoff doc: `handoff.md`
@@ -93,32 +95,50 @@ Continuous factor scoring replaces binary gates. See `handoff.md` for full detai
 ## Dev Preferences
 - **Always use latest versions** of frameworks/libs. Verify actual version availability via CDN/registry before using.
 
-## CEI Status (end of day 2026-03-13)
+## CEI Status (end of day 2026-03-14)
 - **Phase 1** ✓ — Feature engineering + CEI computation
 - **Phase 2** ✓ — Chart panel visualization
 - **Phase 2.5** ✓ — Position score tuning (CWVAP/CPOC awareness + CDVL rebalance)
 - **Phase 3** ✓ — CEI markers + screener (COMPLETE)
-- **Phase 3.5** (IN PROGRESS) — CEI signal fine-tuning
-  - Signal trigger: **CEI zero-crossings** (was slope), 5-bar cooldown
-  - Supply CWVAP gate: Supply only fires when `close < cwvap`
-  - max_value recalibrated to P90 of Nifty 50 empirical distribution
-  - Weight rebalance: PSZ 25%→15%, MCS 20%→30% (price noise reduced, money flow prioritised)
-  - Cumulative divergence: rolling 20-bar sum replaces single-bar divergence
-  - RSZ–PSZ per-window confirmation: RSZ dampened 0.2× when PSZ sign disagrees
-  - Delivery-Profile VA boundaries (`va_high`/`va_low`): TPO-style 70% delivery volume area, replaces Bollinger-style CVAH/CVAL for VA Spring. Stays anchored at consolidation zone.
-  - VA Spring Energy: marker modifier (Design A) — bypasses EMA smoothing on breakout bars. When spring score > 0.20, markers check `cei_raw` zero-crossing instead of smoothed `cei`. No longer a weighted evidence term.
-  - Position score reduced 10%→5%
-  - Intensity calc in cei.py (parked)
+- **Phase 3.5** (IN PROGRESS) — CEI signal fine-tuning + marker redesign
+  - ✓ Signal trigger: **CEI zero-crossings** (was slope), 5-bar cooldown
+  - ✓ Supply CWVAP gate: Supply only fires when `close < cwvap`
+  - ✓ max_value recalibrated to P90 of Nifty 50 empirical distribution
+  - ✓ Weight rebalance: PSZ 25%→15%, MCS 20%→30%
+  - ✓ Cumulative divergence: rolling 20-bar sum replaces single-bar divergence
+  - ✓ RSZ–PSZ per-window confirmation: RSZ dampened 0.2× when PSZ sign disagrees
+  - ✓ Delivery-Profile VA boundaries (`va_high`/`va_low`): TPO-style 70% delivery volume area
+  - ✓ VA Spring Energy: marker modifier (Design A) — bypasses EMA on breakout bars
+  - ✓ Position score reduced 10%→5%
+  - ✓ VA trendlines on OHLC chart (purple dashed lines, `cbVA` toggle)
+  - ✓ `cei_raw` plotted on CEI panel (orange line), histogram switched to use `cei_raw` data
+  - ✓ **Assister markers: `cei_raw` crosses `cei` (EMA)** — validated on Nifty 500
+    (daily+weekly). Not viable as primary replacement (no hit rate improvement).
+    Implemented as assister overlay (circle "A" markers, leads by 1-3 bars).
+  - ○ Intensity calc in cei.py (parked)
 - **Phase 4** — Future: Trend-riding state machine (entry vs continuation markers)
+
+## CEI Backtester (2026-03-14)
+- **File**: `scripts/backtest_cei.py` — long-only, walk-forward CEI signal backtester
+- **Handoff**: `backtest_handoff.md` — full architecture, decisions, test results
+- **Watchlist Support**: `--watchlist` flag for batch runs; tabular summaries + aggregate P&L.
+- **Entry rules**: Demand anywhere + Assister only below CWVAP + optional `--exclude-va` filter.
+- **Exit**: Conditional logic — Supply signals (EOD) inside VA; Trailing CWVAP stop (intraday) above VA.
+- **Execution**: EOD limit order at signal-day close, fill check on next bar OHLC, `--chase` fills at open if limit misses.
+- **Output**: Unified daily log + CSV exports in root `data/` folder.
+- **RELIANCE result (2024-01-01 to 2026-03-13)**: +14.71%, 15 trades, PF 2.03, 33% win rate.
 
 ## Key Findings
 - [Supply Signal Dynamics](project_supply_dynamics.md) — root cause of Supply underperformance + current asymmetric exit rules
 
 ## Backlog
-- **VA trendlines on OHLC chart** — draw va_high/va_low (delivery-profile) on Panel 1 for visual validation
+- **Backtester: Multi-symbol batch run** — loop over NIFTY 500, aggregate statistics
+- **Backtester: Parameter sensitivity** — sweep stop_cwvap_pct, stop_entry_pct
+- **Backtester: Risk metrics** — Sharpe, Calmar, monthly returns
 - **Intensity calculation in cei.py** — move from JS/screener into cei.py module
 - **Trend-riding state machine** — Entry vs continuation markers. GLENMARK example.
 - **Supply exit fine-tuning** — MFE +4.43% but exits at -0.43%
-- **Run 5 signal quality report** — with CEI zero-crossing markers
+- **Run 5 signal quality report** — after assister markers are live
+- **Weekly Demand confirmation layer** — weekly CEI Demand hits 55%+ (vs 50% daily). Potential Phase 4 feature: weekly regime/CEI as confirmation overlay on daily signals
 - **Multi-thread signal quality report** — ThreadPoolExecutor
 - **Tier-specific weights**: Different factor weights for Large/Mid/Small/Micro tiers

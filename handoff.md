@@ -4,40 +4,42 @@
 The **Unified Weighted Scoring Model (v2.2)** is live. v2.2 adds intensity
 discrimination via power-law scoring curves and a convergence multiplier.
 
-**Current focus:** **CEI signal fine-tuning (Phase 3.5)** — reducing false positives
-from noisy zero-crossings, rebalancing CEI feature weights with empirical data.
+**Current focus:** **CEI marker redesign (Phase 3.5)** — replacing zero-crossing
+triggers with `cei_raw` crosses `cei` (EMA) for earlier, higher-quality signals.
 
-**Completed today (2026-03-13):**
-1. **Delivery-Profile Value Area boundaries** — new `va_high`/`va_low` columns in
-   `cwvap.py`. Uses TPO-style expansion from POC bin: accumulate delivery outward until
-   70% (`va_pct`) of total delivery is captured. Per-window (`va_high_n`/`va_low_n`)
-   then composite via DVL-rate weighted average. Also computes `va_profile_width`
-   (VA width / ATR). These stay anchored at the consolidation zone because that's where
-   delivery actually happened — unlike Bollinger-style CVAH/CVAL which widen immediately
-   on breakout. Existing CVAH/CVAL kept as-is for `_classify_location` and `position_score`.
-2. **VA Spring redesigned as Marker Modifier (Design A)** — removed VA Spring from the
-   CEI evidence sum (was 5% weight, contributed ~0.016 to `cei_raw` — negligible, could
-   not overcome EMA lag). Now operates as a **marker override**: when spring score
-   exceeds `spring_threshold` (0.20), the marker logic checks `cei_raw` zero-crossings
-   instead of EMA-smoothed `cei`, bypassing smoothing lag on breakout bars. Philosophy:
-   spring energy is a discrete event (breakout after long containment), not a gradual
-   trend — running it through EMA destroys its timing value.
-   - GESHIP: Demand marker moved from Jan 30 → **Jan 28** (actual breakout bar, +5%)
-   - ABCAPITAL: Supply marker moved from Mar 11 → **Mar 4** (actual breakdown bar, -5%)
-3. Signal trigger changed from slope to CEI zero-crossings
-4. CEI feature max_value recalibration (P90-based)
-5. CEI weight rebalance: PSZ 25%→15%, MCS 20%→30%
-6. Cumulative divergence: rolling 20-bar sum
-7. RSZ–PSZ per-window confirmation: dampened 0.2× on sign disagreement
+**Completed (2026-03-14):**
+1. **VA trendlines on OHLC chart** — `va_high`/`va_low` plotted as purple dashed lines
+   on Panel 1, with `cbVA` toggle checkbox. Added to `UI_COLUMNS` in `chart.py`, pill
+   styling in CSS, line series + legend + toggleMap in JS.
+2. **`cei_raw` plotted on CEI panel** — orange line (`#ff8a65`) in CEI chart panel.
+   Histogram switched from smoothed `cei` to `cei_raw` data for visual consistency
+   (histogram = raw evidence, teal line = EMA smoothed on top).
+3. **ABCAPITAL investigation** — Supply expected Mar 2 (price closed below `va_low`),
+   fired Mar 4. Root cause: zero-crossing lag. On Mar 2, `cei_raw`=+0.1162 (still
+   positive, no zero-crossing yet), spring=-0.0985 (below 0.20 threshold → EMA path).
+   Signal only fires Mar 4 when `cei_raw` crosses zero at -0.0487.
+4. **Marker redesign investigation** — discovered `cei_raw` crossing `cei` (EMA) as
+   better signal trigger. On Mar 2, `cei_raw` (+0.1162) < `cei` (+0.1904) — this
+   crossing catches the ABCAPITAL signal 2 bars earlier than zero-crossing.
+5. **Backtester overhaul (v2.0)**:
+   - **Watchlist Support**: `--watchlist` flag for batch processing with tabular results.
+   - **Conditional Exit**: Exit on Supply signals inside VA; trailing CWVAP stop above VA.
+   - **VA Entry Filter**: `--exclude-va` flag to skip entries when price is within VA.
+   - **Export Refinement**: All results land in root `data/` directory.
 
-**Previous session (complete):**
-- CEI markers replace scoring markers, slope zero-crossings, Supply CWVAP gate,
-  marker intensity, screener rewrite, EngineResult.latest expansion.
+**Completed (2026-03-13):**
+1. Delivery-Profile Value Area boundaries (`va_high`/`va_low`) in `cwvap.py`
+2. VA Spring → Marker Modifier (Design A): bypasses EMA on spring breakout bars
+3. Signal trigger: slope → CEI zero-crossings
+4. CEI max_value recalibration (P90), weight rebalance (PSZ 15%, MCS 30%)
+5. Cumulative divergence (rolling 20-bar sum), RSZ–PSZ confirmation (0.2× dampening)
+6. Position score reduced 10%→5%
 
 **Next:**
-- VA trendlines on OHLC chart (draw va_high/va_low on Panel 1 for visual validation)
-- Intensity calculation to move into cei.py (currently in JS/screener) — parked
-- Run 5 signal quality report with current markers
+- Validate proposed marker redesign rules with full data queries (see below)
+- Implement new `_generate_cei_signals()` with `cei_raw` crosses `cei` logic
+- Intensity calculation to move into cei.py (parked)
+- Run 5 signal quality report after marker redesign
 
 ---
 
@@ -229,12 +231,16 @@ cei_raw        = evidence × structure_mult
 cei            = EMA(cei_raw, span=10)
 cei_slope      = linreg_slope(cei, window=5)
 
-# Marker emission (with spring override):
+# Current marker emission (with spring override) — BEING REDESIGNED:
 spring_score   = va_dwell(60) × breakout_direction     # computed separately
 if |spring_score| >= 0.20:
     marker checks cei_raw zero-crossing               # bypass EMA lag
 else:
     marker checks cei zero-crossing                    # normal smoothed path
+
+# Proposed new marker logic (see "Marker Redesign Investigation" section):
+# Signal when cei_raw crosses cei (EMA), with gap≥0.02, cooldown=5
+# Zone-based: full signal vs assister based on price vs va_high/va_low/cwvap
 ```
 
 ### Feature weights (updated 2026-03-13)
@@ -321,7 +327,8 @@ else:
 - ABCAPITAL: Supply marker **Mar 4** (was Mar 11) — actual breakdown bar (-5% move)
 
 ### Chart panel (`divergence_engine.js`)
-- Green/red histogram (area fill) + teal CEI line + purple dashed slope line + zero ref
+- Green/red histogram (area fill, uses `cei_raw` data) + teal CEI line (EMA) +
+  orange `cei_raw` line + purple dashed slope line + zero ref
 - Enabled by default in `getActivePanels()`
 
 ### Phase status
@@ -335,7 +342,7 @@ else:
   - ✓ Screener: `SCR: Long` / `SCR: Short` via CEI signals
   - ✓ Supply CWVAP gate: Supply only fires when close < cwvap
   - ✓ `EngineResult.latest` includes `close`, `cei`, `cei_slope`, `cei_signal`
-- **Phase 3.5** (IN PROGRESS) — CEI signal fine-tuning
+- **Phase 3.5** (IN PROGRESS) — CEI signal fine-tuning + marker redesign
   - ✓ Signal trigger: slope zero-crossings → CEI zero-crossings
   - ✓ max_value recalibration (P90-based from Nifty 50 empirical data)
   - ✓ Weight rebalance: PSZ 25%→15%, MCS 20%→30%
@@ -343,9 +350,62 @@ else:
   - ✓ RSZ–PSZ per-window confirmation (dampening 0.2× on sign disagreement)
   - ✓ Delivery-Profile VA boundaries (`va_high`/`va_low`) — TPO 70% delivery volume area
   - ✓ VA Spring → Marker Modifier (Design A): bypasses EMA on spring breakout bars
+  - ✓ Position score reduced 10%→5%
+  - ✓ VA trendlines on OHLC chart (purple dashed lines, `cbVA` toggle)
+  - ✓ `cei_raw` plotted on CEI panel (orange line), histogram switched to `cei_raw` data
+  - ✓ **Assister markers: `cei_raw` crosses `cei` (EMA)** — Nifty 500 validation showed
+    crossing method doesn't outperform zero-crossing as primary signal (50% vs 50% daily,
+    1.5pp worse on weekly). Implemented as **assister overlay** (circle "A" markers) that
+    leads primary signals by 1-3 bars. Primary zero-crossing unchanged. CWVAP gate for
+    Supply assisters validated (+5.9pp on weekly).
   - ○ Intensity calculation in cei.py (parked)
 - **Phase 4** — Future: Trend-riding state machine (entry vs continuation markers),
   phase machine + intensity labels for screener
+
+---
+
+## Marker Redesign Investigation (2026-03-14) — CONCLUDED
+
+### Problem
+CEI zero-crossing markers lag by 1-3 bars. Example: ABCAPITAL Supply expected
+Mar 2 (price below `va_low`), but zero-crossing doesn't fire until Mar 4.
+
+### Investigation: `cei_raw` crosses `cei` (EMA) as primary replacement
+Tested on Nifty 50 (promising), then validated on **Nifty 500** (daily + weekly).
+
+### Nifty 500 validation results (daily, 57,965 signals)
+
+| | Proposed (raw×EMA) | Current (zero-cross) |
+|---|---|---|
+| Demand 5d hit | 50.49% | 49.47% |
+| Supply 5d hit | 49.61% | 50.20% |
+| Overall | 50.06% | 49.71% |
+
+**Conclusion:** No meaningful improvement. Crossing generates 55% more signals
+without proportional quality gain. Zone classification (full vs assister) works for
+Supply (+2.4pp) but is **inverted** for Demand (assisters outperform full).
+
+### Nifty 500 validation results (weekly, 12,092 signals)
+
+| | Proposed | Current |
+|---|---|---|
+| Demand 5w hit | **55.30%** | 54.95% |
+| Supply 5w hit | 47.39% | 47.44% |
+| Overall | 51.41% | **52.57%** |
+
+Current method wins overall on weekly. Weekly Demand at 55%+ is the strong finding.
+
+### Outcome: Assister overlay (implemented 2026-03-14)
+Raw×EMA crossings implemented as **assister markers** (circle "A" markers) that
+visually lead primary zero-crossing signals by 1-3 bars. Primary logic unchanged.
+
+- `_overlay_assister_signals()` in `cei.py` — scans for raw×EMA crossings on bars
+  without a primary signal, respecting shared cooldown with primaries
+- Config: `cei.markers.assister` in YAML — `enabled`, `cooldown_bars`, `min_gap`,
+  `supply_below_cwvap`
+- JS: circle markers with "A" label, lighter colours (#66bb6a / #ef9a9a)
+- Screener: unaffected (only matches "Demand" / "Supply" exactly)
+- ABCAPITAL validated: Supply_Assister fires Mar 2 (primary fires Mar 4)
 
 ---
 
@@ -378,10 +438,9 @@ else:
   `directional` scoring (Demand wants positive, Supply wants negative). Discovered via FACT investigation
   (Feb-Mar 2026): RSZ rising to +0.26 during price decline was missed because PSZ/RSZ use `abs_higher_is_better`
   (direction-agnostic). Requires weight rebalancing + signal quality re-run.
-- **Run 5 signal quality report** — with slope-crossing CEI markers
+- **Run 5 signal quality report** — after marker redesign is implemented
 - **Multi-thread signal quality report** — per-symbol runs are independent/IO-bound, use ThreadPoolExecutor
 - **Tier-specific weights** — different factor weights for Large/Mid/Small/Micro tiers
-- **VA trendlines on OHLC chart** — draw `va_high`/`va_low` (delivery-profile) as trendlines on Panel 1 for visual validation of box detection and breakout/breakdown signals
 
 ## Dev Notes
 - Always use `venv/bin/python3` to run scripts

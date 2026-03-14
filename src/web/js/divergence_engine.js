@@ -33,7 +33,7 @@
             var conf = JSON.parse(localStorage.getItem("de_panel_config"));
             if (Array.isArray(conf) && conf.length > 0) return conf;
         } catch (e) {}
-        return ["slopes", "coherence", "cei"]; // defaults
+        return ["cei"]; // defaults
     }
 
     var params = new URLSearchParams(window.location.search);
@@ -151,12 +151,12 @@
 
     function buildCharts(data) {
         var ledger = data.ledger;
-        var ohlc = [], cwvap = [], cpoc = [];
+        var ohlc = [], cwvap = [], cpoc = [], vaHigh = [], vaLow = [];
         var deliveryVol = [];
         var markerList = [];
         var timeToIndex = {};
         var pZ = [], rZ = [], cRaw = [], cSmooth = [];
-        var ceiArr = [], ceiSlopeArr = [];
+        var ceiArr = [], ceiRawArr = [], ceiSlopeArr = [];
         var rdvArr = [], cwcArr = [], rdvConsArr = [], atrArr = [], distArr = [], delPctArr = [], pddArr = [], mcsArr2d = [], mcsArr4d = [], mcsArr9d = [];
 
         for (var i = 0; i < ledger.length; i++) {
@@ -172,6 +172,8 @@
             }
             if (r.cwvap != null) cwvap.push({ time: t, value: r.cwvap }); else cwvap.push({ time: t });
             if (r.cpoc != null) cpoc.push({ time: t, value: r.cpoc }); else cpoc.push({ time: t });
+            if (r.va_high != null) vaHigh.push({ time: t, value: r.va_high }); else vaHigh.push({ time: t });
+            if (r.va_low != null) vaLow.push({ time: t, value: r.va_low }); else vaLow.push({ time: t });
 
             if (r.price_slope_z != null) pZ.push({ time: t, value: r.price_slope_z }); else pZ.push({ time: t });
             if (r.rdv_slope_z != null) rZ.push({ time: t, value: r.rdv_slope_z }); else rZ.push({ time: t });
@@ -190,6 +192,7 @@
             if (r.mcs_delta_4d != null) mcsArr4d.push({ time: t, value: r.mcs_delta_4d }); else mcsArr4d.push({ time: t });
             if (r.mcs_delta_9d != null) mcsArr9d.push({ time: t, value: r.mcs_delta_9d }); else mcsArr9d.push({ time: t });
             if (r.cei != null) ceiArr.push({ time: t, value: r.cei }); else ceiArr.push({ time: t });
+            if (r.cei_raw != null) ceiRawArr.push({ time: t, value: r.cei_raw }); else ceiRawArr.push({ time: t });
             if (r.cei_slope != null) ceiSlopeArr.push({ time: t, value: r.cei_slope }); else ceiSlopeArr.push({ time: t });
 
             if (r.delivery_qty != null) {
@@ -224,6 +227,17 @@
                     shape: isDemand ? "arrowUp" : "arrowDown",
                     text: ceiIntensity !== "" ? String(ceiIntensity) : "",
                     stateText: ceiSig + (ceiIntensity !== "" ? " (CEI " + ceiIntensity + ")" : "")
+                });
+            } else if (ceiSig === "Demand_Assister" || ceiSig === "Supply_Assister") {
+                var isDemandA = ceiSig === "Demand_Assister";
+                var baseDir = isDemandA ? "Demand" : "Supply";
+                markerList.push({
+                    time: t,
+                    position: isDemandA ? "belowBar" : "aboveBar",
+                    color: isDemandA ? "#66bb6a" : "#ef9a9a",
+                    shape: "circle",
+                    text: "A",
+                    stateText: baseDir + " Assister"
                 });
             }
         }
@@ -291,12 +305,20 @@
             if (cpocCb) cpocCb.closest("label").style.display = "none";
         }
 
+        // --- VA High/Low (Delivery-Profile Value Area boundaries) ---
+        var sVaHigh = pc.addSeries(LC.LineSeries, { color: "#7c4dff", lineWidth: 1, lineStyle: 2, lastValueVisible: false, priceLineVisible: false });
+        sVaHigh.setData(vaHigh);
+        var sVaLow = pc.addSeries(LC.LineSeries, { color: "#7c4dff", lineWidth: 1, lineStyle: 2, lastValueVisible: false, priceLineVisible: false });
+        sVaLow.setData(vaLow);
+
         if (markerList.length > 0) LC.createSeriesMarkers(cs, markerList);
 
         var leg1Config = [
             { api: cs, label: "Price", col: "price", color: "#e6edf3" },
             { api: sCwvap, label: "CWVAP", col: "cwvap", color: "#00bfa5" },
-            { api: sCpoc, label: "CPOC", col: "cpoc", color: "#ffab40", dashed: true }
+            { api: sCpoc, label: "CPOC", col: "cpoc", color: "#ffab40", dashed: true },
+            { api: sVaHigh, label: "VA High", col: "va_high", color: "#7c4dff", dashed: true },
+            { api: sVaLow, label: "VA Low", col: "va_low", color: "#7c4dff", dashed: true }
         ];
         allLegConfigs.push({ id: "leg1", config: leg1Config });
 
@@ -306,7 +328,7 @@
             
             var panelDiv = document.createElement("div");
             panelDiv.id = panelId;
-            panelDiv.className = "panel p-sub";
+            panelDiv.className = "panel p-sub" + (panelKey === "cei" ? " p-sub-lg" : "");
             panelDiv.innerHTML = '<div id="legSub' + i + '" class="legend"></div>';
             container.appendChild(panelDiv);
 
@@ -333,25 +355,67 @@
                 legConfig.push({ api: sCRaw, label: "Coh Raw", col: "coherence_raw", color: "#b39ddb", dashed: true });
                 legConfig.push({ api: sCSmooth, label: "Coh", col: "coherence", color: "#ce93d8" });
             } else if (panelKey === "cei") {
-                // CEI histogram (green above zero, red below) + line + zero ref
+                // CEI histogram (green above zero, red below) — uses smoothed CEI whose zero-crossings generate signals
                 var ceiHistData = ceiArr.map(function(d) {
                     if (d.value == null) return { time: d.time };
                     return {
                         time: d.time, value: d.value,
-                        color: d.value >= 0 ? "rgba(38,166,154,0.45)" : "rgba(239,83,80,0.45)"
+                        color: d.value >= 0 ? "rgba(38,166,154,0.35)" : "rgba(239,83,80,0.35)"
                     };
                 });
-                var sCeiHist = c.addSeries(LC.HistogramSeries, { priceScaleId: "cei", priceLineVisible: false, lastValueVisible: false });
+                var sCeiHist = c.addSeries(LC.HistogramSeries, { priceLineVisible: false, lastValueVisible: false });
                 sCeiHist.setData(ceiHistData);
-                c.priceScale("cei").applyOptions({ visible: false });
+                var sCeiRaw = c.addSeries(LC.LineSeries, { color: "#ff8a65", lineWidth: 1, lastValueVisible: false, priceLineVisible: false });
+                sCeiRaw.setData(ceiRawArr);
                 var sCeiLine = c.addSeries(LC.LineSeries, { color: "#64ffda", lineWidth: 2, lastValueVisible: false, priceLineVisible: false });
                 sCeiLine.setData(ceiArr);
-                var sCeiSlope = c.addSeries(LC.LineSeries, { color: "#b388ff", lineWidth: 1, lineStyle: 2, lastValueVisible: false, priceLineVisible: false });
-                sCeiSlope.setData(ceiSlopeArr);
-                var sZero = c.addSeries(LC.LineSeries, { color: "#424242", lineWidth: 1, lineStyle: 2, lastValueVisible: false, priceLineVisible: false });
+                var sZero = c.addSeries(LC.LineSeries, { color: "#555", lineWidth: 1, lineStyle: 2, lastValueVisible: false, priceLineVisible: false });
                 sZero.setData(ceiArr.map(d => ({ time: d.time, value: 0 })));
+
+                // --- Crossing markers ---
+                var ceiCrossMarkers = [];
+                for (var ci = 1; ci < ceiArr.length; ci++) {
+                    var cPrev = ceiArr[ci - 1], cCurr = ceiArr[ci];
+                    if (cPrev.value == null || cCurr.value == null) continue;
+
+                    // CEI EMA zero-crossing
+                    if ((cPrev.value < 0 && cCurr.value >= 0) || (cPrev.value >= 0 && cCurr.value < 0)) {
+                        ceiCrossMarkers.push({
+                            time: cCurr.time,
+                            position: cCurr.value >= 0 ? "belowBar" : "aboveBar",
+                            color: cCurr.value >= 0 ? "#00e676" : "#ef5350",
+                            shape: "circle",
+                            text: "0"
+                        });
+                    }
+
+                    // CEI vs CEI Raw crossover
+                    if (ci < ceiRawArr.length) {
+                        var rPrev = ceiRawArr[ci - 1], rCurr = ceiRawArr[ci];
+                        if (rPrev.value != null && rCurr.value != null) {
+                            var prevGap = cPrev.value - rPrev.value;
+                            var currGap = cCurr.value - rCurr.value;
+                            if ((prevGap < 0 && currGap >= 0) || (prevGap >= 0 && currGap < 0)) {
+                                // Skip if already marked as zero-cross on same bar
+                                var alreadyMarked = ceiCrossMarkers.length > 0 && ceiCrossMarkers[ceiCrossMarkers.length - 1].time === cCurr.time;
+                                if (!alreadyMarked) {
+                                    ceiCrossMarkers.push({
+                                        time: cCurr.time,
+                                        position: cCurr.value >= rCurr.value ? "belowBar" : "aboveBar",
+                                        color: "#ffd740",
+                                        shape: "circle",
+                                        text: "×"
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
+                ceiCrossMarkers.sort(function(a, b) { return a.time < b.time ? -1 : 1; });
+                if (ceiCrossMarkers.length > 0) LC.createSeriesMarkers(sCeiLine, ceiCrossMarkers);
+
                 legConfig.push({ api: sCeiLine, label: "CEI", col: "cei", color: "#64ffda" });
-                legConfig.push({ api: sCeiSlope, label: "CEI Slope", col: "cei_slope", color: "#b388ff", dashed: true });
+                legConfig.push({ api: sCeiRaw, label: "CEI Raw", col: "cei_raw", color: "#ff8a65" });
             } else if (panelKey === "rdv") {
                var s1 = c.addSeries(LC.LineSeries, { color: "#81c784", lineWidth: 2, lastValueVisible: false, priceLineVisible: false });
                s1.setData(rdvArr);
@@ -442,13 +506,13 @@
 
         window.refreshUI = refreshUI;
 
-        var toggleMap = { cbCWVAP: sCwvap, cbCPOC: sCpoc, cbVol: sVol };
+        var toggleMap = { cbCWVAP: [sCwvap], cbCPOC: [sCpoc], cbVA: [sVaHigh, sVaLow], cbVol: [sVol] };
         Object.keys(toggleMap).forEach(id => {
             var cb = document.getElementById(id);
             if (cb) {
-                toggleMap[id].applyOptions({ visible: cb.checked });
+                toggleMap[id].forEach(s => s.applyOptions({ visible: cb.checked }));
                 cb.addEventListener("change", function () {
-                    toggleMap[id].applyOptions({ visible: this.checked });
+                    toggleMap[id].forEach(s => s.applyOptions({ visible: this.checked }));
                     refreshUI();
                 });
             }
@@ -537,7 +601,10 @@
         if (!l) return;
         function fmt(v, d) { return (v != null && typeof v === "number" && !isNaN(v)) ? v.toFixed(d || 2) : (v || "\u2014"); }
         var ceiState = l.cei_signal || null;
-        var intState = ceiState || "No Signal";
+        var intState = ceiState;
+        if (intState === "Demand_Assister") intState = "Demand (A)";
+        else if (intState === "Supply_Assister") intState = "Supply (A)";
+        else if (!intState) intState = "No Signal";
         var scoringDir = l.scoring_direction || null;
         var ceiVal = l.cei != null ? fmt(l.cei, 3) : null;
         var ceiIntensity = l.cei_slope != null ? Math.round(Math.abs(l.cei_slope) * 1000) : null;
@@ -546,7 +613,7 @@
         if (intState === "No Signal" && scoringDir) {
             sigStr += " " + scoringDir;
         }
-        var stateColor = intState === "Demand" ? "#00e676" : (intState === "Supply" ? "#ef5350" : "#8b949e");
+        var stateColor = (intState === "Demand" || intState === "Demand (A)") ? "#00e676" : ((intState === "Supply" || intState === "Supply (A)") ? "#ef5350" : "#8b949e");
 
         var regime = l.regime || "\u2014";
         var regimeColor = regime === "uptrend" ? "#3fb950" : (regime === "downtrend" ? "#ef5350" : (regime === "transition" ? "#d29922" : "#8b949e"));

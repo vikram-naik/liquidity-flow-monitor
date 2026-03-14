@@ -164,6 +164,19 @@ def compute_cei(df: pd.DataFrame, config: dict) -> pd.DataFrame:
         spring_threshold=spring_threshold,
     )
 
+    # --- Phase 3.5: Assister markers (cei_raw crosses cei EMA) ---
+    assister_cfg = markers_cfg.get("assister", {})
+    if assister_cfg.get("enabled", True):
+        va_high_arr = df["va_high"].values.astype(float) if "va_high" in df.columns else np.full(n, np.nan)
+        va_low_arr = df["va_low"].values.astype(float) if "va_low" in df.columns else np.full(n, np.nan)
+        signal_list = df["cei_signal"].tolist()
+        _overlay_assister_signals(
+            signal_list, cei_raw, cei_vals,
+            close_arr, cwvap_arr, va_high_arr, va_low_arr,
+            assister_cfg,
+        )
+        df["cei_signal"] = signal_list
+
     return df
 
 
@@ -246,6 +259,72 @@ def _generate_cei_signals(
             last_supply_bar = i
 
     return signals
+
+
+# ------------------------------------------------------------------
+# Phase 3.5: Assister markers — cei_raw crosses cei (EMA)
+# ------------------------------------------------------------------
+
+def _overlay_assister_signals(
+    signals: list[str | None],
+    cei_raw: np.ndarray,
+    cei_ema: np.ndarray,
+    close: np.ndarray,
+    cwvap: np.ndarray,
+    va_high: np.ndarray,
+    va_low: np.ndarray,
+    assister_cfg: dict,
+) -> None:
+    """Overlay assister markers onto the existing signal list in-place.
+
+    Assisters fire when ``cei_raw`` crosses the EMA-smoothed ``cei`` line,
+    providing earlier trend-change indication than zero-crossings.
+
+    An assister does NOT fire on a bar that already has a primary signal,
+    nor within its own cooldown window. Primary signals also reset the
+    assister cooldown for the same direction.
+
+    No CWVAP gate — assisters are early warnings, not definitive signals.
+    """
+    cooldown = assister_cfg.get("cooldown_bars", 5)
+
+    n = len(signals)
+
+    # Track cooldowns dynamically — primary signals reset the assister
+    # cooldown for the same direction as we scan forward.
+    last_demand_bar = -cooldown - 1
+    last_supply_bar = -cooldown - 1
+
+    for i in range(1, n):
+        # Primary signals reset the assister cooldown
+        if signals[i] == "Demand":
+            last_demand_bar = i
+            continue
+        elif signals[i] == "Supply":
+            last_supply_bar = i
+            continue
+        # Skip bars that already have a primary signal
+        if signals[i] is not None:
+            continue
+
+        raw_now = cei_raw[i]
+        raw_prev = cei_raw[i - 1]
+        ema_now = cei_ema[i]
+        ema_prev = cei_ema[i - 1]
+
+        if np.isnan(raw_now) or np.isnan(raw_prev) or np.isnan(ema_now) or np.isnan(ema_prev):
+            continue
+
+        # Demand assister: cei_raw crosses above cei (EMA)
+        if raw_prev <= ema_prev and raw_now > ema_now:
+            signals[i] = "Demand_Assister"
+            last_demand_bar = i
+
+        # Supply assister: cei_raw crosses below cei (EMA)
+        # No CWVAP gate — assisters are early warnings, not definitive signals
+        elif raw_prev >= ema_prev and raw_now < ema_now:
+            signals[i] = "Supply_Assister"
+            last_supply_bar = i
 
 
 # ------------------------------------------------------------------

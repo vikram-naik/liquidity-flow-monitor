@@ -3,10 +3,12 @@
 run_screener.py — NIFTY 500 Stock Screener
 ──────────────────────────────────────────────────────────────────────────
 Scans all NIFTY 500 symbols through the Divergence Engine and populates
-two screener watchlists based on CEI signals:
+screener watchlists based on CEI signals:
 
-    SCR: Long   — CEI Demand signal with intensity >= threshold
-    SCR: Short  — CEI Supply signal with intensity >= threshold
+    SCR: Long   — CEI Demand signal (intensity >= threshold) OR
+                  cei_raw crosses above cei (EMA) on latest bar
+    SCR: Short  — CEI Supply signal (intensity >= threshold) OR
+                  cei_raw crosses below cei (EMA) on latest bar
 
 Usage:
     python scripts/run_screener.py                  # full NIFTY 500 scan
@@ -117,8 +119,8 @@ def main():
     print(f"Screening {len(symbols)} symbols (CEI intensity >= {args.min_intensity})...")
     print()
 
-    long_hits: list[tuple[str, float, float]] = []   # (symbol, intensity, cei)
-    short_hits: list[tuple[str, float, float]] = []
+    long_hits: list[tuple[str, float, float, str]] = []   # (symbol, intensity, cei_slope, reason)
+    short_hits: list[tuple[str, float, float, str]] = []
     errors: list[tuple[str, str]] = []
 
     t_start = time.perf_counter()
@@ -128,16 +130,41 @@ def main():
             engine = DivergenceEngine(ticker=sym)
             result = engine.run()
             latest = result.latest
+            ledger = result.ledger
 
             cei_signal = latest.get("cei_signal")
             cei_slope = latest.get("cei_slope") or 0.0
             intensity = abs(cei_slope) * 1000
 
+            added = False
+
+            # Criteria 1: Primary CEI signal with intensity >= threshold
             if cei_signal and intensity >= args.min_intensity:
                 if cei_signal == "Demand":
-                    long_hits.append((sym, intensity, cei_slope))
+                    long_hits.append((sym, intensity, cei_slope, "Demand"))
+                    added = True
                 elif cei_signal == "Supply":
-                    short_hits.append((sym, intensity, cei_slope))
+                    short_hits.append((sym, intensity, cei_slope, "Supply"))
+                    added = True
+
+            # Criteria 2: cei_raw / cei crossover on latest bar
+            if not added and len(ledger) >= 2:
+                row_now = ledger.iloc[-1]
+                row_prev = ledger.iloc[-2]
+                cei_now = float(row_now.get("cei", 0) or 0)
+                cei_prev = float(row_prev.get("cei", 0) or 0)
+                raw_now = float(row_now.get("cei_raw", 0) or 0)
+                raw_prev = float(row_prev.get("cei_raw", 0) or 0)
+
+                prev_gap = raw_prev - cei_prev  # raw was below/above ema
+                curr_gap = raw_now - cei_now
+
+                if prev_gap <= 0 < curr_gap:
+                    # cei_raw crossed above cei → bullish crossover
+                    long_hits.append((sym, intensity, cei_slope, "Raw×EMA"))
+                elif prev_gap >= 0 > curr_gap:
+                    # cei_raw crossed below cei → bearish crossover
+                    short_hits.append((sym, intensity, cei_slope, "Raw×EMA"))
 
             # Progress indicator
             label = cei_signal or "—"
@@ -167,14 +194,14 @@ def main():
     short_hits.sort(key=lambda x: -x[1])
 
     print(f"\n  {LONG_WL_NAME} ({len(long_hits)} stocks)")
-    print(f"  {'-' * 50}")
-    for sym, intensity, slope in long_hits:
-        print(f"    {sym:<20s} slope={slope:+.5f}  intensity={intensity:.1f}")
+    print(f"  {'-' * 60}")
+    for sym, intensity, slope, reason in long_hits:
+        print(f"    {sym:<20s} slope={slope:+.5f}  intensity={intensity:.1f}  [{reason}]")
 
     print(f"\n  {SHORT_WL_NAME} ({len(short_hits)} stocks)")
-    print(f"  {'-' * 50}")
-    for sym, intensity, slope in short_hits:
-        print(f"    {sym:<20s} slope={slope:+.5f}  intensity={intensity:.1f}")
+    print(f"  {'-' * 60}")
+    for sym, intensity, slope, reason in short_hits:
+        print(f"    {sym:<20s} slope={slope:+.5f}  intensity={intensity:.1f}  [{reason}]")
 
     if errors:
         print(f"\n  Errors ({len(errors)})")

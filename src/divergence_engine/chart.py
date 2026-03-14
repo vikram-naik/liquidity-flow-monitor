@@ -37,6 +37,8 @@ UI_COLUMNS = [
     # CEI (Module 7.5)
     "cei_raw", "cei", "cei_slope", "cei_signal",
     "accum_div", "distrib_div",
+    # Delivery-Profile Value Area (Module 3)
+    "va_high", "va_low",
 ]
 
 

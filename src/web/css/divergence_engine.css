@@ -134,6 +134,10 @@ body {
   flex: 1;
 }
 
+.panel.p-sub-lg {
+  flex: 2;
+}
+
 .panel+.panel {
   border-top: 1px solid #30363d
 }
@@ -219,6 +223,12 @@ body {
   background: #ffab40;
   color: #0d1117;
   border-color: #ffab40;
+}
+
+.pill.ov-va input:checked+span {
+  background: #7c4dff;
+  color: #fff;
+  border-color: #7c4dff;
 }
 
 .pill.ov-vol input:checked+span {
