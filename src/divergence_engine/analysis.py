@@ -102,7 +102,7 @@ def _pillar_c_cwc_coherence(cwc_slope: pd.Series) -> pd.Series:
 
 def compute_trend_participation(
     df:             pd.DataFrame,
-    close_col:      str = "close",
+    price_col:      str = "tp",
     rdv_col:        str = "rdv",
     cwc_slope_col:  str = "cwc_slope",
     mcs_col:        str = "mcs_composite",
@@ -123,13 +123,13 @@ def compute_trend_participation(
             raise ValueError(f"Column '{name}' not found. Available: {list(df.columns)}")
         return r if r in df.columns else None
 
-    close_col = _resolve(close_col)
+    price_col = _resolve(price_col)
     rdv_col = _resolve(rdv_col)
     cwc_slope_col = _resolve(cwc_slope_col)
     mcs_col = _resolve(mcs_col)
     mcs_slope_col = _resolve(mcs_slope_col)
 
-    df["price_slope_z"] = _rolling_slope_z(df[close_col], slope_window).round(4)
+    df["price_slope_z"] = _rolling_slope_z(df[price_col], slope_window).round(4)
     df["rdv_slope_z"]   = _rolling_slope_z(df[rdv_col],   slope_window).round(4)
 
     # Accumulation/Distribution Divergence features

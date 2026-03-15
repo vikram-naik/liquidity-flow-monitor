@@ -160,7 +160,103 @@ def init_db():
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_watchlists_created ON watchlists (created_at DESC);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_watchlist_items_order ON watchlist_items (watchlist_id, display_order);")
 
+    # --- Trading Module Tables ---
 
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS trading_signals (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        symbol TEXT NOT NULL,
+        signal_date TEXT NOT NULL,
+        entry_date TEXT,
+        signal_type TEXT NOT NULL,
+        psz_at_signal REAL,
+        prev_psz REAL,
+        pdd_120 REAL,
+        rsz_delta REAL,
+        regime TEXT,
+        soft_filters_passed INTEGER,
+        rdv_pass INTEGER DEFAULT 0,
+        mcs_pass INTEGER DEFAULT 0,
+        cwc_pass INTEGER DEFAULT 0,
+        grad_pass INTEGER DEFAULT 0,
+        acted_upon INTEGER DEFAULT 0,
+        skip_reason TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(symbol, signal_date, signal_type)
+    );
+    """)
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS trading_positions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        symbol TEXT NOT NULL,
+        mode TEXT NOT NULL DEFAULT 'paper',
+        status TEXT NOT NULL DEFAULT 'pending_entry',
+        signal_date TEXT,
+        entry_date TEXT,
+        entry_price REAL,
+        atr_at_entry REAL,
+        quantity INTEGER,
+        soft_filters_passed INTEGER,
+        rdv_pass INTEGER DEFAULT 0,
+        mcs_pass INTEGER DEFAULT 0,
+        cwc_pass INTEGER DEFAULT 0,
+        grad_pass INTEGER DEFAULT 0,
+        regime_at_entry TEXT,
+        psz_at_entry REAL,
+        peak_close REAL,
+        psz_peak REAL,
+        delivery_bad_count INTEGER DEFAULT 0,
+        bars_held INTEGER DEFAULT 0,
+        current_pnl_pct REAL,
+        mfe_pct REAL DEFAULT 0,
+        mae_pct REAL DEFAULT 0,
+        exit_date TEXT,
+        exit_price REAL,
+        exit_reason TEXT,
+        final_pnl_pct REAL,
+        broker_order_id TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    """)
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS trading_daily_pnl (
+        date TEXT PRIMARY KEY,
+        open_positions INTEGER,
+        total_invested REAL,
+        unrealized_pnl_pct REAL,
+        realized_pnl_today REAL,
+        cumulative_realized_pnl REAL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    """)
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS trading_config (
+        key TEXT PRIMARY KEY,
+        value TEXT,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    """)
+
+    # Seed trading config defaults
+    cursor.executemany(
+        "INSERT OR IGNORE INTO trading_config (key, value) VALUES (?, ?)",
+        [
+            ('max_concurrent_positions', '8'),
+            ('watchlist', 'NIFTY 50'),
+            ('execution_mode', 'paper'),
+            ('position_size_pct', '12.5'),
+            ('capital', '1000000'),
+        ]
+    )
+
+    # Trading indices
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_trading_positions_status ON trading_positions (status);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_trading_positions_symbol_status ON trading_positions (symbol, status);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_trading_signals_date ON trading_signals (signal_date);")
 
 
     conn.commit()

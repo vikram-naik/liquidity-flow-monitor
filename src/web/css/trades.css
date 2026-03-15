@@ -1,0 +1,227 @@
+/* Trades Dashboard — dark theme matching divergence_engine.css */
+* { margin: 0; padding: 0; box-sizing: border-box }
+
+body {
+  background: #0d1117;
+  color: #c9d1d9;
+  font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  letter-spacing: -0.01em;
+  min-height: 100vh;
+}
+
+.hdr {
+  padding: 0 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid #21262d;
+  background: #161b22;
+  min-height: 50px;
+  flex-shrink: 0;
+}
+
+.hdr h1 { font-size: 16px; color: #e6edf3; font-weight: 600 }
+.hdr .sub { font-size: 11px; color: #8b949e }
+
+/* Tabs */
+.tab-bar {
+  display: flex;
+  gap: 0;
+  background: #161b22;
+  border-bottom: 1px solid #21262d;
+  padding: 0 20px;
+}
+
+.tab-btn {
+  background: none;
+  border: none;
+  color: #8b949e;
+  padding: 10px 20px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  border-bottom: 2px solid transparent;
+  transition: all 0.15s;
+}
+
+.tab-btn:hover { color: #c9d1d9 }
+.tab-btn.active { color: #58a6ff; border-bottom-color: #58a6ff }
+
+/* Content */
+.tab-content { display: none; padding: 20px }
+.tab-content.active { display: block }
+
+/* Summary cards */
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.card {
+  background: #161b22;
+  border: 1px solid #21262d;
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.card .label { font-size: 11px; color: #8b949e; text-transform: uppercase; letter-spacing: 0.05em }
+.card .value { font-size: 24px; font-weight: 600; color: #e6edf3; margin-top: 4px }
+.card .value.positive { color: #3fb950 }
+.card .value.negative { color: #f85149 }
+
+/* Funds bar */
+.funds-bar {
+  background: #161b22;
+  border: 1px solid #21262d;
+  border-radius: 8px;
+  padding: 14px 20px;
+  margin-bottom: 16px;
+  display: flex;
+  gap: 32px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.funds-bar .fund-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.funds-bar .fund-label {
+  font-size: 10px;
+  color: #8b949e;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.funds-bar .fund-value {
+  font-size: 15px;
+  font-weight: 600;
+  color: #e6edf3;
+}
+
+.funds-bar .fund-value.positive { color: #3fb950 }
+.funds-bar .fund-value.negative { color: #f85149 }
+
+.funds-bar .fund-divider {
+  width: 1px;
+  height: 32px;
+  background: #21262d;
+}
+
+/* Tables */
+.section-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #e6edf3;
+  margin: 20px 0 10px;
+}
+
+table.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+table.data-table th {
+  text-align: left;
+  padding: 8px 10px;
+  color: #8b949e;
+  font-weight: 500;
+  border-bottom: 1px solid #21262d;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+table.data-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid #161b22;
+  color: #c9d1d9;
+}
+
+table.data-table tr:hover td { background: #161b22 }
+
+.pnl-pos { color: #3fb950 }
+.pnl-neg { color: #f85149 }
+
+/* ag-Grid overrides for dark theme */
+.ag-theme-alpine-dark {
+  --ag-background-color: #0d1117;
+  --ag-header-background-color: #161b22;
+  --ag-odd-row-background-color: #0d1117;
+  --ag-row-hover-color: #161b22;
+  --ag-border-color: #21262d;
+  --ag-header-foreground-color: #8b949e;
+  --ag-foreground-color: #c9d1d9;
+  --ag-font-size: 12px;
+}
+
+#trade-grid { height: calc(100vh - 150px); width: 100% }
+
+/* Actions bar */
+.actions-bar {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 16px;
+  align-items: center;
+}
+
+.btn {
+  background: #21262d;
+  border: 1px solid #30363d;
+  color: #c9d1d9;
+  padding: 6px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: background 0.15s;
+}
+
+.btn:hover { background: #30363d }
+.btn-primary { background: #238636; border-color: #2ea043 }
+.btn-primary:hover { background: #2ea043 }
+.btn-approve { background: #238636; border-color: #2ea043; color: #fff; padding: 4px 10px; font-size: 11px }
+.btn-approve:hover { background: #2ea043 }
+.btn-reject { background: #da3633; border-color: #f85149; color: #fff; padding: 4px 10px; font-size: 11px }
+.btn-reject:hover { background: #f85149 }
+
+.filter-pass { color: #3fb950 }
+.filter-fail { color: #484f58 }
+
+.status-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 500;
+}
+.status-open { background: #0d419d; color: #58a6ff }
+.status-pending { background: #3d2e00; color: #d29922 }
+.status-proposed { background: #2a1f3d; color: #bc8cff }
+.status-rejected { background: #3d2020; color: #f85149 }
+.status-closed { background: #272c20; color: #8b949e }
+
+/* Signals list */
+.signal-item {
+  padding: 8px 12px;
+  border-left: 3px solid #238636;
+  background: #161b22;
+  margin-bottom: 6px;
+  border-radius: 0 4px 4px 0;
+  font-size: 12px;
+}
+
+.signal-item .sym { font-weight: 600; color: #e6edf3 }
+.signal-item .meta { color: #8b949e; font-size: 11px }
+
+/* Back link */
+.back-link {
+  color: #58a6ff;
+  text-decoration: none;
+  font-size: 12px;
+}
+.back-link:hover { text-decoration: underline }

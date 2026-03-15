@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Trading Dashboard</title>
+  <link rel="stylesheet" href="/de/static/css/trades.css">
+  <script src="https://cdn.jsdelivr.net/npm/ag-grid-community@31.0.3/dist/ag-grid-community.min.js"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ag-grid-community@31.0.3/styles/ag-grid.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ag-grid-community@31.0.3/styles/ag-theme-alpine.css">
+</head>
+<body>
+  <div class="hdr">
+    <div>
+      <h1>Trading Dashboard</h1>
+      <span class="sub">Paper Trading &mdash; Signal Scanner</span>
+    </div>
+    <div style="display:flex;gap:12px;align-items:center">
+      <a href="/de/dashboard/RELIANCE" class="back-link">Divergence Engine</a>
+    </div>
+  </div>
+
+  <div class="tab-bar">
+    <button class="tab-btn active" data-tab="dashboard">Dashboard</button>
+    <button class="tab-btn" data-tab="tradelog">Trade Log</button>
+  </div>
+
+  <!-- Dashboard Tab -->
+  <div class="tab-content active" id="tab-dashboard">
+    <div class="cards" id="summary-cards"></div>
+
+    <div class="funds-bar" id="funds-bar"></div>
+
+    <div class="actions-bar">
+      <button class="btn btn-primary" id="btn-scan">Run Scan</button>
+      <button class="btn" id="btn-dry-run">Dry Run</button>
+      <span id="scan-status" style="font-size:12px;color:#8b949e"></span>
+    </div>
+
+    <div id="proposed-section" style="display:none">
+      <div class="section-title">Proposed Signals — Awaiting Approval</div>
+      <div class="actions-bar">
+        <button class="btn btn-primary" id="btn-approve-all">Approve All</button>
+      </div>
+      <table class="data-table" id="proposed-table">
+        <thead>
+          <tr>
+            <th>Symbol</th><th>Signal Date</th><th>Regime</th>
+            <th>Filters</th><th>RDV</th><th>MCS</th><th>CWC</th><th>GRAD</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+
+    <div class="section-title">Open Positions</div>
+    <table class="data-table" id="open-table">
+      <thead>
+        <tr>
+          <th>Symbol</th><th>Entry Date</th><th>Entry Price</th>
+          <th>Qty</th><th>P&L%</th><th>MFE%</th><th>MAE%</th>
+          <th>Bars</th><th>Regime</th><th>Status</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+
+    <div class="section-title">Recent Signals (last 10)</div>
+    <div id="signals-list"></div>
+  </div>
+
+  <!-- Trade Log Tab -->
+  <div class="tab-content" id="tab-tradelog">
+    <div class="actions-bar">
+      <button class="btn" id="btn-export-csv">Export CSV</button>
+    </div>
+    <div id="trade-grid" class="ag-theme-alpine-dark"></div>
+  </div>
+
+  <script src="/de/static/js/trades.js"></script>
+</body>
+</html>

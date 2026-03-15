@@ -17,6 +17,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../'
 # Import DB path from analytics or database if possible
 from src.database import DB_PATH, init_db
 from src.cache import get_cache
+from src.api.trading_routes import router as trading_router
 
 cache = get_cache()
 
@@ -47,6 +48,8 @@ app = FastAPI(title="LFM Divergence Engine", docs_url="/de/api/docs", openapi_ur
 _WEB_DIR = os.path.join(os.path.dirname(__file__), '..', 'web')
 if os.path.isdir(_WEB_DIR):
     app.mount('/de/static', StaticFiles(directory=_WEB_DIR), name='static')
+
+app.include_router(trading_router)
 
 from fastapi.responses import RedirectResponse
 @app.get("/")
