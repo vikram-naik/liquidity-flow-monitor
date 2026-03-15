@@ -95,12 +95,12 @@ Continuous factor scoring replaces binary gates. See `handoff.md` for full detai
 ## Dev Preferences
 - **Always use latest versions** of frameworks/libs. Verify actual version availability via CDN/registry before using.
 
-## CEI Status (end of day 2026-03-14)
+## CEI Status (end of day 2026-03-15)
 - **Phase 1** ✓ — Feature engineering + CEI computation
 - **Phase 2** ✓ — Chart panel visualization
 - **Phase 2.5** ✓ — Position score tuning (CWVAP/CPOC awareness + CDVL rebalance)
 - **Phase 3** ✓ — CEI markers + screener (COMPLETE)
-- **Phase 3.5** (IN PROGRESS) — CEI signal fine-tuning + marker redesign
+- **Phase 3.5** ✓ — CEI signal fine-tuning + marker redesign (COMPLETE)
   - ✓ Signal trigger: **CEI zero-crossings** (was slope), 5-bar cooldown
   - ✓ Supply CWVAP gate: Supply only fires when `close < cwvap`
   - ✓ max_value recalibrated to P90 of Nifty 50 empirical distribution
@@ -115,30 +115,34 @@ Continuous factor scoring replaces binary gates. See `handoff.md` for full detai
   - ✓ **Assister markers: `cei_raw` crosses `cei` (EMA)** — validated on Nifty 500
     (daily+weekly). Not viable as primary replacement (no hit rate improvement).
     Implemented as assister overlay (circle "A" markers, leads by 1-3 bars).
+  - ✓ **CEI noise reduction (5-layer fix)**: 2d→9d weight shift, structure floors 0.3,
+    EMA span 14, cumul_div 20%, `min_crossing_gap: 0.005`. Primary signals -64%,
+    RELIANCE PF 2.03→3.63, win rate 33%→60%.
   - ○ Intensity calc in cei.py (parked)
 - **Phase 4** — Future: Trend-riding state machine (entry vs continuation markers)
 
-## CEI Backtester (2026-03-14)
+## CEI Backtester (2026-03-15)
 - **File**: `scripts/backtest_cei.py` — long-only, walk-forward CEI signal backtester
 - **Handoff**: `backtest_handoff.md` — full architecture, decisions, test results
 - **Watchlist Support**: `--watchlist` flag for batch runs; tabular summaries + aggregate P&L.
 - **Entry rules**: Demand anywhere + Assister only below CWVAP + optional `--exclude-va` filter.
-- **Exit**: Conditional logic — Supply signals (EOD) inside VA; Trailing CWVAP stop (intraday) above VA.
+- **Exit**: CWVAP trailing stop (always active) + CEI threshold exit (`|CEI| >= 0.08`, default).
+- **Exit CLI**: `--cei-exit N` (default 0.08, 0=disabled), `--min-hold N` (default 0), `--va-primary` (opt-in).
 - **Execution**: EOD limit order at signal-day close, fill check on next bar OHLC, `--chase` fills at open if limit misses.
 - **Output**: Unified daily log + CSV exports in root `data/` folder.
-- **RELIANCE result (2024-01-01 to 2026-03-13)**: +14.71%, 15 trades, PF 2.03, 33% win rate.
+- **NIFTY 50 result (2024-01-01 to 2026-03-13, --chase)**: **+443,188 P&L** (4× baseline), CEI threshold 0.08.
+- **Test scripts**: `scripts/test_exit_filters.py`, `scripts/test_dual_ema_assister.py`.
 
 ## Key Findings
 - [Supply Signal Dynamics](project_supply_dynamics.md) — root cause of Supply underperformance + current asymmetric exit rules
 
 ## Backlog
-- **Backtester: Multi-symbol batch run** — loop over NIFTY 500, aggregate statistics
-- **Backtester: Parameter sensitivity** — sweep stop_cwvap_pct, stop_entry_pct
+- **Run 5 signal quality report** — with noise-reduced CEI config (high priority)
+- **Backtester: Multi-symbol batch run** — loop over NIFTY 500, aggregate statistics post noise reduction
+- **Backtester: Parameter sensitivity** — sweep cei_exit_threshold (0.05-0.12), stop_cwvap_pct (-1% to -5%)
 - **Backtester: Risk metrics** — Sharpe, Calmar, monthly returns
 - **Intensity calculation in cei.py** — move from JS/screener into cei.py module
 - **Trend-riding state machine** — Entry vs continuation markers. GLENMARK example.
-- **Supply exit fine-tuning** — MFE +4.43% but exits at -0.43%
-- **Run 5 signal quality report** — after assister markers are live
-- **Weekly Demand confirmation layer** — weekly CEI Demand hits 55%+ (vs 50% daily). Potential Phase 4 feature: weekly regime/CEI as confirmation overlay on daily signals
+- **Weekly Demand confirmation layer** — weekly CEI Demand hits 55%+ (vs 50% daily). Potential Phase 4 feature
 - **Multi-thread signal quality report** — ThreadPoolExecutor
 - **Tier-specific weights**: Different factor weights for Large/Mid/Small/Micro tiers

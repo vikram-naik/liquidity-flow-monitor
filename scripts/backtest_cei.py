@@ -60,6 +60,11 @@ class BacktestConfig:
     exclude_va: bool = False             # if True, no entry within VA (va_low <= price <= va_high)
     agg_mode: str = "daily"              # "daily", "weekly", or "monthly"
 
+    # Exit filters
+    cei_exit_threshold: float = 0.08    # |CEI| must exceed this for Signal_Exit to fire (0 = disabled)
+    min_hold_bars: int = 0              # suppress Signal_Exit for N bars after entry (0 = disabled)
+    va_primary_only: bool = False       # inside VA, only primary Supply can exit (not assisters)
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Data structures
@@ -73,6 +78,7 @@ class Trade:
     quantity: int
     capital_used: float  # qty * entry_price
     signal: str  # "Demand" or "Demand_Assister"
+    entry_bar_idx: int = 0  # bar index within backtest window (for min hold)
 
 
 @dataclass
@@ -160,7 +166,7 @@ class Backtester:
                 end_idx = end_mask[::-1].idxmax() + 1
 
         n = end_idx
-        # print(f"    Walking forward: {start_idx} → {n-1} ({n-start_idx} trading days)")
+        bar_counter = 0  # running bar index within backtest window
 
         # ── Walk-forward loop ────────────────────────────────────────────
         for i in range(start_idx, n):
@@ -172,6 +178,7 @@ class Backtester:
             c = float(bar["close"])
             cwvap_val = float(bar["cwvap"]) if not _isnan(bar.get("cwvap")) else None
             va_high_val = float(bar["va_high"]) if not _isnan(bar.get("va_high")) else None
+            va_low_val = float(bar.get("va_low")) if not _isnan(bar.get("va_low")) else None
             signal = bar.get("cei_signal")
 
             # Daily log entry — built up through each phase
@@ -207,7 +214,8 @@ class Backtester:
             if self._pending_entry is not None and not self.in_position:
                 filled_price = self._check_fill(self._pending_entry, o, h, l)
                 if filled_price is not None:
-                    self._execute_entry(self._pending_entry, date, filled_price)
+                    self._execute_entry(self._pending_entry, date, filled_price,
+                                        bar_idx=bar_counter)
                     day["action"] = ("EXIT+ENTRY" if day["action"] == "EXIT"
                                      else "ENTRY")
                     day["entry_price"] = filled_price
@@ -227,9 +235,30 @@ class Backtester:
                     self._stop_level = None
 
             # ── Phase 4: EOD — Exit Signals / Entry Signals ──
-            if self.in_position:
+            cei_val = float(bar.get("cei", 0.0)) if not _isnan(bar.get("cei")) else 0.0
+            if self.in_position and signal in ("Supply", "Supply_Assister"):
                 if va_high_val is not None and c < va_high_val:
-                    if signal in ["Supply", "Supply_Assister"]:
+                    allow_exit = True
+
+                    # Filter 0: CEI magnitude gate — only exit on strong counter-evidence
+                    if self.cfg.cei_exit_threshold > 0:
+                        if abs(cei_val) < self.cfg.cei_exit_threshold:
+                            allow_exit = False
+
+                    # Filter A: minimum hold period — give trade time to develop
+                    if allow_exit and self.cfg.min_hold_bars > 0 and self.active_trade is not None:
+                        bars_held = bar_counter - self.active_trade.entry_bar_idx
+                        if bars_held < self.cfg.min_hold_bars:
+                            allow_exit = False
+
+                    # Filter B: inside VA, only primary Supply can exit
+                    if allow_exit and self.cfg.va_primary_only:
+                        if va_low_val is not None and va_high_val is not None:
+                            inside_va = va_low_val <= c <= va_high_val
+                            if inside_va and signal == "Supply_Assister":
+                                allow_exit = False
+
+                    if allow_exit:
                         closed = self._execute_exit(date, c, "Signal_Exit")
                         day["action"] = "EXIT" if not day["action"] else f"{day['action']}+EXIT"
                         day["exit_price"] = c
@@ -239,7 +268,6 @@ class Backtester:
                             day["realized_pnl_pct"] = closed.pnl_pct
 
             if not self.in_position and self._pending_entry is None:
-                va_low_val = float(bar.get("va_low")) if not _isnan(bar.get("va_low")) else None
                 self._check_signal_for_entry(signal, c, cwvap_val, va_high_val, va_low_val)
                 if self._pending_entry is not None:
                     if not day["action"]:
@@ -255,6 +283,7 @@ class Backtester:
             equity = self._mark_to_market(c)
             self.equity_curve.append({"date": date, "equity": equity, "close": c})
             self.daily_log.append(day)
+            bar_counter += 1
 
         # ── Force-close any open position at last bar's close ──
         if self.in_position and self.active_trade:
@@ -286,7 +315,8 @@ class Backtester:
 
     # ── Entry execution ──────────────────────────────────────────────────
 
-    def _execute_entry(self, po: PendingOrder, date: str, price: float) -> None:
+    def _execute_entry(self, po: PendingOrder, date: str, price: float,
+                       bar_idx: int = 0) -> None:
         """Fill a long entry — 100% of available capital."""
         if self.in_position:
             return
@@ -309,6 +339,7 @@ class Backtester:
             quantity=qty,
             capital_used=actual_capital,
             signal=po.signal,
+            entry_bar_idx=bar_idx,
         )
 
     # ── Exit execution ───────────────────────────────────────────────────
@@ -524,7 +555,15 @@ def print_report(bt: Backtester, compact: bool = False) -> None:
     print(f"  CEI BACKTEST SUMMARY — {s.get('symbol', cfg.symbol)}  ({cfg.agg_mode.capitalize()})")
     if s.get("trading_days"):
         print(f"  Period: {s['start_date']} -> {s['end_date']} ({s['trading_days']} bars)")
-    print(f"  Entry: Demand (any) + Assister (below CWVAP) | Stop: {cfg.stop_cwvap_pct:+.1f}% CWVAP (floor: {cfg.stop_entry_pct:+.1f}% entry)")
+    exit_filters = []
+    if cfg.cei_exit_threshold > 0:
+        exit_filters.append(f"CEI≥{cfg.cei_exit_threshold}")
+    if cfg.min_hold_bars > 0:
+        exit_filters.append(f"MinHold {cfg.min_hold_bars}")
+    if cfg.va_primary_only:
+        exit_filters.append("VA Primary-only")
+    exit_str = f" | Exit filters: {', '.join(exit_filters)}" if exit_filters else ""
+    print(f"  Entry: Demand (any) + Assister (below CWVAP) | Stop: {cfg.stop_cwvap_pct:+.1f}% CWVAP (floor: {cfg.stop_entry_pct:+.1f}% entry){exit_str}")
     
     if s.get("total_trades", 0) >= 0:
         net_sign = "+" if s["net_pnl"] >= 0 else ""
@@ -631,6 +670,14 @@ Examples:
     parser.add_argument("--agg", choices=["daily", "weekly", "monthly"], default="daily",
                         help="Aggregation mode (default: daily)")
 
+    # Exit filters (anti-whipsaw)
+    parser.add_argument("--min-hold", type=int, default=0,
+                        help="Min bars before Signal_Exit can fire (default: 0, disabled)")
+    parser.add_argument("--va-primary", action="store_true",
+                        help="Enable VA primary-only exit filter (default: off)")
+    parser.add_argument("--cei-exit", type=float, default=0.08,
+                        help="CEI magnitude threshold for Signal_Exit (default: 0.08, 0=disabled)")
+
     # Output
     parser.add_argument("--export", action="store_true",
                         help="Export trades and equity curve to CSV")
@@ -670,6 +717,9 @@ Examples:
             chase_if_limit_misses=args.chase,
             exclude_va=args.exclude_va,
             agg_mode=args.agg,
+            min_hold_bars=args.min_hold,
+            va_primary_only=args.va_primary,
+            cei_exit_threshold=args.cei_exit,
         )
 
         bt = Backtester(config)

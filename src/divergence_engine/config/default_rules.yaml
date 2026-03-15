@@ -335,12 +335,13 @@ factors:
 # Positive → Demand evidence building (accumulation)
 # Negative → Supply evidence building (distribution)
 cei:
-  ema_span: 10                    # trading days for EMA smoothing
+  ema_span: 14                    # trading days for EMA smoothing (was 10, raised to reduce noise)
   slope_window: 5                 # bars for CEI slope (linreg)
   # CEI-based markers (Phase 3) — zero-crossings + cooldown
   markers:
     cooldown_bars: 5                # no repeat marker within N bars
     supply_below_cwvap: true        # Supply only fires when close < cwvap
+    min_crossing_gap: 0.005         # |cei| must exceed this on crossing bar to fire
     # Phase 3.5: Assister markers — cei_raw crosses cei (EMA)
     # Earlier trend-change signals shown as diamond markers
     assister:
@@ -354,8 +355,8 @@ cei:
       rsz_delta_4d: psz_delta_4d
       rsz_delta_9d: psz_delta_9d
   structure_multiplier:
-    coherence_floor: 0.5          # min multiplier from coherence (0.5 → 1.0)
-    cwc_floor: 0.5                # min multiplier from CWC (0.5 → 1.0)
+    coherence_floor: 0.3          # min multiplier from coherence (0.3 → 1.0, was 0.5)
+    cwc_floor: 0.3                # min multiplier from CWC (0.3 → 1.0, was 0.5)
   # Position score — CWVAP/CPOC price-position awareness (10%)
   # Prevents false positives when delivery divergence is real but price
   # is deep below institutional cost basis. Sweet spot: -3% to 0% below CWVAP.
@@ -377,20 +378,21 @@ cei:
     cpoc_saturation_pct: 5.0      # CPOC ramp saturates at ±5%
     cwvap_blend: 0.6              # CWVAP component weight (CPOC = 1 - this)
   features:
-    # Price momentum (15%) — max_value set at P90 of Nifty 50 distribution
-    psz_delta_2d:  { weight: 0.06, max_value: 0.25 }
+    # Price momentum (15%) — 2d halved, shifted to 9d for noise reduction
+    psz_delta_2d:  { weight: 0.03, max_value: 0.25 }
     psz_delta_4d:  { weight: 0.06, max_value: 0.45 }
-    psz_delta_9d:  { weight: 0.03, max_value: 0.55 }
-    # Delivery momentum (20%) — max_value set at P90 of Nifty 50 distribution
-    rsz_delta_2d:  { weight: 0.08, max_value: 0.23 }
+    psz_delta_9d:  { weight: 0.06, max_value: 0.55 }
+    # Delivery momentum (20%) — 2d halved, shifted to 9d for noise reduction
+    rsz_delta_2d:  { weight: 0.04, max_value: 0.23 }
     rsz_delta_4d:  { weight: 0.08, max_value: 0.35 }
-    rsz_delta_9d:  { weight: 0.04, max_value: 0.40 }
-    # Money flow momentum (30%)
-    mcs_delta_2d:  { weight: 0.12, max_value: 0.50 }
+    rsz_delta_9d:  { weight: 0.08, max_value: 0.40 }
+    # Money flow momentum (30%) — 2d halved, shifted to 9d for noise reduction
+    mcs_delta_2d:  { weight: 0.07, max_value: 0.50 }
     mcs_delta_4d:  { weight: 0.12, max_value: 0.50 }
-    mcs_delta_9d:  { weight: 0.06, max_value: 0.50 }
-    # Cumulative Accumulation/Distribution divergence (15%) — rolling 20-bar sum
-    cumul_divergence: { weight: 0.15, max_value: 0.35, window: 20 }
+    mcs_delta_9d:  { weight: 0.11, max_value: 0.50 }
+    # Cumulative Accumulation/Distribution divergence (20%) — rolling 20-bar sum
+    # Boosted from 15%: most stable feature (3.7% flip rate), anchors CEI
+    cumul_divergence: { weight: 0.20, max_value: 0.35, window: 20 }
     # Macro volume (5%, reduced from 10% — position_score absorbs context role)
     cdvl:          { weight: 0.05, max_value: 0.15 }
     # Directional levels (10%)

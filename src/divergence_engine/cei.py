@@ -216,6 +216,7 @@ def _generate_cei_signals(
     """
     cooldown = markers_cfg.get("cooldown_bars", 5)
     supply_below_cwvap = markers_cfg.get("supply_below_cwvap", True)
+    min_gap = markers_cfg.get("min_crossing_gap", 0.0)
 
     n = len(cei_vals)
     signals: list[str | None] = [None] * n
@@ -242,13 +243,13 @@ def _generate_cei_signals(
         check_now = cei_raw[i] if use_raw else cei_now
         check_prev = cei_raw[i - 1] if use_raw else cei_prev
 
-        # Demand: crosses above zero
-        if check_prev <= 0 < check_now and (i - last_demand_bar > cooldown):
+        # Demand: crosses above zero with minimum conviction
+        if check_prev <= 0 < check_now and abs(check_now) >= min_gap and (i - last_demand_bar > cooldown):
             signals[i] = "Demand"
             last_demand_bar = i
 
-        # Supply: crosses below zero
-        elif check_prev >= 0 > check_now and (i - last_supply_bar > cooldown):
+        # Supply: crosses below zero with minimum conviction
+        elif check_prev >= 0 > check_now and abs(check_now) >= min_gap and (i - last_supply_bar > cooldown):
             # CWVAP gate: Supply only fires when price is below CWVAP
             if supply_below_cwvap:
                 c = close[i]
@@ -316,13 +317,12 @@ def _overlay_assister_signals(
             continue
 
         # Demand assister: cei_raw crosses above cei (EMA)
-        if raw_prev <= ema_prev and raw_now > ema_now:
+        if raw_prev <= ema_prev and raw_now > ema_now and (i - last_demand_bar > cooldown):
             signals[i] = "Demand_Assister"
             last_demand_bar = i
 
         # Supply assister: cei_raw crosses below cei (EMA)
-        # No CWVAP gate — assisters are early warnings, not definitive signals
-        elif raw_prev >= ema_prev and raw_now < ema_now:
+        elif raw_prev >= ema_prev and raw_now < ema_now and (i - last_supply_bar > cooldown):
             signals[i] = "Supply_Assister"
             last_supply_bar = i
 
