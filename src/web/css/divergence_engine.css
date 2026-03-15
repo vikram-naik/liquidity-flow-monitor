@@ -219,12 +219,6 @@ body {
   border-color: #00bfa5;
 }
 
-.pill.ov-cpoc input:checked+span {
-  background: #ffab40;
-  color: #0d1117;
-  border-color: #ffab40;
-}
-
 .pill.ov-va input:checked+span {
   background: #7c4dff;
   color: #fff;
@@ -269,72 +263,6 @@ body {
   border-color: #1f6feb;
 }
 
-/* Marker Legend Styles */
-.marker-legend {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  padding-left: 12px;
-  border-left: 1px solid #30363d;
-  margin-left: 8px;
-}
-
-.leg-group {
-  display: flex;
-  gap: 8px;
-  padding: 4px 10px;
-  border-radius: 6px;
-  align-items: center;
-  border: 1px solid transparent;
-}
-
-.leg-bull {
-  background-color: rgba(0, 230, 118, 0.05);
-  border-color: rgba(0, 230, 118, 0.15);
-}
-
-.leg-bear {
-  background-color: rgba(255, 82, 82, 0.05);
-  border-color: rgba(255, 82, 82, 0.15);
-}
-
-.leg-neutral {
-  background-color: rgba(158, 158, 158, 0.05);
-  border-color: rgba(158, 158, 158, 0.15);
-}
-
-.grp-label {
-  font-size: 10px;
-  font-weight: 700;
-  color: #8b949e;
-  letter-spacing: 0.5px;
-  margin-right: 4px;
-}
-
-.leg-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 11px;
-  color: #8b949e;
-  font-weight: 500;
-}
-
-.leg-item .dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-
-.leg-item .dot.st-demand {
-  background: #00e676;
-}
-
-.leg-item .dot.st-supply {
-  background: #ef5350;
-}
-
 /* Sidebar */
 .sidebar {
   width: 300px;
@@ -373,9 +301,6 @@ body {
   border-left: none;
 }
 
-.sidebar.expanded {
-  width: 600px;
-}
 
 .sidebar-section {
   padding: 16px;
@@ -762,39 +687,6 @@ body {
   border-bottom: none;
 }
 
-/* Compare Layout */
-.compare-container {
-  display: flex;
-  gap: 16px;
-  width: 100%;
-}
-
-.compare-col {
-  flex: 1;
-  min-width: 0;
-  display: none; /* hidden by default, shown when expanded */
-  flex-direction: column;
-}
-
-.sidebar.expanded .compare-col {
-  display: flex !important;
-}
-
-.compare-col.dominant {
-  display: flex; /* always visible */
-}
-
-.compare-col-hdr {
-  font-size: 11px;
-  font-weight: 600;
-  color: #8b949e;
-  text-transform: uppercase;
-  margin-bottom: 8px;
-  text-align: center;
-  border-bottom: 1px solid #30363d;
-  padding-bottom: 4px;
-}
-
 .err {
   color: #ef5350;
   text-align: center;
@@ -994,46 +886,6 @@ div[class*="apply-common-tooltip"] {
   gap: 8px;
 }
 
-.settings-tabs {
-  display: flex;
-  gap: 16px;
-  padding: 0 20px;
-  border-bottom: 2px solid #21262d;
-}
-
-.settings-tab {
-  background: transparent;
-  color: #8b949e;
-  border: none;
-  font-size: 13px;
-  font-weight: 600;
-  padding: 12px 4px;
-  cursor: pointer;
-  position: relative;
-  transition: color 0.2s;
-}
-
-.settings-tab:hover {
-  color: #c9d1d9;
-}
-
-.settings-tab.active {
-  color: #58a6ff;
-}
-
-.settings-tab.active::after {
-  content: "";
-  position: absolute;
-  bottom: -2px;
-  left: 0;
-  right: 0;
-  height: 2px;
-  background: #58a6ff;
-}
-
-.settings-body.hidden {
-  display: none !important;
-}
 
 .panels-list {
   display: flex;
@@ -1120,23 +972,4 @@ div[class*="apply-common-tooltip"] {
   background: #f8514922;
 }
 
-/* Scoring Breakdown */
-.scoring-section { margin-top: 10px; }
-.scoring-row {
-  display: flex; align-items: center; gap: 6px;
-  padding: 3px 0; font-size: 11px;
-}
-.scoring-label { color: #8b949e; width: 90px; flex-shrink: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.scoring-weight { font-size: 9px; color: #484f58; }
-.scoring-bar-wrap {
-  flex: 1; height: 6px; background: #21262d; border-radius: 3px; overflow: hidden; min-width: 40px;
-}
-.scoring-bar { height: 100%; border-radius: 3px; transition: width 0.2s ease; }
-.scoring-val { font-family: 'JetBrains Mono', monospace; font-size: 10px; min-width: 36px; text-align: right; color: #c9d1d9; }
-.scoring-contrib { font-family: 'JetBrains Mono', monospace; font-size: 10px; min-width: 28px; text-align: right; color: #8b949e; }
-.scoring-total {
-  display: flex; align-items: center; gap: 6px;
-  padding: 5px 0 2px; margin-top: 4px; font-size: 11px; font-weight: 600;
-  border-top: 1px solid #21262d;
-}
 

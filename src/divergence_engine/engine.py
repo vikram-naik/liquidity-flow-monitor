@@ -2,7 +2,7 @@
 Divergence Engine — Orchestrator.
 
 Wires analysis modules in sequence and produces the final result object
-containing the DVL ledger, integrated state classifications, and chart data.
+containing the DVL ledger, regime classification, and chart data.
 
 Usage::
 
@@ -18,9 +18,7 @@ Usage::
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass, field
-from datetime import date
 from typing import Optional
 
 import logging
@@ -33,10 +31,7 @@ from src.divergence_engine.cwvap import CompositeVWAP
 from src.divergence_engine.dvl_ledger import DVLLedger
 from src.divergence_engine.mcs import MoneyCompositeScore
 from src.divergence_engine.analysis import compute_trend_participation
-from src.divergence_engine.analysis_integrated import apply_integrated_matrix
-from src.divergence_engine.cei import compute_cei
 from src.divergence_engine.regime import classify_market_regime
-from src.divergence_engine import config_manager as _config_mgr
 from src.divergence_engine.utils import load_symbol_data, validate_dataframe, WINDOWS
 from src.divergence_engine.aggregator import resample_ohlc_delivery, VALID_MODES
 from src.cache import get_cache
@@ -45,6 +40,31 @@ logger = logging.getLogger(__name__)
 
 # Cache TTL: 6 hours — EOD data is stable within the trading day
 _RESULT_CACHE_TTL = 21600
+
+# Value Area percentage for delivery-profile boundaries
+_VA_PCT = 0.70
+
+# Intermediate columns to drop before returning results.
+# These are needed during computation but not in the final ledger.
+_DROP_COLS = [
+    # Base calc intermediates (feed ATR / MCS only)
+    "true_high", "true_low", "tr", "tp", "mfm_tp",
+    # Per-window VWAP/POC/VA (feed composites only)
+    "dvwap_10", "dvwap_30", "dvwap_60", "dvwap_120",
+    "poc_10", "poc_30", "poc_60", "poc_120",
+    "va_high_10", "va_high_30", "va_high_60", "va_high_120",
+    "va_low_10", "va_low_30", "va_low_60", "va_low_120",
+    # CPOC + POC Spread (removed from UI)
+    "cpoc", "poc_spread",
+    # Old Bollinger-style VA (replaced by delivery-profile VA)
+    "cvah", "cval", "va_width",
+    # CWVAP intermediates
+    "cwvap_slope", "cwvap_slope_norm", "price_location",
+    # CWC pairwise intermediates
+    "c_10_30", "c_30_60", "c_60_120", "cwc_delta",
+    # MCS sub-components (feed mcs_composite only)
+    "mcs", "mcs_mfm",
+]
 
 
 @dataclass
@@ -58,7 +78,7 @@ class EngineResult:
     ledger : pd.DataFrame
         Full DVL ledger with all computed columns.
     states : pd.DataFrame
-        Subset with date, integrated_state, and coherence.
+        Subset with date and regime.
     """
 
     ticker: str
@@ -86,32 +106,17 @@ class EngineResult:
         row = self.ledger.iloc[-1]
         return {
             "date": str(row["date"]),
-            "integrated_state": row.get("integrated_state", "No Signal"),
-            "signal_strength": _safe(row.get("signal_strength"), decimals=1),
+            "close": _safe(row.get("close"), decimals=2),
             "cwc": _safe(row.get("cwc", 0), decimals=4),
             "rdv": _safe(row.get("rdv", 0), decimals=4),
-            "rdv_consistency": int(row.get("rdv_consistency", 0)),
             "cwvap_dist": _safe(row.get("cwvap_dist", 0), decimals=4),
             "delivery_pct": _safe(row.get("delivery_pct", 0), decimals=2),
             "cwvap": _safe(row.get("cwvap", 0), decimals=2),
-            "cpoc": _safe(row.get("cpoc", 0), decimals=2),
-            "poc_spread": _safe(row.get("poc_spread", 0), decimals=2),
             "coherence_raw": _safe(row.get("coherence_raw", 0), decimals=4),
             "coherence": _safe(row.get("coherence", 0), decimals=4),
             "price_slope_z": _safe(row.get("price_slope_z", 0), decimals=4),
             "rdv_slope_z": _safe(row.get("rdv_slope_z", 0), decimals=4),
             "regime": row.get("regime", "notrend"),
-            "scoring_details": row.get("scoring_details", []),
-            "scoring_direction": row.get("scoring_direction", "None"),
-            "demand_strength": _safe(row.get("demand_strength"), decimals=1),
-            "supply_strength": _safe(row.get("supply_strength"), decimals=1),
-            "demand_details": row.get("demand_details", []),
-            "supply_details": row.get("supply_details", []),
-            # CEI module
-            "close": _safe(row.get("close"), decimals=2),
-            "cei": _safe(row.get("cei"), decimals=5),
-            "cei_slope": _safe(row.get("cei_slope"), decimals=6),
-            "cei_signal": row.get("cei_signal"),
         }
 
     def export(self, path: str | None = None) -> str:
@@ -169,12 +174,12 @@ class DivergenceEngine:
 
         Pipeline order (strict):
         1. Base Calculations (ATR, RDV, MFM, TP, MFM_TP)
+        1.5. Market Regime Classification (ADX/DMI)
         2. DVL Ledger (DVL, Velocity, ARS, PDD, Gradient)
-        3. Composite VWAP (DVWAP, POC, CWVAP, CPOC, Value Area)
+        3. Composite VWAP (DVWAP, POC, CWVAP, Value Area)
         4. Cross-Window Coherence (CWC)
         5. Money Composite Score (MCS)
         6. Trend Participation Analysis
-        7. Integrated State Matrix (rules-based)
         """
         # --- Cache lookup (only for DB-loaded data) ---
         use_cache = self._df is None
@@ -200,20 +205,6 @@ class DivergenceEngine:
         # Reset index for clean row-based access
         df = df.reset_index(drop=True)
 
-        # --- Read delta window settings from scoring config (incl. user overrides) ---
-        import sqlite3
-        from src.database import DB_PATH
-        _conn = sqlite3.connect(DB_PATH, timeout=10)
-        _conn.row_factory = sqlite3.Row
-        try:
-            scoring_cfg = _config_mgr.get_config(_conn)
-        finally:
-            _conn.close()
-        delta_windows = scoring_cfg.get("settings", {}).get("delta_windows", {})
-        psz_delta_w = delta_windows.get("psz_delta", [2, 4, 9])
-        rsz_delta_w = delta_windows.get("rsz_delta", [2, 4, 9])
-        mcs_delta_w = delta_windows.get("mcs_delta", [2, 4, 9])
-
         # Module 1 — Base Calculations
         base = BaseCalculator()
         df = base.compute_all(df)
@@ -226,8 +217,7 @@ class DivergenceEngine:
         df = dvl.compute_all(df)
 
         # Module 3 — Composite VWAP
-        va_pct = scoring_cfg.get("settings", {}).get("va_pct", 0.70)
-        cwvap = CompositeVWAP(va_pct=va_pct)
+        cwvap = CompositeVWAP(va_pct=_VA_PCT)
         df = cwvap.compute_all(df)
 
         # Module 4 — Cross-Window Coherence
@@ -235,21 +225,14 @@ class DivergenceEngine:
         df = cwc.compute_all(df)
 
         # Module 5 — Money Composite Score
-        mcs = MoneyCompositeScore(delta_windows=mcs_delta_w)
+        mcs = MoneyCompositeScore()
         df = mcs.compute_all(df)
 
         # Module 6 — Trend Participation Analysis
-        df = compute_trend_participation(
-            df,
-            psz_delta_windows=psz_delta_w,
-            rsz_delta_windows=rsz_delta_w,
-        )
+        df = compute_trend_participation(df)
 
-        # Module 7 — Integrated State Matrix (rules-based)
-        df = apply_integrated_matrix(df)
-
-        # Module 7.5 — Cumulative Evidence Index (CEI)
-        df = compute_cei(df, scoring_cfg)
+        # --- Drop intermediate columns ---
+        df = df.drop(columns=[c for c in _DROP_COLS if c in df.columns])
 
         # --- Cache result ---
         if use_cache and cache_key:
@@ -264,7 +247,7 @@ class DivergenceEngine:
 
     def _build_result(self, df: pd.DataFrame) -> EngineResult:
         """Build an EngineResult from a computed ledger DataFrame."""
-        state_cols = ["date", "integrated_state", "coherence"]
+        state_cols = ["date", "regime"]
         states_df = df[[c for c in state_cols if c in df.columns]].copy()
 
         return EngineResult(
@@ -274,4 +257,3 @@ class DivergenceEngine:
             _start_date=self._start_date or "",
             _end_date=self._end_date or "",
         )
-

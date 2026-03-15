@@ -17,15 +17,13 @@
     var PANEL_DEFINITIONS = {
         "slopes": { label: "Price / RDV Z-Scores" },
         "coherence": { label: "Coherence" },
-        "cei": { label: "CEI" },
         "rdv": { label: "RDV" },
         "cwc": { label: "CWC" },
         "rdv_consistency": { label: "RDV Consistency" },
         "atr_20": { label: "ATR (20)" },
         "cwvap_dist": { label: "CWVAP Dist %" },
         "delivery_pct": { label: "Delivery %" },
-        "pdd": { label: "PDD (30)" },
-        "mcs_delta": { label: "MCS Δ" }
+        "pdd": { label: "PDD (30)" }
     };
 
     function getActivePanels() {
@@ -33,7 +31,7 @@
             var conf = JSON.parse(localStorage.getItem("de_panel_config"));
             if (Array.isArray(conf) && conf.length > 0) return conf;
         } catch (e) {}
-        return ["cei"]; // defaults
+        return ["slopes"]; // defaults
     }
 
     var params = new URLSearchParams(window.location.search);
@@ -57,33 +55,16 @@
         // No manual reflow call here; ResizeObserver will catch the width change
     });
 
-    var expandBtn = document.getElementById("btn-expand-sidebar");
-    if (expandBtn) {
-        expandBtn.addEventListener("click", function(e) {
-            e.stopPropagation(); // Don't trigger collapse toggle
-            sidebarEl.classList.toggle("expanded");
-            if (sidebarEl.classList.contains("expanded")) {
-                expandBtn.innerHTML = "&lt;";
-                expandBtn.title = "Collapse Details";
-            } else {
-                expandBtn.innerHTML = "&gt;";
-                expandBtn.title = "Compare Signals";
-            }
-        });
-    }
-
     // Engine State collapsible toggle
     var engineToggle = document.getElementById("engine-state-toggle");
     var engineContent = document.getElementById("engine-state-content");
     var engineChevron = document.getElementById("engine-state-chevron");
     if (engineToggle && engineContent) {
         engineToggle.addEventListener("click", function(e) {
-            // Don't collapse if clicking the expand button
-            if (e.target.closest("#btn-expand-sidebar")) return;
             var isHidden = engineContent.style.display === "none";
             engineContent.style.display = isHidden ? "" : "none";
             if (engineChevron) {
-                engineChevron.textContent = isHidden ? "▼" : "▶";
+                engineChevron.textContent = isHidden ? "\u25BC" : "\u25B6";
             }
         });
     }
@@ -151,18 +132,14 @@
 
     function buildCharts(data) {
         var ledger = data.ledger;
-        var ohlc = [], cwvap = [], cpoc = [], vaHigh = [], vaLow = [];
+        var ohlc = [], cwvap = [], vaHigh = [], vaLow = [];
         var deliveryVol = [];
-        var markerList = [];
         var timeToIndex = {};
         var pZ = [], rZ = [], cRaw = [], cSmooth = [];
-        var ceiArr = [], ceiRawArr = [], ceiSlopeArr = [];
-        var rdvArr = [], cwcArr = [], rdvConsArr = [], atrArr = [], distArr = [], delPctArr = [], pddArr = [], mcsArr2d = [], mcsArr4d = [], mcsArr9d = [];
+        var rdvArr = [], cwcArr = [], rdvConsArr = [], atrArr = [], distArr = [], delPctArr = [], pddArr = [];
 
         for (var i = 0; i < ledger.length; i++) {
             var r = ledger[i];
-            // Use the date string directly if it is in YYYY-MM-DD format
-            // otherwise parse it. Lightweight Charts supports YYYY-MM-DD strings.
             var t = r.date ? (r.date.includes(" ") ? r.date.split(" ")[0] : r.date) : null;
             if (!t) continue;
             timeToIndex[t] = i;
@@ -171,7 +148,6 @@
                 ohlc.push({ time: t, open: r.open, high: r.high, low: r.low, close: r.close });
             }
             if (r.cwvap != null) cwvap.push({ time: t, value: r.cwvap }); else cwvap.push({ time: t });
-            if (r.cpoc != null) cpoc.push({ time: t, value: r.cpoc }); else cpoc.push({ time: t });
             if (r.va_high != null) vaHigh.push({ time: t, value: r.va_high }); else vaHigh.push({ time: t });
             if (r.va_low != null) vaLow.push({ time: t, value: r.va_low }); else vaLow.push({ time: t });
 
@@ -188,12 +164,6 @@
             if (r.cwvap_dist != null) distArr.push({ time: t, value: r.cwvap_dist }); else distArr.push({ time: t });
             if (r.delivery_pct != null) delPctArr.push({ time: t, value: r.delivery_pct }); else delPctArr.push({ time: t });
             if (r.pdd_30 != null) pddArr.push({ time: t, value: r.pdd_30 }); else pddArr.push({ time: t });
-            if (r.mcs_delta_2d != null) mcsArr2d.push({ time: t, value: r.mcs_delta_2d }); else mcsArr2d.push({ time: t });
-            if (r.mcs_delta_4d != null) mcsArr4d.push({ time: t, value: r.mcs_delta_4d }); else mcsArr4d.push({ time: t });
-            if (r.mcs_delta_9d != null) mcsArr9d.push({ time: t, value: r.mcs_delta_9d }); else mcsArr9d.push({ time: t });
-            if (r.cei != null) ceiArr.push({ time: t, value: r.cei }); else ceiArr.push({ time: t });
-            if (r.cei_raw != null) ceiRawArr.push({ time: t, value: r.cei_raw }); else ceiRawArr.push({ time: t });
-            if (r.cei_slope != null) ceiSlopeArr.push({ time: t, value: r.cei_slope }); else ceiSlopeArr.push({ time: t });
 
             if (r.delivery_qty != null) {
                 var mfm = r.mfm != null ? r.mfm : 0;
@@ -203,45 +173,6 @@
                 });
             }
         }
-
-        // --- Marker Logic (CEI-based Demand/Supply Markers) ---
-        var stateColorMap = {
-            "Demand": "#00e676",
-            "Supply": "#ef5350"
-        };
-
-        var markerList = [];
-        for (var i = 0; i < ledger.length; i++) {
-            var r = ledger[i];
-            var t = r.date ? (r.date.includes(" ") ? r.date.split(" ")[0] : r.date) : null;
-            if (!t) continue;
-
-            var ceiSig = r.cei_signal;
-            if (ceiSig === "Demand" || ceiSig === "Supply") {
-                var isDemand = ceiSig === "Demand";
-                var ceiIntensity = r.cei_slope != null ? Math.round(Math.abs(r.cei_slope) * 1000) : "";
-                markerList.push({
-                    time: t,
-                    position: isDemand ? "belowBar" : "aboveBar",
-                    color: stateColorMap[ceiSig],
-                    shape: isDemand ? "arrowUp" : "arrowDown",
-                    text: ceiIntensity !== "" ? String(ceiIntensity) : "",
-                    stateText: ceiSig + (ceiIntensity !== "" ? " (CEI " + ceiIntensity + ")" : "")
-                });
-            } else if (ceiSig === "Demand_Assister" || ceiSig === "Supply_Assister") {
-                var isDemandA = ceiSig === "Demand_Assister";
-                var baseDir = isDemandA ? "Demand" : "Supply";
-                markerList.push({
-                    time: t,
-                    position: isDemandA ? "belowBar" : "aboveBar",
-                    color: isDemandA ? "#66bb6a" : "#ef9a9a",
-                    shape: "circle",
-                    text: "A",
-                    stateText: baseDir + " Assister"
-                });
-            }
-        }
-
 
         var LC = LightweightCharts;
 
@@ -291,32 +222,15 @@
         var sCwvap = pc.addSeries(LC.LineSeries, { color: "#00bfa5", lineWidth: 2, lastValueVisible: false });
         sCwvap.setData(cwvap);
 
-        var sCpoc = pc.addSeries(LC.LineSeries, { color: "#ffab40", lineWidth: 2, lineStyle: 2, lastValueVisible: false, priceLineVisible: false });
-        var lastCpocVal = null;
-        for (var i = cpoc.length - 1; i >= 0; i--) {
-            if (cpoc[i].value != null) { lastCpocVal = cpoc[i].value; break; }
-        }
-        if (lastCpocVal != null) {
-            sCpoc.setData(cpoc.map(d => ({ time: d.time, value: lastCpocVal })));
-        } else {
-            // No valid CPOC data — hide the series and its toggle
-            sCpoc.applyOptions({ visible: false });
-            var cpocCb = document.getElementById("cbCPOC");
-            if (cpocCb) cpocCb.closest("label").style.display = "none";
-        }
-
         // --- VA High/Low (Delivery-Profile Value Area boundaries) ---
         var sVaHigh = pc.addSeries(LC.LineSeries, { color: "#7c4dff", lineWidth: 1, lineStyle: 2, lastValueVisible: false, priceLineVisible: false });
         sVaHigh.setData(vaHigh);
         var sVaLow = pc.addSeries(LC.LineSeries, { color: "#7c4dff", lineWidth: 1, lineStyle: 2, lastValueVisible: false, priceLineVisible: false });
         sVaLow.setData(vaLow);
 
-        if (markerList.length > 0) LC.createSeriesMarkers(cs, markerList);
-
         var leg1Config = [
             { api: cs, label: "Price", col: "price", color: "#e6edf3" },
             { api: sCwvap, label: "CWVAP", col: "cwvap", color: "#00bfa5" },
-            { api: sCpoc, label: "CPOC", col: "cpoc", color: "#ffab40", dashed: true },
             { api: sVaHigh, label: "VA High", col: "va_high", color: "#7c4dff", dashed: true },
             { api: sVaLow, label: "VA Low", col: "va_low", color: "#7c4dff", dashed: true }
         ];
@@ -325,10 +239,10 @@
         activePanels.forEach(function (panelKey, i) {
             var panelId = "pSub" + i;
             var isLast = (i === activePanels.length - 1);
-            
+
             var panelDiv = document.createElement("div");
             panelDiv.id = panelId;
-            panelDiv.className = "panel p-sub" + (panelKey === "cei" ? " p-sub-lg" : "");
+            panelDiv.className = "panel p-sub";
             panelDiv.innerHTML = '<div id="legSub' + i + '" class="legend"></div>';
             container.appendChild(panelDiv);
 
@@ -354,68 +268,6 @@
                 sCSmooth.setData(cSmooth);
                 legConfig.push({ api: sCRaw, label: "Coh Raw", col: "coherence_raw", color: "#b39ddb", dashed: true });
                 legConfig.push({ api: sCSmooth, label: "Coh", col: "coherence", color: "#ce93d8" });
-            } else if (panelKey === "cei") {
-                // CEI histogram (green above zero, red below) — uses smoothed CEI whose zero-crossings generate signals
-                var ceiHistData = ceiArr.map(function(d) {
-                    if (d.value == null) return { time: d.time };
-                    return {
-                        time: d.time, value: d.value,
-                        color: d.value >= 0 ? "rgba(38,166,154,0.35)" : "rgba(239,83,80,0.35)"
-                    };
-                });
-                var sCeiHist = c.addSeries(LC.HistogramSeries, { priceLineVisible: false, lastValueVisible: false });
-                sCeiHist.setData(ceiHistData);
-                var sCeiRaw = c.addSeries(LC.LineSeries, { color: "#ff8a65", lineWidth: 1, lastValueVisible: false, priceLineVisible: false });
-                sCeiRaw.setData(ceiRawArr);
-                var sCeiLine = c.addSeries(LC.LineSeries, { color: "#64ffda", lineWidth: 2, lastValueVisible: false, priceLineVisible: false });
-                sCeiLine.setData(ceiArr);
-                var sZero = c.addSeries(LC.LineSeries, { color: "#555", lineWidth: 1, lineStyle: 2, lastValueVisible: false, priceLineVisible: false });
-                sZero.setData(ceiArr.map(d => ({ time: d.time, value: 0 })));
-
-                // --- Crossing markers ---
-                var ceiCrossMarkers = [];
-                for (var ci = 1; ci < ceiArr.length; ci++) {
-                    var cPrev = ceiArr[ci - 1], cCurr = ceiArr[ci];
-                    if (cPrev.value == null || cCurr.value == null) continue;
-
-                    // CEI EMA zero-crossing
-                    if ((cPrev.value < 0 && cCurr.value >= 0) || (cPrev.value >= 0 && cCurr.value < 0)) {
-                        ceiCrossMarkers.push({
-                            time: cCurr.time,
-                            position: cCurr.value >= 0 ? "belowBar" : "aboveBar",
-                            color: cCurr.value >= 0 ? "#00e676" : "#ef5350",
-                            shape: "circle",
-                            text: "0"
-                        });
-                    }
-
-                    // CEI vs CEI Raw crossover
-                    if (ci < ceiRawArr.length) {
-                        var rPrev = ceiRawArr[ci - 1], rCurr = ceiRawArr[ci];
-                        if (rPrev.value != null && rCurr.value != null) {
-                            var prevGap = cPrev.value - rPrev.value;
-                            var currGap = cCurr.value - rCurr.value;
-                            if ((prevGap < 0 && currGap >= 0) || (prevGap >= 0 && currGap < 0)) {
-                                // Skip if already marked as zero-cross on same bar
-                                var alreadyMarked = ceiCrossMarkers.length > 0 && ceiCrossMarkers[ceiCrossMarkers.length - 1].time === cCurr.time;
-                                if (!alreadyMarked) {
-                                    ceiCrossMarkers.push({
-                                        time: cCurr.time,
-                                        position: cCurr.value >= rCurr.value ? "belowBar" : "aboveBar",
-                                        color: "#ffd740",
-                                        shape: "circle",
-                                        text: "×"
-                                    });
-                                }
-                            }
-                        }
-                    }
-                }
-                ceiCrossMarkers.sort(function(a, b) { return a.time < b.time ? -1 : 1; });
-                if (ceiCrossMarkers.length > 0) LC.createSeriesMarkers(sCeiLine, ceiCrossMarkers);
-
-                legConfig.push({ api: sCeiLine, label: "CEI", col: "cei", color: "#64ffda" });
-                legConfig.push({ api: sCeiRaw, label: "CEI Raw", col: "cei_raw", color: "#ff8a65" });
             } else if (panelKey === "rdv") {
                var s1 = c.addSeries(LC.LineSeries, { color: "#81c784", lineWidth: 2, lastValueVisible: false, priceLineVisible: false });
                s1.setData(rdvArr);
@@ -452,18 +304,6 @@
                var sZ = c.addSeries(LC.LineSeries, { color: "#424242", lineWidth: 1, lineStyle: 2, lastValueVisible: false, priceLineVisible: false });
                sZ.setData(pddArr.map(d => ({ time: d.time, value: 0 })));
                legConfig.push({ api: sPdd, label: "PDD", col: "pdd_30", color: "#ff7043" });
-            } else if (panelKey === "mcs_delta") {
-               var sMcs2 = c.addSeries(LC.LineSeries, { color: "#e1bee7", lineWidth: 1, lastValueVisible: false, priceLineVisible: false });
-               sMcs2.setData(mcsArr2d);
-               var sMcs4 = c.addSeries(LC.LineSeries, { color: "#ab47bc", lineWidth: 2, lastValueVisible: false, priceLineVisible: false });
-               sMcs4.setData(mcsArr4d);
-               var sMcs9 = c.addSeries(LC.LineSeries, { color: "#4a148c", lineWidth: 1, lineStyle: 2, lastValueVisible: false, priceLineVisible: false });
-               sMcs9.setData(mcsArr9d);
-               var sZ = c.addSeries(LC.LineSeries, { color: "#424242", lineWidth: 1, lineStyle: 2, lastValueVisible: false, priceLineVisible: false });
-               sZ.setData(mcsArr4d.map(d => ({ time: d.time, value: 0 })));
-               legConfig.push({ api: sMcs2, label: "MCS Δ (2d)", col: "mcs_delta_2d", color: "#e1bee7" });
-               legConfig.push({ api: sMcs4, label: "MCS Δ (4d)", col: "mcs_delta_4d", color: "#ab47bc" });
-               legConfig.push({ api: sMcs9, label: "MCS Δ (9d)", col: "mcs_delta_9d", color: "#4a148c", dashed: true });
             }
 
             allLegConfigs.push({ id: "legSub" + i, config: legConfig });
@@ -506,7 +346,7 @@
 
         window.refreshUI = refreshUI;
 
-        var toggleMap = { cbCWVAP: [sCwvap], cbCPOC: [sCpoc], cbVA: [sVaHigh, sVaLow], cbVol: [sVol] };
+        var toggleMap = { cbCWVAP: [sCwvap], cbVA: [sVaHigh, sVaLow], cbVol: [sVol] };
         Object.keys(toggleMap).forEach(id => {
             var cb = document.getElementById(id);
             if (cb) {
@@ -552,16 +392,6 @@
                     refreshUI(param);
                 }
 
-                if (c1 === pc && param.time) {
-                    const marker = markerList.find(m => m.time === param.time);
-                    if (marker && marker.stateText) {
-                        tooltipEl.style.display = "block";
-                        tooltipEl.innerHTML = `<strong>${marker.stateText}</strong>`;
-                        tooltipEl.style.left = (param.point.x + 20) + "px";
-                        tooltipEl.style.top = (param.point.y + 60) + "px";
-                        return;
-                    }
-                }
                 tooltipEl.style.display = "none";
             });
 
@@ -600,107 +430,25 @@
     function buildSidebarAnnotations(l) {
         if (!l) return;
         function fmt(v, d) { return (v != null && typeof v === "number" && !isNaN(v)) ? v.toFixed(d || 2) : (v || "\u2014"); }
-        var ceiState = l.cei_signal || null;
-        var intState = ceiState;
-        if (intState === "Demand_Assister") intState = "Demand (A)";
-        else if (intState === "Supply_Assister") intState = "Supply (A)";
-        else if (!intState) intState = "No Signal";
-        var scoringDir = l.scoring_direction || null;
-        var ceiVal = l.cei != null ? fmt(l.cei, 3) : null;
-        var ceiIntensity = l.cei_slope != null ? Math.round(Math.abs(l.cei_slope) * 1000) : null;
-        var sigStr = ceiState ? " (" + ceiIntensity + ")" : "";
-        // For No Signal, append the scoring direction so user knows which side was evaluated
-        if (intState === "No Signal" && scoringDir) {
-            sigStr += " " + scoringDir;
-        }
-        var stateColor = (intState === "Demand" || intState === "Demand (A)") ? "#00e676" : ((intState === "Supply" || intState === "Supply (A)") ? "#ef5350" : "#8b949e");
 
         var regime = l.regime || "\u2014";
         var regimeColor = regime === "uptrend" ? "#3fb950" : (regime === "downtrend" ? "#ef5350" : (regime === "transition" ? "#d29922" : "#8b949e"));
 
-        var ceiColor = l.cei != null ? (l.cei >= 0 ? "#3fb950" : "#ef5350") : "#8b949e";
         document.getElementById("state-table").innerHTML =
-            "<tr><td colspan='2' style='text-align:center; padding: 10px; background: rgba(0,0,0,0.2);'><strong style='color:" + stateColor + "'>" + intState + sigStr + "</strong></td></tr>" +
             "<tr><td>Date</td><td class='val'>" + (l.date ? l.date.split("T")[0] : "\u2014") + "</td></tr>" +
-            "<tr><td>CEI</td><td class='val' style='color:" + ceiColor + "'>" + (ceiVal || "\u2014") + "</td></tr>" +
-            "<tr><td>Regime</td><td class='val' style='color:" + regimeColor + "'>" + regime + "</td></tr>";
+            "<tr><td>Regime</td><td class='val' style='color:" + regimeColor + "'>" + regime + "</td></tr>" +
+            "<tr><td>Close</td><td class='val'>" + fmt(l.close) + "</td></tr>" +
+            "<tr><td>CWVAP</td><td class='val'>" + fmt(l.cwvap) + "</td></tr>" +
+            "<tr><td>Coherence</td><td class='val'>" + fmt(l.coherence) + "</td></tr>" +
+            "<tr><td>RDV</td><td class='val'>" + fmt(l.rdv) + "</td></tr>" +
+            "<tr><td>CWC</td><td class='val'>" + fmt(l.cwc) + "</td></tr>" +
+            "<tr><td>ATR(20)</td><td class='val'>" + fmt(l.atr_20) + "</td></tr>" +
+            "<tr><td>CWVAP Dist</td><td class='val'>" + fmt(l.cwvap_dist) + "%</td></tr>" +
+            "<tr><td>Delivery %</td><td class='val'>" + fmt(l.delivery_pct) + "%</td></tr>";
 
-        // Scoring breakdown (replaces gate diagnostics)
+        // Clear any scoring breakdown area
         var diagEl = document.getElementById("gate-diagnostics");
-        if (!diagEl) return;
-        if (!l.scoring_details || !Array.isArray(l.scoring_details) || l.scoring_details.length === 0) {
-            diagEl.innerHTML = "";
-            return;
-        }
-
-        function renderScoringCol(detailsArr, title, isDominant, totalScore) {
-            if (!detailsArr || !Array.isArray(detailsArr)) return '';
-            var colClass = "compare-col" + (isDominant ? " dominant" : "");
-            var html = '<div class="' + colClass + '"><div class="compare-col-hdr">' + title + ' (' + fmt(totalScore, 1) + ')</div><div class="scoring-section">';
-            var convergenceDetail = null;
-            detailsArr.forEach(function(f) {
-                // Extract convergence meta-detail separately
-                if (f.factor === "_convergence") {
-                    convergenceDetail = f;
-                    return;
-                }
-                var pct = Math.round(f.score * 100);
-                var barColor = pct >= 70 ? "#3fb950" : (pct >= 40 ? "#d29922" : "#8b949e");
-                var label = (f.ui && f.ui.label) ? f.ui.label : f.factor;
-                var weightPct = Math.round(f.weight * 100);
-                html += '<div class="scoring-row">'
-                    + '<span class="scoring-label">' + label + ' <span class="scoring-weight">(' + weightPct + '%)</span></span>'
-                    + '<div class="scoring-bar-wrap">'
-                    + '<div class="scoring-bar" style="width:' + pct + '%; background:' + barColor + '"></div>'
-                    + '</div>'
-                    + '<span class="scoring-val">' + fmt(f.raw_value, 2) + '</span>'
-                    + '<span class="scoring-contrib">' + (f.weighted * 100).toFixed(1) + '</span>'
-                    + '</div>';
-            });
-            // Convergence multiplier row (shown between factors and total)
-            if (convergenceDetail) {
-                var convCount = convergenceDetail.raw_value;
-                var convMult = convergenceDetail.score;
-                var convColor = convCount >= 3 ? "#3fb950" : (convCount >= 2 ? "#d29922" : "#8b949e");
-                html += '<div class="scoring-row" style="border-top:1px solid rgba(139,148,158,0.2); margin-top:4px; padding-top:4px;">'
-                    + '<span class="scoring-label">Convergence <span class="scoring-weight">(' + convCount + '/3)</span></span>'
-                    + '<div class="scoring-bar-wrap">'
-                    + '<div class="scoring-bar" style="width:100%; background:' + convColor + '; opacity:0.4"></div>'
-                    + '</div>'
-                    + '<span class="scoring-val"></span>'
-                    + '<span class="scoring-contrib" style="color:' + convColor + '">' + convMult.toFixed(2) + '×</span>'
-                    + '</div>';
-            }
-            // Total row — use the actual totalScore which already includes convergence
-            var totalPctDisplay = Math.round(totalScore);
-            var totalColor = totalPctDisplay >= 70 ? "#3fb950" : (totalPctDisplay >= 40 ? "#d29922" : "#8b949e");
-            html += '<div class="scoring-total">'
-                + '<span class="scoring-label">Total</span>'
-                + '<div class="scoring-bar-wrap">'
-                + '<div class="scoring-bar" style="width:' + totalPctDisplay + '%; background:' + totalColor + '"></div>'
-                + '</div>'
-                + '<span class="scoring-val"></span>'
-                + '<span class="scoring-contrib" style="color:' + totalColor + '">' + fmt(totalScore, 1) + '</span>'
-                + '</div></div></div>';
-            return html;
-        }
-
-        if (l.demand_details && l.supply_details) {
-            var domDir = l.scoring_direction;
-            var isDemandDom = domDir === "Demand" || (l.demand_strength >= l.supply_strength);
-            
-            var domHtml = isDemandDom 
-                ? renderScoringCol(l.demand_details, "Demand", true, l.demand_strength)
-                : renderScoringCol(l.supply_details, "Supply", true, l.supply_strength);
-            var nonDomHtml = isDemandDom
-                ? renderScoringCol(l.supply_details, "Supply", false, l.supply_strength)
-                : renderScoringCol(l.demand_details, "Demand", false, l.demand_strength);
-
-            diagEl.innerHTML = '<div class="compare-container">' + domHtml + nonDomHtml + '</div>';
-        } else {
-            // Fallback to legacy single column
-            diagEl.innerHTML = renderScoringCol(l.scoring_details, "Details", true, l.signal_strength);
-        }
+        if (diagEl) diagEl.innerHTML = "";
     }
 
     // --- Search & Watchlist Logic ---
@@ -734,13 +482,13 @@
 
     var WatchlistManager = {
         currentWlId: null, defaultWlId: null, currentItems: [], activeSortMode: "date-desc",
-        init: function () { 
+        init: function () {
             var defStr = localStorage.getItem("de_default_watchlist");
             if (defStr) {
                 try { this.defaultWlId = parseInt(defStr) || null; } catch(e) {}
             }
-            this.fetchLists(); 
-            this.bindEvents(); 
+            this.fetchLists();
+            this.bindEvents();
         },
         bindEvents: function () {
             var self = this;
@@ -754,7 +502,7 @@
             document.getElementById("wl-add").onclick = () => { var name = prompt("Enter Watchlist Name:"); if (name) this.api("/de/api/watchlists", "POST", { name }).then(() => this.fetchLists()).catch(err => alert("Error: " + err.message)); };
             document.getElementById("wl-rename").onclick = () => { if (!this.currentWlId) return; var name = prompt("Enter New Name:"); if (name) this.api("/de/api/watchlists/" + this.currentWlId, "PATCH", { name }).then(() => { if (this.currentWlId == this.defaultWlId) localStorage.removeItem("de_default_watchlist"); this.fetchLists(); }).catch(err => alert("Error: " + err.message)); };
             document.getElementById("wl-delete").onclick = () => { if (!this.currentWlId || !confirm("Delete this watchlist?")) return; this.api("/de/api/watchlists/" + this.currentWlId, "DELETE").then(() => { if (this.currentWlId == this.defaultWlId) { this.defaultWlId = null; localStorage.removeItem("de_default_watchlist"); } this.currentWlId = null; this.fetchLists(); }).catch(err => alert("Error deleting watchlist: " + err.message)); };
-            
+
             var btnDefault = document.getElementById("wl-set-default");
             if(btnDefault) {
                 btnDefault.onclick = () => {
@@ -849,7 +597,7 @@
             fetch("/de/api/watchlists").then(r => r.json()).then(lists => {
                 this.allWatchlists = lists;
                 var sel = document.getElementById("wl-select");
-                
+
                 // Determine current selection safely
                 var current = null;
                 if(keepCurrentSelection && this.currentWlId) {
@@ -863,22 +611,22 @@
                         localStorage.setItem("de_default_watchlist", current.toString());
                     }
                 }
-                
+
                 this.currentWlId = current;
-                
+
                 sel.innerHTML = '<option value="">Select Watchlist</option>' + lists.map(l => {
-                    var isDef = (l.id == this.defaultWlId) ? " ★" : "";
+                    var isDef = (l.id == this.defaultWlId) ? " \u2605" : "";
                     return `<option value="${l.id}" ${l.id == current ? 'selected' : ''}>${l.name}${isDef}</option>`;
                 }).join("");
-                
+
                 this.updateUIState();
-                
+
                 if (current) this.fetchItems();
                 else document.getElementById("wl-items").innerHTML = "";
-                
+
                 var addBtn = document.getElementById("wl-add-active");
                 if (addBtn) addBtn.disabled = !current;
-                
+
                 if (document.getElementById("wl-import-dropdown").style.display === "block") this.renderImportList();
             });
         },
@@ -926,7 +674,7 @@
         renderItems: function () {
             var sortMode = this.activeSortMode, sorted = [...this.currentItems];
             if (sortMode === "name-asc") sorted.sort((a, b) => a.symbol.localeCompare(b.symbol)); else if (sortMode === "name-desc") sorted.sort((a, b) => b.symbol.localeCompare(a.symbol)); else if (sortMode === "date-asc") sorted.sort((a, b) => new Date(a.added_at) - new Date(b.added_at)); else if (sortMode === "date-desc") sorted.sort((a, b) => new Date(b.added_at) - new Date(a.added_at));
-            document.getElementById("wl-items").innerHTML = sorted.map(i => `<div class="wl-item ${i.symbol === symbol ? 'active' : ''}" data-sym="${i.symbol}"><div class="wl-item-info"><span class="sym">${i.symbol}</span><span class="date">${formatDate(i.added_at)}</span></div><span class="remove-btn">×</span></div>`).join("");
+            document.getElementById("wl-items").innerHTML = sorted.map(i => `<div class="wl-item ${i.symbol === symbol ? 'active' : ''}" data-sym="${i.symbol}"><div class="wl-item-info"><span class="sym">${i.symbol}</span><span class="date">${formatDate(i.added_at)}</span></div><span class="remove-btn">\u00d7</span></div>`).join("");
             this.updateActiveState();
         },
         updateActiveState: function () { document.querySelectorAll(".wl-item").forEach(item => { if (item.dataset.sym === symbol) item.classList.add("active"); else item.classList.remove("active"); }); }
@@ -934,23 +682,13 @@
     fetchAllStocks();
     WatchlistManager.init();
 
-    // --- Settings Panel Logic (auto-generated from API) ---
+    // --- Settings Panel Logic (panel configuration only) ---
     var settingsOverlay = document.getElementById("settings-overlay");
-    var settingsThresholds = document.getElementById("settings-thresholds");
-    var settingsDefaults = {};
-    var settingsCurrent = {};
-    var settingsFactors = [];  // factor UI metadata from API
     var currentPanelsConfig = [];
 
     document.getElementById("open-settings").onclick = function () {
-        fetch("/de/api/config/state-rules").then(r => r.json()).then(function (data) {
-            settingsDefaults = data.defaults || {};
-            settingsCurrent = Object.assign({}, data.current || {});
-            settingsFactors = data.factors || [];
-            renderSettings();
-            renderPanelsSettings();
-            settingsOverlay.classList.remove("hidden");
-        });
+        renderPanelsSettings();
+        settingsOverlay.classList.remove("hidden");
     };
 
     document.querySelectorAll(".settings-tab").forEach(function(btn) {
@@ -967,86 +705,6 @@
     document.getElementById("settings-cancel").onclick = closeSettings;
     settingsOverlay.addEventListener("click", function (e) { if (e.target === settingsOverlay) closeSettings(); });
 
-    function renderSettings() {
-        var html = "";
-
-        // --- Global settings ---
-        html += '<div class="setting-group"><h4>Signal Settings</h4>';
-        var mss = settingsCurrent.min_signal_strength != null ? settingsCurrent.min_signal_strength : 40;
-        var mssDefault = settingsDefaults.min_signal_strength != null ? settingsDefaults.min_signal_strength : 40;
-        var mssModified = mss !== mssDefault;
-        html += '<div class="setting-row">'
-            + '<label>Min Signal Strength</label>'
-            + '<input type="range" id="s-min_signal_strength" min="10" max="80" step="5" value="' + mss + '">'
-            + '<span class="val-display' + (mssModified ? ' modified' : '') + '" id="sv-min_signal_strength">' + mss + '</span>'
-            + '</div>';
-
-        // --- Delta window settings ---
-        html += '<div class="setting-group"><h4>Δ Windows</h4>';
-        var deltaKeys = [
-            {key: "delta_window_psz_delta", label: "PSZ Δ (csv)", def: "2,4,9"},
-            {key: "delta_window_rsz_delta", label: "RSZ Δ (csv)", def: "2,4,9"},
-            {key: "delta_window_mcs_delta", label: "MCS Δ (csv)", def: "2,4,9"},
-        ];
-        deltaKeys.forEach(function(d) {
-            var val = settingsCurrent[d.key] != null ? settingsCurrent[d.key] : (settingsDefaults[d.key] || d.def);
-            var defVal = settingsDefaults[d.key] || d.def;
-            var isModified = val !== defVal;
-            html += '<div class="setting-row" style="grid-template-columns: 2fr 3fr;">'
-                + '<label>' + d.label + '</label>'
-                + '<input type="text" id="s-' + d.key + '" value="' + val + '" style="background:var(--bg-layer); border:1px solid var(--border-color); color:var(--text-primary); padding:4px;">'
-                + '</div>';
-        });
-        html += '</div>';
-
-        html += '</div>';
-
-        // --- Factor weights (auto-generated from API) ---
-        ["Demand", "Supply"].forEach(function(dir) {
-            var dirLower = dir.toLowerCase();
-            html += '<div class="setting-group"><h4>' + dir + ' Weights</h4>';
-            settingsFactors.forEach(function(f) {
-                var key = "weight_" + f.factor + "_" + dirLower;
-                var val = settingsCurrent[key] != null ? settingsCurrent[key] : (settingsDefaults[key] || 0);
-                var defVal = settingsDefaults[key] || 0;
-                var isModified = val !== defVal;
-                html += '<div class="setting-row">'
-                    + '<label title="' + (f.description || '') + '">' + f.label + '</label>'
-                    + '<input type="range" id="s-' + key + '" min="0" max="0.5" step="0.05" value="' + val + '">'
-                    + '<span class="val-display' + (isModified ? ' modified' : '') + '" id="sv-' + key + '">' + val.toFixed(2) + '</span>'
-                    + '</div>';
-            });
-            html += '</div>';
-        });
-
-        settingsThresholds.innerHTML = html;
-
-        // Bind live update on all sliders
-        var allKeys = ["min_signal_strength"];
-        var intKeys = ["min_signal_strength"];
-        var strKeys = ["delta_window_psz_delta", "delta_window_rsz_delta", "delta_window_mcs_delta"];
-        intKeys.forEach(function(k) { allKeys.push(k); });
-        strKeys.forEach(function(k) { allKeys.push(k); });
-        settingsFactors.forEach(function(f) {
-            allKeys.push("weight_" + f.factor + "_demand");
-            allKeys.push("weight_" + f.factor + "_supply");
-        });
-        // De-duplicate
-        allKeys = allKeys.filter(function(v, i, a) { return a.indexOf(v) === i; });
-        allKeys.forEach(function(key) {
-            var slider = document.getElementById("s-" + key);
-            if (!slider) return;
-            var display = document.getElementById("sv-" + key);
-            slider.addEventListener("input", function () {
-                var v = parseFloat(this.value);
-                settingsCurrent[key] = v;
-                var isInt = intKeys.indexOf(key) >= 0;
-                display.textContent = isInt ? v : v.toFixed(2);
-                display.classList.toggle("modified", v !== (settingsDefaults[key] || 0));
-            });
-        });
-    }
-
     function renderPanelsSettings() {
         currentPanelsConfig = getActivePanels();
         updatePanelsUI();
@@ -1060,11 +718,11 @@
             var label = PANEL_DEFINITIONS[key] ? PANEL_DEFINITIONS[key].label : key;
             html += '<div class="panel-setting-item" data-key="' + key + '">'
                  + '<div class="panel-setting-controls">'
-                 + '<button class="mini-btn move-up" data-idx="' + i + '">▲</button>'
-                 + '<button class="mini-btn move-down" data-idx="' + i + '">▼</button>'
+                 + '<button class="mini-btn move-up" data-idx="' + i + '">\u25B2</button>'
+                 + '<button class="mini-btn move-down" data-idx="' + i + '">\u25BC</button>'
                  + '</div>'
                  + '<span class="panel-setting-label">' + label + '</span>'
-                 + '<button class="mini-button delete-panel" data-idx="' + i + '">×</button>'
+                 + '<button class="mini-button delete-panel" data-idx="' + i + '">\u00d7</button>'
                  + '</div>';
         });
         listContainer.innerHTML = html;
@@ -1120,27 +778,15 @@
 
     document.getElementById("settings-save").onclick = function () {
         localStorage.setItem("de_panel_config", JSON.stringify(currentPanelsConfig));
-        fetch("/de/api/config/state-rules", {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ thresholds: settingsCurrent })
-        }).then(r => r.json()).then(function () {
-            closeSettings();
-            loadSymbol(symbol);
-        });
+        closeSettings();
+        loadSymbol(symbol);
     };
 
     document.getElementById("settings-reset").onclick = function () {
-        if (!confirm("Reset all weights and panels to factory defaults?")) return;
+        if (!confirm("Reset panels to defaults?")) return;
         localStorage.removeItem("de_panel_config");
-        fetch("/de/api/config/state-rules/reset", { method: "POST" })
-            .then(r => r.json())
-            .then(function (data) {
-                settingsCurrent = Object.assign({}, data.current || settingsDefaults);
-                renderSettings();
-                closeSettings();
-                loadSymbol(symbol);
-            });
+        closeSettings();
+        loadSymbol(symbol);
     };
 
     window.WatchlistManager = WatchlistManager;

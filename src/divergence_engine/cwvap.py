@@ -1,17 +1,14 @@
 """
 Module 3 — Composite VWAP (CWVAP).
 
-Builds per-window DVWAPs plus a composite weighted VWAP, composite POC,
-value-area bands, and a price-location classifier.
+Builds per-window DVWAPs plus a composite weighted VWAP and
+delivery-profile value-area bands.
 
 Key outputs:
 - **DVWAP_n**: Delivery-weighted VWAP per anchor window.
 - **POC_n**: Point of Control (highest-delivery price bin) per window.
 - **CWVAP**: Composite weighted VWAP across all anchors.
-- **CPOC**: Composite POC.
-- **POC_spread**: Regime-agreement signal (std of POCs / ATR).
-- **CVAH / CVAL**: Composite Value Area High/Low.
-- **price_location**: Categorical classification of close vs value zones.
+- **va_high / va_low**: Delivery-profile Value Area boundaries.
 """
 
 from __future__ import annotations
@@ -23,7 +20,7 @@ from src.divergence_engine.utils import WINDOWS
 
 
 class CompositeVWAP:
-    """Compute CWVAP, CPOC, value-area bands, and price-location labels.
+    """Compute CWVAP and delivery-profile value-area bands.
 
     Prerequisite columns (from Modules 1-2):
     ``high, low, close, volume, delivery_qty, tp, atr_20,
@@ -51,17 +48,8 @@ class CompositeVWAP:
         # 3.3 CWVAP — Composite Weighted VWAP
         df = self._compute_cwvap(df)
 
-        # 3.4 CPOC — Composite POC + POC Spread
-        df = self._compute_cpoc(df)
-
-        # 3.4b Delivery-Profile Value Area (va_high / va_low)
+        # 3.4 Delivery-Profile Value Area (va_high / va_low)
         df = self._compute_composite_va(df)
-
-        # 3.5 Composite Value Area (Bollinger-style CVAH/CVAL — kept for location classifier)
-        df = self._compute_value_area(df)
-
-        # 3.6 Price Location Classification
-        df = self._classify_location(df)
 
         return df
 
@@ -228,38 +216,7 @@ class CompositeVWAP:
         return df
 
     # ------------------------------------------------------------------
-    # 3.4 CPOC — Composite POC + POC Spread
-    # ------------------------------------------------------------------
-
-    def _compute_cpoc(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Composite POC (Method A: weighted average) and POC Spread (Method B)."""
-        atr = df["atr_20"]
-
-        # Method A — Weighted average of POC_n by DVL_rate_n
-        numerator = pd.Series(0.0, index=df.index)
-        denominator = pd.Series(0.0, index=df.index)
-
-        for n in self.windows:
-            poc = df[f"poc_{n}"]
-            dvl_rate = df[f"dvl_rate_{n}"]
-            weight = dvl_rate  # simplified: delivery_qty_at_POC_n ≈ DVL_rate_n
-
-            valid = poc.notna()
-            numerator += (poc * weight).fillna(0)
-            denominator += weight.where(valid, 0)
-
-        df["cpoc"] = np.where(denominator > 0, numerator / denominator, df["close"])
-
-        # Method B — POC Spread (regime signal)
-        poc_cols = [f"poc_{n}" for n in self.windows]
-        poc_matrix = df[poc_cols]
-        poc_std = poc_matrix.std(axis=1)
-        df["poc_spread"] = np.where(atr > 0, poc_std / atr, 0.0)
-
-        return df
-
-    # ------------------------------------------------------------------
-    # 3.4b Delivery-Profile Composite Value Area
+    # 3.4 Delivery-Profile Composite Value Area
     # ------------------------------------------------------------------
 
     def _compute_composite_va(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -295,90 +252,3 @@ class CompositeVWAP:
         )
         return df
 
-    # ------------------------------------------------------------------
-    # 3.5 Composite Value Area
-    # ------------------------------------------------------------------
-
-    def _compute_value_area(self, df: pd.DataFrame) -> pd.DataFrame:
-        """CVAH / CVAL bands per window; composite = delivery-weighted extremes."""
-        atr = df["atr_20"]
-
-        # Per-window CVAH_n / CVAL_n
-        cvah_max = pd.Series(-np.inf, index=df.index)
-        cval_min = pd.Series(np.inf, index=df.index)
-
-        total_weight = pd.Series(0.0, index=df.index)
-
-        for n in self.windows:
-            price_std = df["close"].rolling(window=n, min_periods=1).std()
-            dvwap = df[f"dvwap_{n}"]
-            dvl_rate = df[f"dvl_rate_{n}"]
-
-            cvah_n = dvwap + price_std
-            cval_n = dvwap - price_std
-
-            # Delivery-weighted: track the max CVAH and min CVAL
-            # weighted by dvl_rate (higher delivery = more influence)
-            cvah_max = np.maximum(cvah_max, cvah_n)
-            cval_min = np.minimum(cval_min, cval_n)
-
-        df["cvah"] = cvah_max
-        df["cval"] = cval_min
-        df["va_width"] = np.where(atr > 0, (df["cvah"] - df["cval"]) / atr, 0.0)
-
-        return df
-
-    # ------------------------------------------------------------------
-    # 3.6 Price Location Classification
-    # ------------------------------------------------------------------
-
-    def _classify_location(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Classify close relative to CWVAP, CPOC, CVAH, CVAL."""
-        close = df["close"].values
-        cwvap = df["cwvap"].values
-        cpoc = df["cpoc"].values
-        atr = df["atr_20"].values
-        cvah = df["cvah"].values
-        cval = df["cval"].values
-
-        n = len(df)
-        locations = np.full(n, "in_value_area", dtype=object)
-
-        # Pre-compute: did close cross above/below CWVAP in last 3 bars?
-        close_above_cwvap = close > cwvap
-
-        for i in range(n):
-            c = close[i]
-            cw = cwvap[i]
-            cp = cpoc[i]
-            a = atr[i] if not np.isnan(atr[i]) else 1.0
-            ch = cvah[i]
-            cl = cval[i]
-
-            # Check crossings (last 3 bars)
-            if i >= 3:
-                recent_above = close_above_cwvap[i - 2 : i + 1]
-                # Crossed above: was below, now above
-                if not recent_above[0] and recent_above[-1]:
-                    locations[i] = "reclaiming_value"
-                    continue
-                # Crossed below: was above, now below
-                if recent_above[0] and not recent_above[-1]:
-                    locations[i] = "losing_value"
-                    continue
-
-            if c > cw and c > cp:
-                # Extended above: price > CPOC > CWVAP (distribution risk)
-                if cp > cw:
-                    locations[i] = "extended_above"
-                else:
-                    locations[i] = "above_value"
-            elif abs(c - cw) < 0.3 * a:
-                locations[i] = "at_value"
-            elif c < cw and c < cp:
-                locations[i] = "below_value"
-            elif cl <= c <= ch:
-                locations[i] = "in_value_area"
-
-        df["price_location"] = locations
-        return df

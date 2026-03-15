@@ -43,15 +43,16 @@ def classify_market_regime(
         raise ValueError(f"Factual Error: Missing required OHLC columns: {required - set(df.columns)}")
 
     # ── 2. Indicator Calculation & Safe Join ─────────────────────────
-    adx_df = df.ta.adx(length=adx_length)
-    if adx_df is None or adx_df.empty:
-        raise ValueError("Insufficient data to calculate ADX.")
-
-    df = df.join(adx_df)
-
     col_adx = f"ADX_{adx_length}"
     col_dmp = f"DMP_{adx_length}"
     col_dmn = f"DMN_{adx_length}"
+
+    adx_df = df.ta.adx(length=adx_length)
+    if adx_df is None or adx_df.empty or col_adx not in adx_df.columns:
+        # Insufficient data — return all-NaN regime (will be filled as "notrend" downstream)
+        return pd.Series(np.nan, index=ohlc.index, name="regime")
+
+    df = df.join(adx_df)
 
     # ── 3. Vectorized Hysteresis (Trend Strength State) ──────────────
     df['trend_active'] = np.nan

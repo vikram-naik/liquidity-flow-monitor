@@ -20,22 +20,13 @@ import pandas as pd
 UI_COLUMNS = [
     # Chart panels (OHLC, overlays, slopes, coherence)
     "date", "open", "high", "low", "close",
-    "cwvap", "cpoc", "delivery_qty", "mfm",
+    "cwvap", "delivery_qty", "mfm",
     "price_slope_z", "rdv_slope_z",
     "coherence_raw", "coherence",
-    "integrated_state",
     "regime",
-    # Unified scoring data
-    "signal_strength", "scoring_direction",
-    "cwvap_dist", "rdv", "cwc", "cdvl", "gradient_shape",
-    "psz_delta_2d", "psz_delta_4d", "psz_delta_9d",
-    "rsz_delta_2d", "rsz_delta_4d", "rsz_delta_9d",
-    "mcs_delta_2d", "mcs_delta_4d", "mcs_delta_9d", "pdd_30",
-    "scoring_details",
-    "demand_strength", "supply_strength",
-    "demand_details", "supply_details",
-    # CEI (Module 7.5)
-    "cei_raw", "cei", "cei_slope", "cei_signal",
+    # Delivery metrics
+    "cwvap_dist", "rdv", "cwc", "cdvl", "gradient_shape", "pdd_30",
+    # Divergence
     "accum_div", "distrib_div",
     # Delivery-Profile Value Area (Module 3)
     "va_high", "va_low",
@@ -98,4 +89,3 @@ def ledger_to_json(df: pd.DataFrame) -> list[dict]:
 def state_summary_to_json(result) -> dict:
     """Convert the EngineResult.latest into API-friendly JSON."""
     return _clean(result.latest)
-
