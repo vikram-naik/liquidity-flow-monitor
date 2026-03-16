@@ -23,7 +23,8 @@
         "atr_20": { label: "ATR (20)" },
         "cwvap_dist": { label: "CWVAP Dist %" },
         "delivery_pct": { label: "Delivery %" },
-        "pdd": { label: "PDD (30)" }
+        "pdd": { label: "PDD (30)" },
+        "cts": { label: "CWVAP Trend" }
     };
 
     function getActivePanels() {
@@ -133,10 +134,12 @@
     function buildCharts(data) {
         var ledger = data.ledger;
         var ohlc = [], cwvap = [], vaHigh = [], vaLow = [];
+        var ctsArr = [];
         var deliveryVol = [];
         var timeToIndex = {};
         var pZ = [], rZ = [], cRaw = [], cSmooth = [];
         var rdvArr = [], cwcArr = [], rdvConsArr = [], atrArr = [], distArr = [], delPctArr = [], pddArr = [];
+        var entryMarkers = [];
 
         for (var i = 0; i < ledger.length; i++) {
             var r = ledger[i];
@@ -148,6 +151,7 @@
                 ohlc.push({ time: t, open: r.open, high: r.high, low: r.low, close: r.close });
             }
             if (r.cwvap != null) cwvap.push({ time: t, value: r.cwvap }); else cwvap.push({ time: t });
+            if (r.cts != null) ctsArr.push({ time: t, value: r.cts }); else ctsArr.push({ time: t });
             if (r.va_high != null) vaHigh.push({ time: t, value: r.va_high }); else vaHigh.push({ time: t });
             if (r.va_low != null) vaLow.push({ time: t, value: r.va_low }); else vaLow.push({ time: t });
 
@@ -164,6 +168,16 @@
             if (r.cwvap_dist != null) distArr.push({ time: t, value: r.cwvap_dist }); else distArr.push({ time: t });
             if (r.delivery_pct != null) delPctArr.push({ time: t, value: r.delivery_pct }); else delPctArr.push({ time: t });
             if (r.pdd_30 != null) pddArr.push({ time: t, value: r.pdd_30 }); else pddArr.push({ time: t });
+
+            if (r.entry_signal) {
+                entryMarkers.push({ 
+                    time: t, 
+                    position: 'belowBar', 
+                    color: '#00e676', 
+                    shape: 'arrowUp', 
+                    text: String(r.entry_signal) 
+                });
+            }
 
             if (r.delivery_qty != null) {
                 var mfm = r.mfm != null ? r.mfm : 0;
@@ -218,6 +232,7 @@
             wickUpColor: "#26a69a", wickDownColor: "#ef5350", lastValueVisible: false, priceLineVisible: false
         });
         cs.setData(ohlc);
+        var entryMarkersPrimitive = LC.createSeriesMarkers(cs, entryMarkers);
 
         var sCwvap = pc.addSeries(LC.LineSeries, { color: "#00bfa5", lineWidth: 2, lastValueVisible: false });
         sCwvap.setData(cwvap);
@@ -304,6 +319,12 @@
                var sZ = c.addSeries(LC.LineSeries, { color: "#424242", lineWidth: 1, lineStyle: 2, lastValueVisible: false, priceLineVisible: false });
                sZ.setData(pddArr.map(d => ({ time: d.time, value: 0 })));
                legConfig.push({ api: sPdd, label: "PDD", col: "pdd_30", color: "#ff7043" });
+            } else if (panelKey === "cts") {
+               var sCts = c.addSeries(LC.LineSeries, { color: "#4fc3f7", lineWidth: 2, lastValueVisible: false, priceLineVisible: false });
+               sCts.setData(ctsArr);
+               var sZ = c.addSeries(LC.LineSeries, { color: "#424242", lineWidth: 1, lineStyle: 2, lastValueVisible: false, priceLineVisible: false });
+               sZ.setData(ctsArr.map(d => ({ time: d.time, value: 0 })));
+               legConfig.push({ api: sCts, label: "CTS", col: "cts", color: "#4fc3f7" });
             }
 
             allLegConfigs.push({ id: "legSub" + i, config: legConfig });
@@ -345,6 +366,13 @@
         }
 
         window.refreshUI = refreshUI;
+
+        var cbEntry = document.getElementById("cbEntry");
+        if (cbEntry) {
+            cbEntry.addEventListener("change", function () {
+                entryMarkersPrimitive.setMarkers(this.checked ? entryMarkers : []);
+            });
+        }
 
         var toggleMap = { cbCWVAP: [sCwvap], cbVA: [sVaHigh, sVaLow], cbVol: [sVol] };
         Object.keys(toggleMap).forEach(id => {
@@ -439,12 +467,17 @@
             "<tr><td>Regime</td><td class='val' style='color:" + regimeColor + "'>" + regime + "</td></tr>" +
             "<tr><td>Close</td><td class='val'>" + fmt(l.close) + "</td></tr>" +
             "<tr><td>CWVAP</td><td class='val'>" + fmt(l.cwvap) + "</td></tr>" +
-            "<tr><td>Coherence</td><td class='val'>" + fmt(l.coherence) + "</td></tr>" +
-            "<tr><td>RDV</td><td class='val'>" + fmt(l.rdv) + "</td></tr>" +
-            "<tr><td>CWC</td><td class='val'>" + fmt(l.cwc) + "</td></tr>" +
-            "<tr><td>ATR(20)</td><td class='val'>" + fmt(l.atr_20) + "</td></tr>" +
-            "<tr><td>CWVAP Dist</td><td class='val'>" + fmt(l.cwvap_dist) + "%</td></tr>" +
-            "<tr><td>Delivery %</td><td class='val'>" + fmt(l.delivery_pct) + "%</td></tr>";
+            "<tr><td>CTS</td><td class='val'>" + fmt(l.cts, 4) + "</td></tr>" +
+            "<tr><td>CTS Slope</td><td class='val'>" + fmt(l.cts_slope, 4) + "</td></tr>" +
+            "<tr><td>CTS Accel</td><td class='val'>" + fmt(l.cts_accel, 4) + "</td></tr>" +
+            "<tr><td>PSZ</td><td class='val'>" + fmt(l.price_slope_z, 4) + "</td></tr>" +
+            "<tr><td>RSZ</td><td class='val'>" + fmt(l.rdv_slope_z, 4) + "</td></tr>" +
+            (function() {
+                if (!l.entry_reason || l.entry_reason === "Neutral/No Entry" || l.entry_reason === "Hold") return "";
+                var color = l.entry_signal ? "#00e676" : "#ff7043";
+                var label = l.entry_signal ? "Signal Reason" : "Rejected Reason";
+                return "<tr><td>" + label + "</td><td class='val' style='color:" + color + "; font-size:11px'>" + l.entry_reason + "</td></tr>";
+            })();
 
         // Clear any scoring breakdown area
         var diagEl = document.getElementById("gate-diagnostics");

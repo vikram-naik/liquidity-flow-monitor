@@ -16,6 +16,8 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from src.trading.signals import PriceDivergenceEntryConfig, SignalFactory
+
 # Columns the UI actually reads — trim everything else before serialising
 UI_COLUMNS = [
     # Chart panels (OHLC, overlays, slopes, coherence)
@@ -25,13 +27,21 @@ UI_COLUMNS = [
     "coherence_raw", "coherence",
     "regime",
     # Delivery metrics
-    "cwvap_dist", "rdv", "cwc", "cdvl", "gradient_shape", "pdd_30",
+    "cwvap_dist", "rdv", "cwc", "cdvl", "gradient_shape", "pdd_30", "pdd_120", "mcs_composite",
+    "cts", "cts_slope", "cts_accel",
     # Divergence
     "accum_div", "distrib_div",
     # Delivery-Profile Value Area (Module 3)
     "va_high", "va_low",
+    # Signal markers (computed by check_entry from src.trading.signals)
+    "entry_signal", "entry_reason",
 ]
 
+# Entry config for signal detection — quality gate disabled for broader coverage
+# No gates for now. (Strict Gates: pdd_120_max=-3.6, rsz_falling=True)
+# _ENTRY_CFG = LongDivergenceEntryConfig(min_soft_filters=0)
+_ENTRY_CFG = PriceDivergenceEntryConfig()
+_SIGNAL = SignalFactory.get_signal("price_divergence")
 
 def _nan_safe(val: Any) -> Any:
     """Convert NaN / Inf to None for JSON serialisation."""
@@ -59,11 +69,34 @@ def _clean(obj: Any) -> Any:
     return obj
 
 
+def _tag_entry_signals(df: pd.DataFrame) -> pd.DataFrame:
+    """Add an ``entry_signal`` column using the canonical check_entry logic.
+    Stores the intensity (soft filter count) if the signal qualifies, else 0.
+    """
+    records = df.to_dict("records")
+    flags = [0] * len(records)
+    reasons = [None] * len(records)
+    for i in range(1, len(records)):
+        ok, soft, det = _SIGNAL.check_entry(
+            records[i], records[i - 1], _ENTRY_CFG, records=records, idx=i,
+        )
+        if ok:
+            flags[i] = soft
+        reasons[i] = det.get("reason")
+    df = df.copy()
+    df["entry_signal"] = flags
+    df["entry_reason"] = reasons
+    return df
+
+
 def ledger_to_json(df: pd.DataFrame) -> list[dict]:
     """Convert the ledger DataFrame to a JSON-serialisable list.
 
     Trims to UI_COLUMNS and uses vectorised conversion for performance.
     """
+    # Tag entry signals using the canonical signal logic
+    df = _tag_entry_signals(df)
+
     # Trim to only the columns the UI needs
     cols = [c for c in UI_COLUMNS if c in df.columns]
     slim = df[cols].copy()

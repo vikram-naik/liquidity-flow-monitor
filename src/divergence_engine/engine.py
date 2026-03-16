@@ -60,6 +60,7 @@ _DROP_COLS = [
     "cvah", "cval", "va_width",
     # CWVAP intermediates
     "cwvap_slope", "cwvap_slope_norm", "price_location",
+    "cwvap_ema_5", "cwvap_ema_8", "cwvap_ema_14", "cwvap_ema_21",
     # CWC pairwise intermediates
     "c_10_30", "c_30_60", "c_60_120", "cwc_delta",
     # MCS sub-components (feed mcs_composite only)
@@ -116,6 +117,12 @@ class EngineResult:
             "coherence": _safe(row.get("coherence", 0), decimals=4),
             "price_slope_z": _safe(row.get("price_slope_z", 0), decimals=4),
             "rdv_slope_z": _safe(row.get("rdv_slope_z", 0), decimals=4),
+            "pdd_120": _safe(row.get("pdd_120", 0), decimals=4),
+            "mcs_composite": _safe(row.get("mcs_composite", 0), decimals=4),
+            "cts": _safe(row.get("cts", 0), decimals=4),
+            "cts_slope": _safe(row.get("cts_slope", 0), decimals=6),
+            "cts_accel": _safe(row.get("cts_accel", 0), decimals=6),
+            "gradient_shape": row.get("gradient_shape", "—"),
             "regime": row.get("regime", "notrend"),
         }
 

@@ -23,7 +23,7 @@ from tabulate import tabulate
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.divergence_engine.engine import DivergenceEngine
-from src.trading.signals import EntryConfig, ExitConfig, Trade, check_entry, check_exit
+from src.trading.signals import PriceDivergenceEntryConfig, PriceDivergenceExitConfig, Trade, SignalFactory
 
 DB_PATH = Path(__file__).resolve().parent.parent / "liquidity_monitor.db"
 
@@ -53,7 +53,7 @@ def get_watchlist_symbols(name: str) -> list[str]:
 
 def simulate_trades(
     ticker: str, df: pd.DataFrame,
-    entry_cfg: EntryConfig, exit_cfg: ExitConfig,
+    entry_cfg: PriceDivergenceEntryConfig, exit_cfg: PriceDivergenceExitConfig, signal
 ) -> list[Trade]:
     """Walk through ledger bar-by-bar, enter and exit trades."""
     records = df.to_dict("records")
@@ -88,8 +88,8 @@ def simulate_trades(
             if -mae > trade.mae_pct:
                 trade.mae_pct = -mae
 
-            reason, delivery_bad_count = check_exit(
-                row, trade, peak_close, bars_held,
+            reason, delivery_bad_count = signal.check_exit(
+                row, prev, trade, peak_close, bars_held,
                 delivery_bad_count, cwvap_values, exit_cfg,
             )
 
@@ -119,12 +119,12 @@ def simulate_trades(
                 entry_price=close,
                 entry_idx=i,
                 atr_at_entry=atr,
-                soft_filters_passed=sig["soft_count"],
-                rdv_pass=sig["details"]["rdv"],
-                mcs_pass=sig["details"]["mcs"],
-                cwc_pass=sig["details"]["cwc"],
-                grad_pass=sig["details"]["grad"],
-                regime_at_entry=sig["details"]["regime"],
+                soft_filters_passed=sig.get("soft_count", 0),
+                rdv_pass=sig.get("details", {}).get("rdv", False),
+                mcs_pass=sig.get("details", {}).get("mcs", False),
+                cwc_pass=sig.get("details", {}).get("cwc", False),
+                grad_pass=sig.get("details", {}).get("grad", False),
+                regime_at_entry=sig.get("details", {}).get("regime", "-"),
                 psz_at_entry=psz_now if not np.isnan(psz_now) else 0.0,
                 psz_peak=psz_now if not np.isnan(psz_now) else 0.0,
             )
@@ -133,7 +133,7 @@ def simulate_trades(
             in_trade = True
 
         else:
-            qualifies, soft_count, fdetails = check_entry(row, prev, entry_cfg, records, i)
+            qualifies, soft_count, fdetails = signal.check_entry(row, prev, entry_cfg, records, i)
             if qualifies:
                 pending_signal = {"soft_count": soft_count, "details": fdetails}
 
@@ -152,8 +152,8 @@ def simulate_trades(
 
 
 def run_period(symbols: list[str], start: str, end: str,
-               entry_cfg: EntryConfig, exit_cfg: ExitConfig,
-               label: str) -> list[Trade]:
+               entry_cfg: PriceDivergenceEntryConfig, exit_cfg: PriceDivergenceExitConfig,
+               label: str, signal) -> list[Trade]:
     print(f"\n{'='*60}")
     print(f"  {label}: {start} to {end}")
     print(f"{'='*60}")
@@ -164,11 +164,13 @@ def run_period(symbols: list[str], start: str, end: str,
         try:
             engine = DivergenceEngine(sym, start_date=start, end_date=end)
             result = engine.run()
-            trades = simulate_trades(sym, result.ledger, entry_cfg, exit_cfg)
+            trades = simulate_trades(sym, result.ledger, entry_cfg, exit_cfg, signal)
             all_trades.extend(trades)
             wins = sum(1 for t in trades if t.pnl_pct > 0)
             print(f"{len(trades)} trades, {wins} wins" if trades else "no trades")
         except Exception as e:
+            # import traceback
+            # traceback.print_exc()
             print(f"SKIP — {e}")
 
     return all_trades
@@ -235,12 +237,14 @@ def main():
     print(f"Train: {TRAIN_START} — {TRAIN_END}")
     print(f"Test:  {TEST_START} — {TEST_END}")
 
-    # Use quality gate params (PDD_120 + RSZ falling)
-    entry_cfg = EntryConfig(pdd_120_max=-3.6, rsz_falling=True)
-    exit_cfg = ExitConfig()
+    # No gates for now. (Strict Gates: pdd_120_max=-3.6, rsz_falling=True)
+    entry_cfg = PriceDivergenceEntryConfig()
+    exit_cfg = PriceDivergenceExitConfig()
+    
+    signal = SignalFactory.get_signal("price_divergence")
 
-    train_trades = run_period(symbols, TRAIN_START, TRAIN_END, entry_cfg, exit_cfg, "TRAIN")
-    test_trades = run_period(symbols, TEST_START, TEST_END, entry_cfg, exit_cfg, "TEST")
+    train_trades = run_period(symbols, TRAIN_START, TRAIN_END, entry_cfg, exit_cfg, "TRAIN", signal)
+    test_trades = run_period(symbols, TEST_START, TEST_END, entry_cfg, exit_cfg, "TEST", signal)
 
     train_stats = summarize(train_trades, "TRAIN")
     test_stats = summarize(test_trades, "TEST")

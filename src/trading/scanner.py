@@ -22,7 +22,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
 from src.divergence_engine.engine import DivergenceEngine
-from src.trading.signals import EntryConfig, ExitConfig, Trade, check_entry, check_exit
+from src.trading.signals import LongDivergenceEntryConfig, LongDivergenceExitConfig, Trade, SignalFactory
 from src.trading.repository import TradingRepository
 from src.trading.sizing import calculate_quantity
 from src.trading.broker import PaperBroker
@@ -75,12 +75,12 @@ class Scanner:
         self.watchlist_name = cfg.get("watchlist", "NIFTY 50")
         self.execution_mode = cfg.get("execution_mode", "paper")
 
-        # Signal configs — use validated defaults
-        self.entry_cfg = EntryConfig(
-            pdd_120_max=-3.6,
-            rsz_falling=True,
-        )
-        self.exit_cfg = ExitConfig()
+        # Signal configs — quality gate relaxed, layered PSZ crossings provide coverage
+        # No gates for now. (Strict Gates: pdd_120_max=-3.6, rsz_falling=True)
+
+        self.entry_cfg = LongDivergenceEntryConfig(min_soft_filters=0)
+        self.exit_cfg = LongDivergenceExitConfig()
+        self.signal = SignalFactory.get_signal("long_divergence")
 
     def run(self):
         """Execute all 4 phases of the daily scan."""
@@ -187,7 +187,7 @@ class Scanner:
             for r in records[-tail_len:]:
                 cwvap_values.append(r.get("cwvap", np.nan))
 
-            reason, delivery_bad_count = check_exit(
+            reason, delivery_bad_count = self.signal.check_exit(
                 last, trade, peak_close, bars_held,
                 delivery_bad_count, cwvap_values, self.exit_cfg,
             )
@@ -249,7 +249,7 @@ class Scanner:
             last = records[-1]
             prev = records[-2]
 
-            qualifies, soft_count, details = check_entry(
+            qualifies, soft_count, details = self.signal.check_entry(
                 last, prev, self.entry_cfg, records, len(records) - 1,
             )
 
