@@ -30,7 +30,7 @@ from src.divergence_engine.cwc import CrossWindowCoherence
 from src.divergence_engine.cwvap import CompositeVWAP
 from src.divergence_engine.dvl_ledger import DVLLedger
 from src.divergence_engine.mcs import MoneyCompositeScore
-from src.divergence_engine.analysis import compute_trend_participation
+from src.divergence_engine.analysis import compute_trend_participation, SavitzkyGolayAnalyzer, TrendAnalysis
 from src.divergence_engine.regime import classify_market_regime
 from src.divergence_engine.utils import load_symbol_data, validate_dataframe, WINDOWS
 from src.divergence_engine.aggregator import resample_ohlc_delivery, VALID_MODES
@@ -85,6 +85,7 @@ class EngineResult:
     ticker: str
     ledger: pd.DataFrame
     states: pd.DataFrame
+    cts_trend_analysis: Optional[TrendAnalysis] = None
     _start_date: str = ""
     _end_date: str = ""
 
@@ -105,7 +106,7 @@ class EngineResult:
             return round(v, decimals)
 
         row = self.ledger.iloc[-1]
-        return {
+        latest_dict = {
             "date": str(row["date"]),
             "close": _safe(row.get("close"), decimals=2),
             "cwc": _safe(row.get("cwc", 0), decimals=4),
@@ -125,6 +126,13 @@ class EngineResult:
             "gradient_shape": row.get("gradient_shape", "—"),
             "regime": row.get("regime", "notrend"),
         }
+        
+        # Merge trend analysis into latest output
+        if self.cts_trend_analysis:
+            import dataclasses
+            latest_dict["cts_trend_analysis"] = dataclasses.asdict(self.cts_trend_analysis)
+        
+        return latest_dict
 
     def export(self, path: str | None = None) -> str:
         """Export the ledger to CSV. Returns the file path."""
@@ -197,7 +205,14 @@ class DivergenceEngine:
             cached_df = cache.get(cache_key)
             if cached_df is not None:
                 logger.info("Engine cache HIT for %s", cache_key)
-                return self._build_result(cached_df)
+                
+                # Module 7 — CTS Trend Analysis (on cache hit)
+                analyzer = SavitzkyGolayAnalyzer()
+                trend_analysis = None
+                if "cts" in cached_df.columns:
+                    trend_analysis = analyzer.analyze(cached_df["cts"])
+                    
+                return self._build_result(cached_df, trend_analysis)
 
         # --- Full pipeline ---
         if self._df is not None:
@@ -238,6 +253,12 @@ class DivergenceEngine:
         # Module 6 — Trend Participation Analysis
         df = compute_trend_participation(df)
 
+        # Module 7 — CTS Trend Analysis
+        analyzer = SavitzkyGolayAnalyzer()
+        trend_analysis = None
+        if "cts" in df.columns:
+            trend_analysis = analyzer.analyze(df["cts"])
+
         # --- Drop intermediate columns ---
         df = df.drop(columns=[c for c in _DROP_COLS if c in df.columns])
 
@@ -246,13 +267,13 @@ class DivergenceEngine:
             cache.set(cache_key, df, ttl=_RESULT_CACHE_TTL)
             logger.info("Engine cache SET for %s", cache_key)
 
-        return self._build_result(df)
+        return self._build_result(df, trend_analysis)
 
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _build_result(self, df: pd.DataFrame) -> EngineResult:
+    def _build_result(self, df: pd.DataFrame, trend_analysis: Optional[TrendAnalysis] = None) -> EngineResult:
         """Build an EngineResult from a computed ledger DataFrame."""
         state_cols = ["date", "regime"]
         states_df = df[[c for c in state_cols if c in df.columns]].copy()
@@ -261,6 +282,7 @@ class DivergenceEngine:
             ticker=self.ticker,
             ledger=df,
             states=states_df,
+            cts_trend_analysis=trend_analysis,
             _start_date=self._start_date or "",
             _end_date=self._end_date or "",
         )

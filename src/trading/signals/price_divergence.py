@@ -40,7 +40,11 @@ class PriceDivergenceSignal(SignalInterface):
         if not isinstance(cfg, PriceDivergenceEntryConfig):
             raise TypeError("cfg must be PriceDivergenceEntryConfig")
 
-        enter, intensity, reason = can_enter(row, prev_row, cfg.noise_threshold)
+        prev_prev_row = None
+        if records is not None and idx >= 2:
+            prev_prev_row = records[idx - 2]
+
+        enter, intensity, reason = can_enter(row, prev_row, cfg.noise_threshold, prev_prev_row)
         return enter, int(intensity), {"reason": reason}
 
     def check_exit(
@@ -83,16 +87,23 @@ class PriceDivergenceSignal(SignalInterface):
 
 
 
-def can_enter(row: dict, prev_row: dict, noise_threshold: float = 0.01) -> Tuple[bool, float, str]:
+def can_enter(row: dict, prev_row: dict, noise_threshold: float = 0.01, prev_prev_row: dict | None = None) -> Tuple[bool, float, str]:
     """
     Evaluates if a LONG position should be initiated.
     Returns: (Should_Enter: bool, Intensity: float 0-100, Reason: str)
     """
-    # Extract current and previous states    
     cts = row.get('cts', np.nan)
     slope = row.get('cts_slope', np.nan)
     accel = row.get('cts_accel', np.nan)
     prev_slope = prev_row.get('cts_slope', np.nan)
+    prev_cts = prev_row.get('cts', np.nan)
+    prev_prev_cts = prev_prev_row.get('cts', np.nan) if prev_prev_row else np.nan
+    
+    cmp = row.get('close', np.nan)
+    open_px = row.get('open', np.nan)
+    prev_cmp = prev_row.get('close', np.nan)
+    psz = row.get('price_slope_z', np.nan)
+    prev_psz = prev_row.get('price_slope_z', np.nan)
 
     enter = False
     intensity = 0.0
@@ -101,7 +112,7 @@ def can_enter(row: dict, prev_row: dict, noise_threshold: float = 0.01) -> Tuple
     #need to emperically find out what should the threshold.
 
     # 1. The Confirmed Hook (Slope crosses zero upwards)
-    if prev_slope <= 0 and slope > noise_threshold and cts < -0.2:
+    if prev_slope <= 0 and slope > noise_threshold and cts < -0.15:
         enter = True
         reason = "Confirmed Upward Hook"
         # Intensity: Base 50 + bonus for high acceleration and deep value
@@ -110,14 +121,27 @@ def can_enter(row: dict, prev_row: dict, noise_threshold: float = 0.01) -> Tuple
         intensity = 50 + accel_bonus + value_bonus
 
     # 2. The Early Bend (Still pointing down, but accelerating up violently)
-    elif slope < 0 and accel > noise_threshold and cts < -0.3:
+    elif (
+        -0.02 < slope < 0  # Slope has flattened out significantly
+        and accel > (noise_threshold * 10)  # Strong acceleration up
+        and cts < -0.3  # Still in deep value
+        and cts > prev_cts  # Ticking up today
+        and prev_cts > prev_prev_cts # Confirmation: ticked up yesterday as well
+    ):
         enter = True
         reason = "Deep Bottom Reversal (Bending Up)"
         # Intensity: Driven purely by how hard the acceleration is pushing
         intensity = 40 + (accel * 600)
 
     # 3. Strong Trend Continuation (Everything points up)
-    elif slope > noise_threshold and accel > noise_threshold and cts > 0.02:
+    elif (
+        slope > noise_threshold 
+        and accel > noise_threshold 
+        and cts > 0.02
+        and cmp > open_px  # Green day (Close > Open)
+        and cmp > prev_cmp # Higher close than yesterday
+        and psz > prev_psz # Momentum is ticking up
+    ):
         enter = True
         reason = "Trend Continuation (Accelerating Up)"
         # Intensity is lower here because the move is already underway (higher risk)
@@ -133,8 +157,6 @@ def can_enter(row: dict, prev_row: dict, noise_threshold: float = 0.01) -> Tuple
     intensity = min(100.0, max(0.0, float(np.nan_to_num(intensity))))
 
     if enter and cts < 0.2:
-        psz = row.get('price_slope_z', np.nan)
-        prev_psz = prev_row.get('price_slope_z', np.nan)
         rsz = row.get('rdv_slope_z', np.nan)
         prev_rsz = prev_row.get('rdv_slope_z', np.nan)
         crossed = False
