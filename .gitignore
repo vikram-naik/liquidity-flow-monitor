@@ -57,3 +57,5 @@ results.log
 scripts/cei_crossing_validation_weekly.json
 .gitignore
 .gitignore
+*analysis.png
+RELIANCE_150_savgol_psz_analysis.png

@@ -108,38 +108,49 @@ def run_walkforward_test(ticker, window=200):
     # ax1.scatter(df_plot[s_buy].index, df_plot[s_buy]['close'], marker='^', color='gray', s=50, label='Savgol Only Buy', alpha=0.3)
     # ax1.scatter(df_plot[s_sell].index, df_plot[s_sell]['close'], marker='v', color='gray', s=50, label='Savgol Only Sell', alpha=0.3)
     
-    # --- NEW ADAPTIVE SIGNAL LOGIC ---
-    # 1. PSZ Extrema using Scipy
-    from scipy.signal import argrelextrema
-    psz_vals = df_plot['psz_v_wf'].values
-    trough_indices = argrelextrema(psz_vals, np.less)[0]
-    peak_indices = argrelextrema(psz_vals, np.greater)[0]
-    
-    df_plot['psz_trough'] = False
-    df_plot.iloc[trough_indices, df_plot.columns.get_loc('psz_trough')] = True
-    df_plot['psz_peak'] = False
-    df_plot.iloc[peak_indices, df_plot.columns.get_loc('psz_peak')] = True
-    
-    # 2. Filter Extrema (ensure they are not near zero / sideways)
-    v_top_thresh = df_plot['psz_v_wf'].quantile(0.80)
-    v_bot_thresh = df_plot['psz_v_wf'].quantile(0.20)
-    
-    # Only keep troughs that are in the bottom 20% of V, and peaks in top 20%
-    df_plot['psz_trough'] = df_plot['psz_trough'] & (df_plot['psz_v_wf'] <= v_bot_thresh)
-    df_plot['psz_peak'] = df_plot['psz_peak'] & (df_plot['psz_v_wf'] >= v_top_thresh)
-
-    # 3. Adaptive CTS Thresholds (10th / 90th Percentiles)
+    # --- NEW THRESHOLD DIRECTIONAL LOGIC ---
+    # 1. Percentile Thresholds
     top_cts_thresh = df_plot['cts_wf'].quantile(0.90)
     bot_cts_thresh = df_plot['cts_wf'].quantile(0.10)
     
-    buy_sig = (df_plot['cts_wf'] <= bot_cts_thresh) & (df_plot['psz_trough'])
-    sell_sig = (df_plot['cts_wf'] >= top_cts_thresh) & (df_plot['psz_peak'])
+    top_psz_thresh = df_plot['psz_sell_thresh_wf'].iloc[-1] # SG-Filtered PSZ P80
+    bot_psz_thresh = df_plot['psz_buy_thresh_wf'].iloc[-1]  # SG-Filtered PSZ P20
+    # 2. Refined Directional Signals
+    # CTS logic: Trigger when moving away from clips (-1 or 1)
+    # Use a small tolerance for the clip check
+    clip_tol = 0.01
     
-    # Plot Precise Signals
-    ax1.scatter(df_plot[buy_sig].index, df_plot[buy_sig]['close'], marker='^', color='green', s=200, label=f'ADAPTIVE BUY (CTS <= P10 + PSZ_V Trough)', zorder=5)
-    ax1.scatter(df_plot[sell_sig].index, df_plot[sell_sig]['close'], marker='v', color='red', s=200, label=f'ADAPTIVE SELL (CTS >= P90 + PSZ_V Peak)', zorder=5)
+    cts_series = df_plot['cts_wf']
+    cts_prev = cts_series.shift(1)
     
-    ax1.set_title(f"Savgol + PSZ Adaptive Analysis (Velocity Extrema) - {ticker}")
+    # CTS Buy: was deep in trough (<= -1 + tol) and now rising
+    cts_buy = (cts_prev <= -1.0 + clip_tol) & (cts_series > cts_prev)
+    # CTS Sell: was deep in peak (>= 1 - tol) and now falling
+    cts_sell = (cts_prev >= 1.0 - clip_tol) & (cts_series < cts_prev)
+    
+    # PSZ logic: Below/above threshold, directional turn, and STRENGTH filter (abs(v) > 0.05)
+    v_strength = 0.025
+    psz_series = df_plot['psz_smooth_wf']
+    v_series = df_plot['psz_v_wf']
+    psz_prev = psz_series.shift(1)
+    
+    psz_buy = (psz_series <= bot_psz_thresh) & (psz_series > psz_prev) & (v_series > v_strength)
+    psz_sell = (psz_series >= top_psz_thresh) & (psz_series < psz_prev) & (v_series < -v_strength)
+
+    # Plot Signals
+    print(f"[{ticker}] Signals Found - CTS Buys: {cts_buy.sum()}, PSZ Buys: {psz_buy.sum()}, CTS Sells: {cts_sell.sum()}, PSZ Sells: {psz_sell.sum()}")
+    
+    # CTS Buy (Green ^)
+    ax1.scatter(df_plot[cts_buy].index, df_plot[cts_buy]['close'], marker='^', color='green', s=150, alpha=0.7, label='CTS Buy', zorder=5)
+    # PSZ Buy (Blue ^)
+    ax1.scatter(df_plot[psz_buy].index, df_plot[psz_buy]['close'], marker='^', color='blue', s=150, alpha=0.5, label='PSZ Buy', zorder=5)
+
+    # CTS Sell (Red v)
+    ax1.scatter(df_plot[cts_sell].index, df_plot[cts_sell]['close'], marker='v', color='red', s=150, alpha=0.7, label='CTS Sell', zorder=5)
+    # PSZ Sell (Purple v)
+    ax1.scatter(df_plot[psz_sell].index, df_plot[psz_sell]['close'], marker='v', color='purple', s=150, alpha=0.5, label='PSZ Sell', zorder=5)
+    
+    ax1.set_title(f"Savgol + PSZ Directional Threshold Analysis - {ticker}")
     ax1.legend()
     
     # Panel 2: CTS with Thresholds
@@ -147,7 +158,7 @@ def run_walkforward_test(ticker, window=200):
     ax2.axhline(top_cts_thresh, color='red', linestyle='--', alpha=0.5, label=f'P90 ({top_cts_thresh:.2f})')
     ax2.axhline(bot_cts_thresh, color='green', linestyle='--', alpha=0.5, label=f'P10 ({bot_cts_thresh:.2f})')
     ax2.axhline(0, color='black', alpha=0.2)
-    ax2.set_title("Walk-Forward CTS with Adaptive Thresholds")
+    ax2.set_title("Walk-Forward CTS with Directional Threshold Guards")
     ax2.legend()
     
     # Panel 3: PSZ with Adaptive Thresholds
@@ -162,8 +173,16 @@ def run_walkforward_test(ticker, window=200):
     ax3.legend()
 
     # Panel 4: Velocity of Momentum (psz_v)
-    ax4.plot(df_plot.index, df_plot['psz_v_wf'], color='blue', label='Velocity of Momentum (psz_v)')
+    ax4.plot(df_plot.index, df_plot['psz_v_wf'], color='blue', alpha=0.6, label='Velocity of Momentum (psz_v)')
+    # Add dots for signals on Velocity chart
+    ax4.scatter(df_plot[cts_buy].index, df_plot[cts_buy]['psz_v_wf'], color='green', s=100, label='CTS Buy Signal', zorder=5)
+    ax4.scatter(df_plot[psz_buy].index, df_plot[psz_buy]['psz_v_wf'], color='blue', s=100, alpha=0.6, label='PSZ Buy Signal', zorder=5)
+    ax4.scatter(df_plot[cts_sell].index, df_plot[cts_sell]['psz_v_wf'], color='red', s=100, label='CTS Sell Signal', zorder=5)
+    ax4.scatter(df_plot[psz_sell].index, df_plot[psz_sell]['psz_v_wf'], color='purple', s=100, alpha=0.6, label='PSZ Sell Signal', zorder=5)
+    
     ax4.axhline(0, color='black', alpha=0.2)
+    ax4.axhline(0.025, color='black', linestyle=':', alpha=0.3, label='Ref 0.025')
+    ax4.axhline(-0.025, color='black', linestyle=':', alpha=0.3, label='Ref -0.025')
     ax4.set_title("Velocity of Momentum (Normalized Acceleration)")
     ax4.legend()
     
@@ -172,6 +191,31 @@ def run_walkforward_test(ticker, window=200):
     plt.savefig(plot_path)
     plt.close(fig) # Close to free memory during loops
     print(f"[{ticker}] PSZ analysis plot saved to {plot_path}")
+
+    # Debug CTS Signals
+    print(f"\n--- Debugging CTS Signals for {ticker} ---")
+    print(f"CTS P10 (Bot Thresh): {bot_cts_thresh:.4f}")
+    print(f"CTS P90 (Top Thresh): {top_cts_thresh:.4f}")
+    
+    potential_buys = df_plot[df_plot['cts_wf'] <= bot_cts_thresh].tail(10)
+    if not potential_buys.empty:
+        print("\nRecent CTS values in Bottom 10% Zone:")
+        for idx, row in potential_buys.iterrows():
+            prev_cts = df_plot['cts_wf'].shift(1).loc[idx]
+            rising = row['cts_wf'] > prev_cts if not pd.isna(prev_cts) else False
+            print(f"{idx} | CTS: {row['cts_wf']:>7.4f} | Prev: {prev_cts:>7.4f} | Rising: {rising}")
+    else:
+        print("No CTS values found in Bottom 10% zone.")
+        
+    potential_sells = df_plot[df_plot['cts_wf'] >= top_cts_thresh].tail(10)
+    if not potential_sells.empty:
+        print("\nRecent CTS values in Top 90% Zone:")
+        for idx, row in potential_sells.iterrows():
+            prev_cts = df_plot['cts_wf'].shift(1).loc[idx]
+            falling = row['cts_wf'] < prev_cts if not pd.isna(prev_cts) else False
+            print(f"{idx} | CTS: {row['cts_wf']:>7.4f} | Prev: {prev_cts:>7.4f} | Falling: {falling}")
+    else:
+        print("No CTS values found in Top 90% zone.")
 
 def get_watchlist_symbols(watchlist_name):
     """Retrieve symbols from a named watchlist in the database."""

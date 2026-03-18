@@ -117,6 +117,8 @@ class EngineResult:
             "coherence_raw": _safe(row.get("coherence_raw", 0), decimals=4),
             "coherence": _safe(row.get("coherence", 0), decimals=4),
             "price_slope_z": _safe(row.get("price_slope_z", 0), decimals=4),
+            "psz_smooth": _safe(row.get("psz_smooth", 0), decimals=4),
+            "psz_v": _safe(row.get("psz_v", 0), decimals=6),
             "rdv_slope_z": _safe(row.get("rdv_slope_z", 0), decimals=4),
             "pdd_120": _safe(row.get("pdd_120", 0), decimals=4),
             "mcs_composite": _safe(row.get("mcs_composite", 0), decimals=4),

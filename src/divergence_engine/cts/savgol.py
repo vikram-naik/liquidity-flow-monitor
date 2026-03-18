@@ -11,15 +11,20 @@ class SavgolStrategy(CTSStrategy):
     Bypasses the 4-EMA funnel.
     """
 
-    def __init__(self, window_length: int = 11, polyorder: int = 2):
+    def __init__(self, window_length: int = 11, polyorder: int = 2,
+                 threshold_window: int = 60, threshold_pct: float = 35.0):
         """
         :param window_length: The length of the filter window (must be odd).
         :param polyorder: The order of the polynomial used to fit the samples.
+        :param threshold_window: Rolling window for the cts_slope_threshold percentile.
+        :param threshold_pct: Percentile (0-100) of |cts_slope| used as the threshold.
         """
         if window_length % 2 == 0:
             window_length += 1
         self.window_length = window_length
         self.polyorder = polyorder
+        self.threshold_window = threshold_window
+        self.threshold_pct = threshold_pct
 
     def compute(self, df: pd.DataFrame) -> pd.DataFrame:
         """
@@ -66,13 +71,13 @@ class SavgolStrategy(CTSStrategy):
         df["cts_slope"] = np.where(atr > 0, raw_slope, 0.0)
         df["cts_accel"] = np.where(atr > 0, raw_accel, 0.0)
 
-        # 4. Empirical Threshold for Filtering (Data-driven)
-        # Using 35th percentile of absolute slope to identify 'meaningful' acceleration
-        valid_slopes = np.abs(df["cts_slope"].dropna().values)
-        if len(valid_slopes) > 0:
-            df["cts_slope_threshold"] = np.percentile(valid_slopes, 35)
-        else:
-            df["cts_slope_threshold"] = 0.0
+        # 4. Rolling Empirical Threshold (Regime-Adaptive)
+        # Rolling percentile of |cts_slope| adapts to the current volatility regime
+        abs_slope = df["cts_slope"].abs()
+        df["cts_slope_threshold"] = abs_slope.rolling(
+            window=self.threshold_window,
+            min_periods=max(20, self.threshold_window // 2)
+        ).quantile(self.threshold_pct / 100.0).fillna(0.0)
 
         # Fill first few entries with NaN
         half_win = self.window_length // 2

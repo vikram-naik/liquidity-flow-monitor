@@ -14,6 +14,7 @@ Outputs per bar:
 from __future__ import annotations
 import numpy as np
 import pandas as pd
+from scipy.signal import savgol_filter
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Constants
@@ -108,12 +109,15 @@ def compute_trend_participation(
     mcs_col:        str = "mcs_composite",
     mcs_slope_col:  str = "mcs_composite_slope",
     slope_window:   int = 10,
+    psz_threshold_window: int = 60,
+    psz_buy_pct:    float = 10.0,
+    psz_sell_pct:   float = 70.0,
 ) -> pd.DataFrame:
     """
     Trend Participation Engine — computes slopes and coherence.
 
-    Outputs: price_slope_z, rdv_slope_z, coherence_raw, coherence,
-             accum_div, distrib_div
+    Outputs: price_slope_z, rdv_slope_z, psz_buy_threshold, psz_sell_threshold,
+             coherence_raw, coherence, accum_div, distrib_div
     """
     df = df.copy()
     col_map = {c.lower(): c for c in df.columns}
@@ -131,6 +135,30 @@ def compute_trend_participation(
 
     df["price_slope_z"] = _rolling_slope_z(df[price_col], slope_window).round(4)
     df["rdv_slope_z"]   = _rolling_slope_z(df[rdv_col],   slope_window).round(4)
+
+    # Adaptive PSZ Thresholds — rolling percentiles of the stock's own PSZ distribution
+    psz_series = df["price_slope_z"]
+    min_periods = max(30, psz_threshold_window // 2)
+    df["psz_buy_threshold"] = psz_series.rolling(
+        window=psz_threshold_window, min_periods=min_periods
+    ).quantile(psz_buy_pct / 100.0).fillna(0.0).round(4)
+    df["psz_sell_threshold"] = psz_series.rolling(
+        window=psz_threshold_window, min_periods=min_periods
+    ).quantile(psz_sell_pct / 100.0).fillna(0.0).round(4)
+
+    # Savgol-Filtered PSZ (Normalized Acceleration)
+    # Parameters derived from SavgolStrategy (window=11, polyorder=2)
+    sg_win = 11
+    sg_poly = 2
+    if len(psz_series) >= sg_win:
+        # 1. Clean Momentum (Smoothed PSZ)
+        df["psz_smooth"] = savgol_filter(psz_series.values, sg_win, sg_poly, deriv=0).round(4)
+        # 2. Velocity of Momentum (1st deriv of PSZ -> 2nd deriv of Price)
+        # Dimensions: change in Z-score per bar.
+        df["psz_v"] = savgol_filter(psz_series.values, sg_win, sg_poly, deriv=1).round(6)
+    else:
+        df["psz_smooth"] = np.nan
+        df["psz_v"] = np.nan
 
     # Accumulation/Distribution Divergence features
     # accum_div: positive when price is falling AND delivery is rising

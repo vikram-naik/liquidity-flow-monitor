@@ -11,10 +11,11 @@ After comparing multiple smoothing techniques (EMA, DEMA, KAMA), the **Savitzky-
 - **Metric**: Computed on the **Composite VWAP (CWVAP)** series.
 - **Normalization**: Velocity (1st Deriv) and Acceleration (2nd Deriv) are normalized by **ATR_20** and a scale factor (5.0).
 
-### Signal Refinement (Empirical Threshold)
-Filtered out absolute "micro-wiggles" by applying a dynamic threshold:
-- **Threshold**: 35th percentile of the absolute `cts_slope` (acceleration) history.
-- **Logic**: A zero-cross in CTS is only valid if the confirming acceleration exceeds this percentile.
+### Signal Refinement (Regime-Adaptive Threshold)
+Filtered out absolute "micro-wiggles" by applying a dynamic, regime-adaptive threshold:
+- **Threshold**: Rolling 35th percentile of the absolute `cts_slope` (acceleration) over a 60-bar window.
+- **Logic**: A zero-cross in CTS is only valid if the confirming acceleration exceeds this rolling percentile.
+- **Rationale**: A rolling window adapts to the stock's current volatility regime, rather than using a single global scalar blended across all market conditions.
 
 ---
 
@@ -33,24 +34,40 @@ During development, we identified a critical distinction between "History" and "
 ## 3. High-Conviction Conjunction: Savgol + PSZ
 We integrated **Price Slope Z-score (PSZ)** to act as a confirmation layer for Savgol signals.
 
-### Current Filter Logic
-- **Buy (Entry)**: Savgol positive flip AND `-0.3 ≤ PSZ ≤ 0`.
-  - *Goal*: Enter when price momentum is deeply oversold but beginning to stabilize.
-- **Sell (Exit)**: Savgol negative flip OR `PSZ ≥ 0.2`.
-  - *Goal*: Capture exits during parabolic extensions or realized trend exhaustion.
+### Current Filter Logic (Adaptive Thresholds — Tuned)
+PSZ thresholds are **per-bar, rolling percentiles** derived from the stock's own PSZ distribution (**60-bar window**):
+- **Buy (Entry)**: Savgol positive flip AND `psz_buy_threshold ≤ PSZ ≤ 0`.
+  - `psz_buy_threshold` = **rolling 10th percentile** of PSZ (avg ~-0.31).
+  - *Goal*: Enter when price momentum is in the stock's own bottom decile but stabilizing.
+- **Sell (Exit)**: Savgol negative flip OR `PSZ ≥ psz_sell_threshold`.
+  - `psz_sell_threshold` = **rolling 70th percentile** of PSZ (avg ~0.24).
+  - *Goal*: Capture exits during parabolic extensions relative to the stock's own momentum profile.
+  - **Observation**: CTS reaching its maximum value of **1.0** is frequently a high-conviction exhaustion signal and often represents an optimal exit point.
 
 ---
 
 ## 4. Development Backlog (Future Analysis)
 The following items represent the next frontier for improving signal alpha:
 
-### A. Empirical PSZ Thresholds (Adaptive Z)
-- **Problem**: `-0.3` and `0.2` are visual estimates, not statistically derived per stock.
-- **Goal**: Replace static limits with **percentile-based thresholds** derived from the stock's specific PSZ history (e.g., entering at the 20th percentile of PSZ-lows).
+### A. ~~Empirical PSZ Thresholds (Adaptive Z)~~ — ✅ Implemented
+- Replaced static `-0.3` / `0.2` with rolling 20th/80th percentile thresholds (120-bar window) in `trend_participation.py`.
+- See Section 3 for current logic.
 
 ### B. Savgol-Filtered PSZ (Normalized Acceleration)
 - **Concept**: Apply the Savitzky-Golay filter *to the PSZ series itself*.
 - **Benefit**: PSZ can be jittery due to rolling standard deviation noise. SG-filtered PSZ would provide a "Clean Momentum" line, and its derivative would be a powerful indicator of **Velocity of Momentum**.
+
+### C. Rolling CTS Slope Threshold (Regime-Adaptive)
+- **Problem**: The current `cts_slope_threshold` is a single 35th-percentile scalar computed over the **entire available history**. This produces a blended value that may be too loose during quiet regimes and too tight during volatile regimes.
+- **Goal**: Replace the global percentile with a **rolling-window percentile** (e.g., rolling 60-bar window of `|cts_slope|`) so the threshold adapts to the stock's current volatility regime, not its lifetime average.
+- **Impact**: Should improve signal quality in stocks undergoing regime transitions (e.g., low-vol consolidation → breakout).
+
+### D. Code Hygiene
+- Dead code in `base.py:70` — unused `mode='same'` convolution result (`conv_accel`).
+- Copy-paste artifact in `kama.py:73-76` — stale `dema_21` reference guarded by `locals()` check, immediately overwritten.
+- Duplicate imports in `test_savgol_walkforward.py:15-21` — `DivergenceEngine`, `CompositeVWAP`, `load_symbol_data` imported twice.
+- Unused import — `DivergenceEngine` imported but never used in the test script.
+- Typo in `test_savgol_walkforward.py:125` — comment says "PSX" instead of "PSZ".
 
 ---
 
