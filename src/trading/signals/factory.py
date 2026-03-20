@@ -1,6 +1,7 @@
 from src.trading.signals.base import SignalInterface
 from src.trading.signals.divergence import LongDivergenceSignal
 from src.trading.signals.price_divergence import PriceDivergenceSignal
+from src.trading.signals.nextgen import NextGenSignal
 
 
 class SignalFactory:
@@ -13,10 +14,14 @@ class SignalFactory:
 
         Supported signals:
             - 'long_divergence': The original divergence-based long entry/exit strategy.
+            - 'price_divergence': CTS slope + PSZ crossing heuristic signal.
+            - 'nextgen': 4-gate empirically-grounded signal.
         """
         if name == "long_divergence":
             return LongDivergenceSignal()
         elif name == "price_divergence":
             return PriceDivergenceSignal()
-        
+        elif name == "nextgen":
+            return NextGenSignal()
+
         raise ValueError(f"Unknown signal type: {name}")

@@ -14,7 +14,7 @@ Outputs per bar:
 from __future__ import annotations
 import numpy as np
 import pandas as pd
-from scipy.signal import savgol_filter
+from scipy.signal import savgol_coeffs, lfilter
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Constants
@@ -146,19 +146,29 @@ def compute_trend_participation(
         window=psz_threshold_window, min_periods=min_periods
     ).quantile(psz_sell_pct / 100.0).fillna(0.0).round(4)
 
-    # Savgol-Filtered PSZ (Normalized Acceleration)
-    # Parameters derived from SavgolStrategy (window=11, polyorder=2)
+    # Causal Savgol-Filtered PSZ (Normalized Acceleration)
+    # Uses one-sided (causal) FIR coefficients so psz_smooth and psz_v
+    # only depend on past data — valid for walk-forward / live execution.
     sg_win = 11
     sg_poly = 2
     if len(psz_series) >= sg_win:
-        # 1. Clean Momentum (Smoothed PSZ)
-        df["psz_smooth"] = savgol_filter(psz_series.values, sg_win, sg_poly, deriv=0).round(4)
-        # 2. Velocity of Momentum (1st deriv of PSZ -> 2nd deriv of Price)
-        # Dimensions: change in Z-score per bar.
-        df["psz_v"] = savgol_filter(psz_series.values, sg_win, sg_poly, deriv=1).round(6)
+        psz_vals = psz_series.values.astype(float)
+        coeffs_smooth = savgol_coeffs(sg_win, sg_poly, deriv=0, pos=sg_win - 1)
+        coeffs_vel    = savgol_coeffs(sg_win, sg_poly, deriv=1, pos=sg_win - 1)
+
+        psz_smooth_raw = lfilter(coeffs_smooth, [1.0], psz_vals)
+        psz_v_raw      = lfilter(coeffs_vel,    [1.0], psz_vals)
+
+        # Blank the warm-up period (first sg_win-1 bars are unreliable)
+        warmup = sg_win - 1
+        psz_smooth_raw[:warmup] = np.nan
+        psz_v_raw[:warmup]      = np.nan
+
+        df["psz_smooth"] = psz_smooth_raw.round(4)
+        df["psz_v"]      = psz_v_raw.round(6)
     else:
         df["psz_smooth"] = np.nan
-        df["psz_v"] = np.nan
+        df["psz_v"]      = np.nan
 
     # Accumulation/Distribution Divergence features
     # accum_div: positive when price is falling AND delivery is rising
@@ -183,6 +193,21 @@ def compute_trend_participation(
             window=psz_threshold_window, min_periods=min_periods
         ).quantile(0.10).fillna(0.0).round(4)
         df["cts_sell_threshold"] = cts_series.rolling(
+            window=psz_threshold_window, min_periods=min_periods
+        ).quantile(0.90).fillna(0.0).round(4)
+
+    if "cts_accel" in df.columns:
+        df["cts_accel_threshold"] = df["cts_accel"].rolling(
+            window=psz_threshold_window, min_periods=min_periods
+        ).quantile(0.70).fillna(0.0).round(6)
+
+    if "pdd_120" in df.columns:
+        df["pdd_120_threshold"] = df["pdd_120"].rolling(
+            window=psz_threshold_window, min_periods=min_periods
+        ).quantile(0.70).fillna(0.0).round(4)
+
+    if "psz_v" in df.columns:
+        df["psz_v_extreme_threshold"] = df["psz_v"].abs().rolling(
             window=psz_threshold_window, min_periods=min_periods
         ).quantile(0.90).fillna(0.0).round(4)
 

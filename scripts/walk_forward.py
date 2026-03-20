@@ -23,7 +23,12 @@ from tabulate import tabulate
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.divergence_engine.engine import DivergenceEngine
-from src.trading.signals import PriceDivergenceEntryConfig, PriceDivergenceExitConfig, Trade, SignalFactory
+from src.trading.signals import (
+    PriceDivergenceEntryConfig, PriceDivergenceExitConfig,
+    NextGenEntryConfig, NextGenExitConfig,
+    Trade, SignalFactory,
+)
+from src.trading.signals.base import BaseEntryConfig, BaseExitConfig
 
 DB_PATH = Path(__file__).resolve().parent.parent / "liquidity_monitor.db"
 
@@ -53,7 +58,7 @@ def get_watchlist_symbols(name: str) -> list[str]:
 
 def simulate_trades(
     ticker: str, df: pd.DataFrame,
-    entry_cfg: PriceDivergenceEntryConfig, exit_cfg: PriceDivergenceExitConfig, signal
+    entry_cfg: BaseEntryConfig, exit_cfg: BaseExitConfig, signal
 ) -> list[Trade]:
     """Walk through ledger bar-by-bar, enter and exit trades."""
     records = df.to_dict("records")
@@ -152,7 +157,7 @@ def simulate_trades(
 
 
 def run_period(symbols: list[str], start: str, end: str,
-               entry_cfg: PriceDivergenceEntryConfig, exit_cfg: PriceDivergenceExitConfig,
+               entry_cfg: BaseEntryConfig, exit_cfg: BaseExitConfig,
                label: str, signal) -> list[Trade]:
     print(f"\n{'='*60}")
     print(f"  {label}: {start} to {end}")
@@ -230,18 +235,24 @@ def summarize(trades: list[Trade], label: str) -> dict:
 def main():
     parser = argparse.ArgumentParser(description="Walk-forward validation")
     parser.add_argument("--watchlist", default="NIFTY 50")
+    parser.add_argument("--signal", choices=["price_divergence", "nextgen"], default="price_divergence",
+                        help="Signal strategy to use (default: price_divergence)")
     args = parser.parse_args()
 
     symbols = get_watchlist_symbols(args.watchlist)
     print(f"Walk-Forward Validation: {args.watchlist} ({len(symbols)} symbols)")
+    print(f"Signal: {args.signal}")
     print(f"Train: {TRAIN_START} — {TRAIN_END}")
     print(f"Test:  {TEST_START} — {TEST_END}")
 
-    # No gates for now. (Strict Gates: pdd_120_max=-3.6, rsz_falling=True)
-    entry_cfg = PriceDivergenceEntryConfig()
-    exit_cfg = PriceDivergenceExitConfig()
-    
-    signal = SignalFactory.get_signal("price_divergence")
+    if args.signal == "nextgen":
+        entry_cfg = NextGenEntryConfig()
+        exit_cfg = NextGenExitConfig()
+    else:
+        entry_cfg = PriceDivergenceEntryConfig()
+        exit_cfg = PriceDivergenceExitConfig()
+
+    signal = SignalFactory.get_signal(args.signal)
 
     train_trades = run_period(symbols, TRAIN_START, TRAIN_END, entry_cfg, exit_cfg, "TRAIN", signal)
     test_trades = run_period(symbols, TEST_START, TEST_END, entry_cfg, exit_cfg, "TEST", signal)

@@ -44,6 +44,15 @@ class DVLLedger:
             df = self._compute_window(df, n)
         df = self._classify_gradient(df)
         df = self._compute_cdvl(df)
+        # vel_dp5: count of bars in last 5 where velocity_60_norm delta > 0
+        # Used by Gate 3 (vel_dp4 check: vel_dp5 >= 4)
+        if "velocity_60_norm" in df.columns:
+            vel_delta = df["velocity_60_norm"].diff()
+            df["vel_dp5"] = (
+                vel_delta.gt(0)
+                .rolling(window=5, min_periods=5)
+                .sum()
+            )
         return df
 
     # ------------------------------------------------------------------

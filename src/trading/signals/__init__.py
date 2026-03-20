@@ -10,6 +10,11 @@ from src.trading.signals.price_divergence import (
     PriceDivergenceExitConfig,
     PriceDivergenceSignal,
 )
+from src.trading.signals.nextgen import (
+    NextGenEntryConfig,
+    NextGenExitConfig,
+    NextGenSignal,
+)
 from src.trading.signals.factory import SignalFactory
 
 __all__ = [
@@ -23,6 +28,9 @@ __all__ = [
     "PriceDivergenceEntryConfig",
     "PriceDivergenceExitConfig",
     "PriceDivergenceSignal",
+    "NextGenEntryConfig",
+    "NextGenExitConfig",
+    "NextGenSignal",
     "FAVORABLE_SHAPES",
     "SignalFactory",
 ]

@@ -25,8 +25,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.divergence_engine.engine import DivergenceEngine
 from src.trading.signals import (
-    FAVORABLE_SHAPES, PriceDivergenceEntryConfig, PriceDivergenceExitConfig, Trade, SignalFactory,
+    FAVORABLE_SHAPES, PriceDivergenceEntryConfig, PriceDivergenceExitConfig,
+    NextGenEntryConfig, NextGenExitConfig,
+    Trade, SignalFactory,
 )
+from src.trading.signals.base import BaseEntryConfig, BaseExitConfig
 
 DB_PATH = Path(__file__).resolve().parent.parent / "liquidity_monitor.db"
 
@@ -55,7 +58,7 @@ def get_watchlist_symbols(name: str) -> list[str]:
 
 def simulate_trades(
     ticker: str, df: pd.DataFrame,
-    entry_cfg: PriceDivergenceEntryConfig, exit_cfg: PriceDivergenceExitConfig,
+    entry_cfg: BaseEntryConfig, exit_cfg: BaseExitConfig,
     signal
 ) -> list[Trade]:
     """Walk through ledger bar-by-bar, enter and exit trades."""
@@ -167,7 +170,7 @@ def simulate_trades(
 
 
 def analyse_symbol(
-    ticker: str, entry_cfg: PriceDivergenceEntryConfig, exit_cfg: PriceDivergenceExitConfig, signal
+    ticker: str, entry_cfg: BaseEntryConfig, exit_cfg: BaseExitConfig, signal
 ) -> list[Trade]:
     try:
         engine = DivergenceEngine(ticker)
@@ -310,25 +313,32 @@ def main():
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--watchlist", help="Watchlist name to backtest")
     group.add_argument("--symbol", help="Single symbol to backtest")
-    
+
     parser.add_argument("--start-date", help="Start date for entry signals (YYYY-MM-DD)")
-    
+    parser.add_argument("--signal", choices=["price_divergence", "nextgen"], default="price_divergence",
+                        help="Signal strategy to use (default: price_divergence)")
+
     args = parser.parse_args()
 
-    entry_cfg = PriceDivergenceEntryConfig()
-    exit_cfg = PriceDivergenceExitConfig()
-    
+    if args.signal == "nextgen":
+        entry_cfg = NextGenEntryConfig()
+        exit_cfg = NextGenExitConfig()
+    else:
+        entry_cfg = PriceDivergenceEntryConfig()
+        exit_cfg = PriceDivergenceExitConfig()
+
     if args.symbol:
         symbols = [args.symbol]
     else:
         symbols = get_watchlist_symbols(args.watchlist)
-        
+
+    print(f"Signal: {args.signal}")
     print(f"Symbols: {symbols}")
     if args.start_date:
         print(f"Start date: {args.start_date}")
 
     all_trades = []
-    signal = SignalFactory.get_signal("price_divergence")
+    signal = SignalFactory.get_signal(args.signal)
     
     for i, sym in enumerate(symbols, 1):
         print(f"  [{i}/{len(symbols)}] {sym}...", end=" ", flush=True)
