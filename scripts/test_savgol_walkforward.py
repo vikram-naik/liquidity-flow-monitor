@@ -29,7 +29,7 @@ def run_walkforward_test(ticker, window=200):
     # Define calculators
     base_calc = BaseCalculator()
     dvl_ledger = DVLLedger()
-    cwvap_calc = CompositeVWAP(cts_strategy='savgol')
+    cwvap_calc = CompositeVWAP(cts_strategy='causal_savgol')
     cwc_calc = CrossWindowCoherence()
     mcs_calc = MoneyCompositeScore()
     

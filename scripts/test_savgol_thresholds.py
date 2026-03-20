@@ -29,7 +29,7 @@ def run_walkforward_test(ticker, window=200):
     # Define calculators
     base_calc = BaseCalculator()
     dvl_ledger = DVLLedger()
-    cwvap_calc = CompositeVWAP(cts_strategy='savgol')
+    cwvap_calc = CompositeVWAP(cts_strategy='causal_savgol')
     cwc_calc = CrossWindowCoherence()
     mcs_calc = MoneyCompositeScore()
     
@@ -73,8 +73,10 @@ def run_walkforward_test(ticker, window=200):
             'psz_wf': last_row['price_slope_z'],
             'psz_smooth_wf': last_row.get('psz_smooth', np.nan),
             'psz_v_wf': last_row.get('psz_v', np.nan),
-            'psz_buy_thresh_wf': last_row['psz_buy_threshold'],
-            'psz_sell_thresh_wf': last_row['psz_sell_threshold']
+            'psz_buy_thresh_wf': last_row.get('psz_buy_threshold', np.nan),
+            'psz_sell_thresh_wf': last_row.get('psz_sell_threshold', np.nan),
+            'cts_buy_thresh_wf': last_row.get('cts_buy_threshold', np.nan),
+            'cts_sell_thresh_wf': last_row.get('cts_sell_threshold', np.nan),
         })
         
     if not walkforward_results:
@@ -88,10 +90,11 @@ def run_walkforward_test(ticker, window=200):
     df_plot = df_omni.set_index('date').tail(window).copy()
     df_plot = df_plot.join(df_wf[['cts_wf', 'cts_slope_wf', 'threshold_wf', 'smoothed_wf',
                                    'psz_wf', 'psz_smooth_wf', 'psz_v_wf', 
-                                   'psz_buy_thresh_wf', 'psz_sell_thresh_wf']], how='left')
+                                   'psz_buy_thresh_wf', 'psz_sell_thresh_wf',
+                                   'cts_buy_thresh_wf', 'cts_sell_thresh_wf']], how='left')
     
-    fig, (ax1, ax2, ax3, ax4) = plt.subplots(4, 1, figsize=(15, 18), sharex=True, 
-                                            gridspec_kw={'height_ratios': [2, 1, 1, 1]})
+    fig, (ax1, ax2, ax2b, ax3, ax4) = plt.subplots(5, 1, figsize=(15, 20), sharex=True, 
+                                            gridspec_kw={'height_ratios': [2, 1, 1, 1, 1]})
     
     # Top Panel: Price & Smoothing
     ax1.plot(df_plot.index, df_plot['close'], color='black', alpha=0.3, label='Price')
@@ -130,9 +133,11 @@ def run_walkforward_test(ticker, window=200):
     # Combined Sell: both CTS and PSZ above or touching their top thresholds
     cts_sell = (cts_series >= top_cts_thresh) & (psz_series >= top_psz_thresh)
     
-    # PSZ-Only Leading Signals (Neutral CTS)
-    psz_lead_buy = (psz_series <= bot_psz_thresh) & (cts_series > bot_cts_thresh) & (df_plot['psz_v_wf'] > v_lead_threshold)
-    psz_lead_sell = (psz_series >= top_psz_thresh) & (cts_series < top_cts_thresh) & (df_plot['psz_v_wf'] < -v_lead_threshold)
+    # PSZ-Only Leading Signals (Neutral CTS) - 'Climax' Logic
+    # Buy when PSZ is at bottom and accelerating down (Climax/Stretch)
+    psz_lead_buy = (psz_series <= bot_psz_thresh) & (cts_series > bot_cts_thresh) & (df_plot['psz_v_wf'] < -v_lead_threshold)
+    # Sell when PSZ is at top and accelerating up (Exhaustion/Stretch)
+    psz_lead_sell = (psz_series >= top_psz_thresh) & (cts_series < top_cts_thresh) & (df_plot['psz_v_wf'] > v_lead_threshold)
 
     # Signals to be marked on price chart (Consensus signals must meet v_threshold)
     cts_buy_marks = cts_buy & (df_plot['psz_v_wf'].abs() > v_threshold)
@@ -163,11 +168,21 @@ def run_walkforward_test(ticker, window=200):
     
     # Panel 2: CTS with Thresholds
     ax2.plot(df_plot.index, df_plot['cts_wf'], color='red', label='WF CTS')
-    ax2.axhline(top_cts_thresh, color='red', linestyle='--', alpha=0.5, label=f'P90 ({top_cts_thresh:.2f})')
-    ax2.axhline(bot_cts_thresh, color='green', linestyle='--', alpha=0.5, label=f'P10 ({bot_cts_thresh:.2f})')
+    ax2.axhline(top_cts_thresh, color='gray', linestyle='--', alpha=0.3, label=f'Static P90 ({top_cts_thresh:.2f})')
+    ax2.axhline(bot_cts_thresh, color='gray', linestyle='--', alpha=0.3, label=f'Static P10 ({bot_cts_thresh:.2f})')
+    ax2.plot(df_plot.index, df_plot['cts_buy_thresh_wf'], color='green', linestyle=':', label='Adaptive Buy Thresh')
+    ax2.plot(df_plot.index, df_plot['cts_sell_thresh_wf'], color='red', linestyle=':', label='Adaptive Sell Thresh')
     ax2.axhline(0, color='black', alpha=0.2)
-    ax2.set_title("Walk-Forward CTS with Directional Threshold Guards")
+    ax2.set_title("Walk-Forward CTS with Static vs Adaptive Thresholds")
     ax2.legend()
+    
+    # Panel 2b: CTS Slope with Adaptive Thresholds
+    ax2b.plot(df_plot.index, df_plot['cts_slope_wf'], color='orange', label='WF CTS Slope')
+    ax2b.plot(df_plot.index, df_plot['threshold_wf'], color='blue', linestyle='--', alpha=0.5, label='Slope Thresh')
+    ax2b.plot(df_plot.index, -df_plot['threshold_wf'], color='blue', linestyle='--', alpha=0.5)
+    ax2b.axhline(0, color='black', alpha=0.2)
+    ax2b.set_title("CTS Slope (Acceleration) with Adaptive Thresholds")
+    ax2b.legend()
     
     # Panel 3: PSZ with Adaptive Thresholds
     ax3.plot(df_plot.index, df_plot['psz_wf'], color='purple', alpha=0.3, label='WF PSZ (Raw)')
@@ -200,33 +215,43 @@ def run_walkforward_test(ticker, window=200):
     print(f"[{ticker}] PSZ analysis plot saved to {plot_path}")
 
     # Debug Combined Signals
-    print(f"\n--- Debugging Combined Signals for {ticker} ---")
-    print(f"CTS P10 (Bot Thresh): {bot_cts_thresh:.4f}")
-    print(f"CTS P90 (Top Thresh): {top_cts_thresh:.4f}")
+    # print(f"\n--- Debugging Combined Signals for {ticker} ---")
+    # print(f"CTS P10 (Bot Thresh): {bot_cts_thresh:.4f}")
+    # print(f"CTS P90 (Top Thresh): {top_cts_thresh:.4f}")
     
-    potential_buys = df_plot[cts_buy | psz_lead_buy].tail(10)
-    if not potential_buys.empty:
-        print("\nRecent Buy signals (Consensus or Lead):")
-        for idx, row in potential_buys.iterrows():
-            is_lead = psz_lead_buy.loc[idx]
-            tag = "[LEAD]" if is_lead else "[CONS]"
-            marked = cts_buy_marks.loc[idx] or is_lead
-            marker_str = " (Price-Marked)" if marked else " (Velocity-Filtered)"
-            print(f"{idx} | {tag} | CTS: {row['cts_wf']:>7.4f} | PSZ: {row['psz_smooth_wf']:>7.4f} | V: {row['psz_v_wf']:>7.4f}{marker_str}")
-    else:
-        print("No Buy signals found.")
+    # potential_buys = df_plot[cts_buy | psz_lead_buy].tail(10)
+    # if not potential_buys.empty:
+    #     print("\nRecent Buy signals (Consensus or Lead):")
+    #     for idx, row in potential_buys.iterrows():
+    #         is_lead = psz_lead_buy.loc[idx]
+    #         tag = "[LEAD]" if is_lead else "[CONS]"
+    #         marked = cts_buy_marks.loc[idx] or is_lead
+    #         marker_str = " (Price-Marked)" if marked else " (Velocity-Filtered)"
+    #         print(f"{idx} | {tag} | CTS: {row['cts_wf']:>7.4f} | PSZ: {row['psz_smooth_wf']:>7.4f} | V: {row['psz_v_wf']:>7.4f}{marker_str}")
+    # else:
+    #     print("No Buy signals found.")
         
-    potential_sells = df_plot[cts_sell | psz_lead_sell].tail(10)
-    if not potential_sells.empty:
-        print("\nRecent Sell signals (Consensus or Lead):")
-        for idx, row in potential_sells.iterrows():
-            is_lead = psz_lead_sell.loc[idx]
-            tag = "[LEAD]" if is_lead else "[CONS]"
-            marked = cts_sell_marks.loc[idx] or is_lead
-            marker_str = " (Price-Marked)" if marked else " (Velocity-Filtered)"
-            print(f"{idx} | {tag} | CTS: {row['cts_wf']:>7.4f} | PSZ: {row['psz_smooth_wf']:>7.4f} | V: {row['psz_v_wf']:>7.4f}{marker_str}")
-    else:
-        print("No Sell signals found.")
+    # potential_sells = df_plot[cts_sell | psz_lead_sell].tail(10)
+    # if not potential_sells.empty:
+    #     print("\nRecent Sell signals (Consensus or Lead):")
+    #     for idx, row in potential_sells.iterrows():
+    #         is_lead = psz_lead_sell.loc[idx]
+    #         tag = "[LEAD]" if is_lead else "[CONS]"
+    #         marked = cts_sell_marks.loc[idx] or is_lead
+    #         marker_str = " (Price-Marked)" if marked else " (Velocity-Filtered)"
+    #         print(f"{idx} | {tag} | CTS: {row['cts_wf']:>7.4f} | PSZ: {row['psz_smooth_wf']:>7.4f} | V: {row['psz_v_wf']:>7.4f}{marker_str}")
+    # else:
+    #     print("No Sell signals found.")
+
+    # Detailed PSZ debugging for Neutral CTS
+    # print(f"\n--- Debugging PSZ Oversold (Neutral CTS) for {ticker} ---")
+    # filter_cond = (df_plot['cts_wf'] > bot_cts_thresh) & (df_plot['psz_smooth_wf'] <= df_plot['psz_buy_thresh_wf'])
+    # oversold_neutral = df_plot[filter_cond]
+    # if not oversold_neutral.empty:
+    #     for idx, row in oversold_neutral.iterrows():
+    #         print(f"{idx} | PSZ: {row['psz_smooth_wf']:>7.4f} | V: {row['psz_v_wf']:>7.4f} | CTS: {row['cts_wf']:>7.4f}")
+    # else:
+    #     print("No PSZ Oversold (Neutral CTS) days found.")
 
 def get_watchlist_symbols(watchlist_name):
     """Retrieve symbols from a named watchlist in the database."""

@@ -175,4 +175,15 @@ def compute_trend_participation(
     df["coherence_raw"] = (0.45 * p_a + 0.35 * p_b + 0.20 * p_c).apply(lambda v: round(_logistic(v), 3))
     df["coherence"] = df["coherence_raw"].ewm(span=EMA_SMOOTH_SPAN, adjust=False).mean().round(3)
 
+    # Adaptive CTS Thresholds — rolling percentiles of the stock's own CTS distribution
+    # This targets the CWVAP-based CTS indicator.
+    if "cts" in df.columns:
+        cts_series = df["cts"]
+        df["cts_buy_threshold"] = cts_series.rolling(
+            window=psz_threshold_window, min_periods=min_periods
+        ).quantile(0.10).fillna(0.0).round(4)
+        df["cts_sell_threshold"] = cts_series.rolling(
+            window=psz_threshold_window, min_periods=min_periods
+        ).quantile(0.90).fillna(0.0).round(4)
+
     return df

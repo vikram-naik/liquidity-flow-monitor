@@ -6,6 +6,7 @@ from .default_ema import DefaultEMAStrategy
 from .dema import DEMAStrategy
 from .kama import KAMAStrategy
 from .savgol import SavgolStrategy
+from .causal_savgol import CausalSavgolStrategy
 
 
 class CTSFactory:
@@ -16,6 +17,7 @@ class CTSFactory:
         "dema": DEMAStrategy,
         "kama": KAMAStrategy,
         "savgol": SavgolStrategy,
+        "causal_savgol": CausalSavgolStrategy,
     }
 
     @classmethod
