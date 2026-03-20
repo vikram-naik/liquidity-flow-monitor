@@ -138,7 +138,7 @@
         var pZ = [], rZ = [], cRaw = [], cSmooth = [];
         var rdvArr = [], cwcArr = [], rdvConsArr = [], atrArr = [], distArr = [], delPctArr = [], pddArr = [];
         // NextGen gate series
-        var ctsSlopeArr = [], ctsAccelArr = [], ctsAccelThreshArr = [], ctsBuyThreshArr = [];
+        var ctsSlopeArr = [], ctsAccelArr = [], ctsAccelThreshArr = [], ctsBuyThreshArr = [], ctsSellThreshArr = [];
         var cdvlArr = [], vel60Arr = [], pdd120Arr = [], pdd120ThreshArr = [];
         var entryMarkers = [];
         var exitMarkers = [];
@@ -176,6 +176,7 @@
             if (r.cts_accel != null) ctsAccelArr.push({ time: t, value: r.cts_accel }); else ctsAccelArr.push({ time: t });
             if (r.cts_accel_threshold != null) ctsAccelThreshArr.push({ time: t, value: r.cts_accel_threshold }); else ctsAccelThreshArr.push({ time: t });
             if (r.cts_buy_threshold != null) ctsBuyThreshArr.push({ time: t, value: r.cts_buy_threshold }); else ctsBuyThreshArr.push({ time: t });
+            if (r.cts_sell_threshold != null) ctsSellThreshArr.push({ time: t, value: r.cts_sell_threshold }); else ctsSellThreshArr.push({ time: t });
             if (r.cdvl != null) cdvlArr.push({ time: t, value: r.cdvl }); else cdvlArr.push({ time: t });
             if (r.velocity_60_norm != null) vel60Arr.push({ time: t, value: r.velocity_60_norm }); else vel60Arr.push({ time: t });
             if (r.pdd_120 != null) pdd120Arr.push({ time: t, value: r.pdd_120 }); else pdd120Arr.push({ time: t });
@@ -288,15 +289,33 @@
             var legConfig = [];
 
             if (panelKey === "cts") {
-                // Gate 2: CTS >= cts_buy_threshold
+                // Fixed scale for CTS: 1 to -1 (Lightweight Charts v5)
+                var pScale = c.priceScale("right");
+                pScale.applyOptions({
+                    autoScale: false,
+                    scaleMargins: { top: 0, bottom: 0 }
+                });
+                try {
+                    pScale.setPriceRange({ min: -1.2, max: 1.2 });
+                } catch (e) {
+                    console.error("Failed to set price range for CTS", e);
+                }
+
                 var sCts = c.addSeries(LC.LineSeries, { color: "#4fc3f7", lineWidth: 2, lastValueVisible: false, priceLineVisible: false });
                 sCts.setData(ctsArr);
-                var sCtsBuy = c.addSeries(LC.LineSeries, { color: "#ffd54f", lineWidth: 1, lineStyle: 2, lastValueVisible: false, priceLineVisible: false });
+                
+                var sCtsBuy = c.addSeries(LC.LineSeries, { color: "#42b883", lineWidth: 1, lineStyle: 2, lastValueVisible: false, priceLineVisible: false });
                 sCtsBuy.setData(ctsBuyThreshArr);
-                var sCtsZ = c.addSeries(LC.LineSeries, { color: "#424242", lineWidth: 1, lineStyle: 2, lastValueVisible: false, priceLineVisible: false });
+                
+                var sCtsSell = c.addSeries(LC.LineSeries, { color: "#ef5350", lineWidth: 1, lineStyle: 2, lastValueVisible: false, priceLineVisible: false });
+                sCtsSell.setData(ctsSellThreshArr);
+                
+                var sCtsZ = c.addSeries(LC.LineSeries, { color: "rgba(139, 148, 158, 0.3)", lineWidth: 1, lineStyle: 0, lastValueVisible: false, priceLineVisible: false });
                 sCtsZ.setData(ctsArr.map(d => ({ time: d.time, value: 0 })));
+                
                 legConfig.push({ api: sCts, label: "CTS", col: "cts", color: "#4fc3f7" });
-                legConfig.push({ api: sCtsBuy, label: "Buy Thresh", col: "cts_buy_threshold", color: "#ffd54f", dashed: true });
+                legConfig.push({ api: sCtsBuy, label: "Buy Thresh (P10)", col: "cts_buy_threshold", color: "#42b883", dashed: true });
+                legConfig.push({ api: sCtsSell, label: "Sell Thresh (P90)", col: "cts_sell_threshold", color: "#ef5350", dashed: true });
             } else if (panelKey === "cts_slope") {
                 // Bull extra gate: cts_slope >= bull_slope_min
                 var sCtsSlope = c.addSeries(LC.LineSeries, { color: "#80cbc4", lineWidth: 2, lastValueVisible: false, priceLineVisible: false });

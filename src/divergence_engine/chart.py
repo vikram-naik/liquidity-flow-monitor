@@ -16,7 +16,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from src.trading.signals import NextGenEntryConfig, NextGenExitConfig, SignalFactory
+from src.trading.signals import SavgolCTSEntryConfig, SavgolCTSExitConfig, SignalFactory
 from src.trading.signals.base import Trade
 
 # Columns the UI actually reads — trim everything else before serialising
@@ -32,7 +32,7 @@ UI_COLUMNS = [
     "cts", "cts_slope", "cts_accel",
     "velocity_60_norm", "vel_dp5",
     # NextGen gate thresholds (rolling percentiles from trend_participation)
-    "cts_buy_threshold", "cts_accel_threshold", "pdd_120_threshold",
+    "cts_buy_threshold", "cts_sell_threshold", "cts_accel_threshold", "pdd_120_threshold",
     # Divergence
     "accum_div", "distrib_div",
     # Delivery-Profile Value Area (Module 3)
@@ -42,9 +42,9 @@ UI_COLUMNS = [
     "exit_signal", "exit_reason",
 ]
 
-_ENTRY_CFG = NextGenEntryConfig()
-_EXIT_CFG = NextGenExitConfig()
-_SIGNAL = SignalFactory.get_signal("nextgen")
+_ENTRY_CFG = SavgolCTSEntryConfig()
+_EXIT_CFG = SavgolCTSExitConfig()
+_SIGNAL = SignalFactory.get_signal("savgol_cts")
 
 def _nan_safe(val: Any) -> Any:
     """Convert NaN / Inf to None for JSON serialisation."""

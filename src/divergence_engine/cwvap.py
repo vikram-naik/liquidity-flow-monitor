@@ -217,6 +217,8 @@ class CompositeVWAP:
 
         # Delegate CTS, CTS slope, and CTS acceleration to the selected strategy
         df = self.cts_strategy.compute(df)
+        if "cts" in df.columns:
+            df["cts"] = df["cts"].clip(-1.0, 1.0)
 
         return df
 

@@ -241,7 +241,7 @@ class DivergenceEngine:
         df = dvl.compute_all(df)
 
         # Module 3 — Composite VWAP
-        cwvap = CompositeVWAP(va_pct=_VA_PCT)
+        cwvap = CompositeVWAP(va_pct=_VA_PCT, cts_strategy="causal_savgol")
         df = cwvap.compute_all(df)
 
         # Module 4 — Cross-Window Coherence

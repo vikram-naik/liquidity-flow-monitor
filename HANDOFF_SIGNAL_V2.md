@@ -503,10 +503,130 @@ User to study signals visually on UI before the next analysis session. Specific 
 
 ---
 
+## CTS -1/+1 Threshold Prototype (2026-03-20 — Latest Work)
+
+### Paradigm Shift: From 6-Gate NextGen to CTS Floor/Ceiling
+
+After visual analysis, the user discovered a simpler and more intuitive approach: **causal Savgol CTS is clipped to [-1, +1]**, so use these natural boundaries as entry/exit levels. This is a fundamentally different system from the 6-gate NextGen — mean-reversion on the CTS indicator itself.
+
+**Critical fix discovered**: The engine was using `"default_ema"` as the CTS strategy instead of `"causal_savgol"`, causing misinterpretation of all prior data. Fixed in `src/divergence_engine/engine.py` line 244: `cts_strategy="causal_savgol"`. User also created `src/trading/signals/savgol_cts.py` for the formal signal class.
+
+**How causal Savgol CTS works** (in `src/divergence_engine/cts/causal_savgol.py`):
+- CTS = `np.clip((velocity * scale_factor) / atr, -1.0, 1.0)` where scale_factor=5.0
+- window_length=15, polyorder=2
+- cts_buy_threshold = rolling P10 of CTS over 60 bars (adaptive per-stock)
+- cts_sell_threshold = rolling P90
+
+### Entry/Exit Logic — Current Best Configuration
+
+**Entry** (all must pass):
+1. `CTS <= -1.0` — CTS at floor (maximum oversold on causal savgol scale)
+2. `coherence <= 0.3` — price/delivery diverged (good for mean-reversion); high coherence = lockstep decline (bad)
+3. `pdd_120 > -10.0` — not deeply delivery-exhausted
+
+**Execution**: Signal fires on bar i, trade opens on bar i+1 (T+1, next bar close = proxy for open).
+
+**Exit** (after CTS has risen above -1.0 at least once):
+- `CTS drops to cts_buy_threshold (P10)` OR `CTS drops to -1.0` — whichever comes first
+- The buy_threshold typically fires first because it's above -1.0, providing earlier exit and tighter losses
+
+**Why BT exit is asymmetric**: CTS -1/+1 entry/exit is symmetric by construction (same indicator, same distance). This produces 1.00x payoff on completed trades. Using buy_threshold as a dynamic exit level cuts losers earlier than waiting for -1.0, making the system asymmetric (losers exit faster → higher payoff).
+
+### Prototype Script
+
+```bash
+venv/bin/python3 scripts/entry_crossover_prototype.py                           # NIFTY 50
+venv/bin/python3 scripts/entry_crossover_prototype.py --watchlist "NIFTY 500"   # Full universe
+```
+
+Script: `scripts/entry_crossover_prototype.py` — self-contained, uses `DivergenceEngine` directly.
+
+### Fizzle Study
+
+Script: `scripts/cts_fizzle_study.py` — comprehensive analysis of trades that enter at CTS=-1 but never reach +1.
+
+Output: `output/cts_fizzle_study.txt`, `output/cts_fizzle_trades.csv`
+
+Key findings (1602 trades, unfiltered CTS -1/+1, NIFTY 500):
+- 324/1602 (20%) trades never reach CTS=+1 ("fizzled"), averaging -11.67%
+- Completed trade losers have avg pdd -3.31 vs winners -2.04
+- All tested exit triggers (slope<0, accel<0, CTS drop) fired too aggressively on good trades — entry filtering is more effective than exit triggers for this system
+- Coherence is the best discriminator: low coh at CTS=-1 = divergence (good); high coh = lockstep decline (bad)
+
+### Results Evolution (NIFTY 500)
+
+| Config | Trades | Win% | AvgPnL | Payoff | Avg Bars |
+|--------|--------|------|--------|--------|----------|
+| CTS -1/+1 baseline (no gate) | 1602 | 57.1% | +0.47% | 0.83x | — |
+| + coh<=0.3, exit at +1 | 557 | 57.5% | +0.70% | 0.85x | — |
+| + coh<=0.3, exit at BT/-1 | 663 | 37.9% | +0.33% | 1.78x | — |
+| + coh<=0.3 + pdd>-10, exit at BT/-1 | 589 | 39.2% | +0.69% | 1.86x | 23.2 |
+| **+ coh<=0.3 + pdd>-10 + no uptrend, exit at BT/-1** | **553** | **40.0%** | **+1.00%** | **1.94x** | **23.4** |
+
+### Exit Breakdown (Best Config, NIFTY 500)
+
+| Exit Reason | Count | Avg PnL | Win% |
+|-------------|-------|---------|------|
+| cts_hit_bt | ~dominant | tighter losses | higher |
+| cts_hit_-1 | secondary | deeper losses | lower |
+| end_of_data | residual | open trades | — |
+
+### Regime Breakdown (Best Config, NIFTY 500)
+
+| Regime | Trades | Payoff | Avg PnL | Win% |
+|--------|--------|--------|---------|------|
+| downtrend | — | **2.02x** | — | — |
+| notrend | — | **1.96x** | — | — |
+| transition | — | 0.87x | — | — |
+| **uptrend** | **48** | **0.78x** | **-2.89%** | **31.2%** |
+
+**Uptrend is the only regime with payoff < 1.0x.** Winners are weak (+5.03% avg vs system avg +10.61%). Data supports exclusion — pending decision.
+
+Uptrend collateral damage: 48 trades, 15 winners (+5.03% avg), 33 losers (-6.49% avg). Removing them would improve system payoff.
+
+### Key Insights
+
+1. **Coherence as entry filter**: At CTS=-1, low coherence means price/delivery are diverging (oversold but delivery hasn't collapsed) — good mean-reversion setup. High coherence means both price and delivery falling in lockstep — genuine bearish trend, not oversold.
+
+2. **BT exit provides asymmetry**: The buy_threshold (P10 of CTS) is a dynamic per-stock level above -1.0. Using it as the exit trigger means losers get cut before reaching the full -1.0 floor, while winners that rose significantly before dropping back still capture gains.
+
+3. **pdd_120 > -10 removes deeply exhausted entries**: Only removes ~20 trades from end_of_data (fizzled) category, mostly negative PnL. Minimal collateral damage to good trades.
+
+4. **Exit triggers don't work well here**: Slope<0 for N bars, accel<0 for N bars, CTS drop below level — all fire too aggressively on good trades that are still developing. Entry filtering is the lever, not exit timing.
+
+### Uptrend Exclusion — ✅ IMPLEMENTED (2026-03-20)
+
+Added `regime != "uptrend"` gate to `check_entry()` in `scripts/entry_crossover_prototype.py`. Regime checked on the **signal bar** (bar i), not the execution bar (bar i+1) — this is the information available at decision time.
+
+**Results comparison (NIFTY 500, Jan 2025 – Mar 2026):**
+
+| Config | Trades | Win% | Avg PnL | Payoff |
+|--------|--------|------|---------|--------|
+| Baseline (all regimes) | 589 | 39.2% | +0.69% | 1.86x |
+| **+ Exclude uptrend** | **553** | **40.0%** | **+1.00%** | **1.94x** |
+
+Removed 36 uptrend entries (avg -2.89%, 31.2% win, 0.78x payoff). 12 borderline trades remain with uptrend at execution bar but non-uptrend at signal bar — these are benign (-0.31% avg, 41.7% win).
+
+**NIFTY 50 confirmation:**
+
+| Config | Trades | Win% | Avg PnL | Payoff |
+|--------|--------|------|---------|--------|
+| Baseline | 52 | 48.1% | +2.38% | 1.99x |
+| **+ Exclude uptrend** | **48** | **47.9%** | **+2.67%** | **2.10x** |
+
+### Pending Decisions
+
+1. ~~**Exclude uptrend regime**~~: ✅ Done — see above.
+2. **Further coherence tightening**: coh<=0.25 was tested (fewer trades, similar quality) — diminishing returns below 0.3.
+3. **Integration path**: This CTS -1/+1 system is a separate paradigm from 6-gate NextGen. User exploring both tracks. May converge or may be complementary (different market conditions).
+
+---
+
 ## State of the Codebase
 
-### Current signal: 6-gate NextGen in `src/trading/signals/nextgen.py`
+### Signal Systems
 
+**1. 6-gate NextGen** in `src/trading/signals/nextgen.py` (prior work):
 ```
 Gate 1: cts_accel > cts_accel_threshold (×0.8 in bear regime)
 Gate 2: cts >= cts_buy_threshold
@@ -516,18 +636,29 @@ Gate 5: pdd_rel >= -0.40 AND velocity_60_norm <= 0.60
 Gate 6: cts >= -0.12 (absolute CTS floor)
 Bull extra: cts_slope >= 0.0001
 ```
+Exit: Hard stop (2×ATR) → CWVAP → Early stop (1×ATR, bars 2–7)
 
-Exit order in `check_exit()`:
-1. Hard stop: pnl < -2×ATR → `hard_stop`
-2. CWVAP-based exits: `can_exit()` from price_divergence
-3. Early stop: bars 2–7, pnl < -1×ATR → `early_stop`
+**2. CTS -1/+1 Threshold** in `scripts/entry_crossover_prototype.py` (latest work):
+```
+Entry: CTS <= -1.0 AND coherence <= 0.3 AND pdd_120 > -10.0 AND regime != "uptrend"
+Exit:  CTS drops to buy_threshold OR CTS drops to -1.0 (after having risen above -1)
+```
+
+**3. Savgol CTS Signal** in `src/trading/signals/savgol_cts.py` (formal class):
+- Entry: cts <= cts_buy_threshold (P10)
+- Exit: cts >= cts_sell_threshold (P90)
 
 ### Modified files (uncommitted)
 - `src/trading/signals/nextgen.py` — Gates 3, 5, 6 + early stop exit
 - `src/divergence_engine/dvl_ledger.py` — `vel_dp5` in `compute_all()`
 - `src/divergence_engine/chart.py` — `vel_dp5` in `UI_COLUMNS`
+- `src/divergence_engine/engine.py` — `cts_strategy="causal_savgol"` (line 244)
+- `src/trading/signals/savgol_cts.py` — new file, SavgolCTSSignal class
 
 ### Analysis scripts (untracked)
+- `scripts/entry_crossover_prototype.py` — **CTS -1/+1 threshold prototype** (latest)
+- `scripts/cts_fizzle_study.py` — fizzle analysis for CTS -1/+1 trades
+- `scripts/feature_correlation.py` — feature correlation study
 - `scripts/gate4_pdd_nifty500.py` — Gate 4 relaxation study (no change warranted)
 - `scripts/gate_slope_guard_nifty500.py` — slope guard study (no change warranted)
 - `scripts/exit_study_nifty500.py` — trade anatomy (1564 trades, 30-bar hold)

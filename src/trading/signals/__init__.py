@@ -15,6 +15,11 @@ from src.trading.signals.nextgen import (
     NextGenExitConfig,
     NextGenSignal,
 )
+from src.trading.signals.savgol_cts import (
+    SavgolCTSEntryConfig,
+    SavgolCTSExitConfig,
+    SavgolCTSSignal,
+)
 from src.trading.signals.factory import SignalFactory
 
 __all__ = [
@@ -31,6 +36,9 @@ __all__ = [
     "NextGenEntryConfig",
     "NextGenExitConfig",
     "NextGenSignal",
+    "SavgolCTSEntryConfig",
+    "SavgolCTSExitConfig",
+    "SavgolCTSSignal",
     "FAVORABLE_SHAPES",
     "SignalFactory",
 ]
