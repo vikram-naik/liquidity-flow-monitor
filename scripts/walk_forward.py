@@ -28,6 +28,7 @@ from src.trading.signals import (
     NextGenEntryConfig, NextGenExitConfig,
     Trade, SignalFactory,
 )
+from src.trading.signals.savgol_cts import SavgolCTSEntryConfig, SavgolCTSExitConfig
 from src.trading.signals.base import BaseEntryConfig, BaseExitConfig
 
 DB_PATH = Path(__file__).resolve().parent.parent / "liquidity_monitor.db"
@@ -96,6 +97,7 @@ def simulate_trades(
             reason, delivery_bad_count = signal.check_exit(
                 row, prev, trade, peak_close, bars_held,
                 delivery_bad_count, cwvap_values, exit_cfg,
+                records, i,
             )
 
             if reason:
@@ -130,6 +132,7 @@ def simulate_trades(
                 cwc_pass=sig.get("details", {}).get("cwc", False),
                 grad_pass=sig.get("details", {}).get("grad", False),
                 regime_at_entry=sig.get("details", {}).get("regime", "-"),
+                entry_tag=sig.get("details", {}).get("entry_tag", ""),
                 psz_at_entry=psz_now if not np.isnan(psz_now) else 0.0,
                 psz_peak=psz_now if not np.isnan(psz_now) else 0.0,
             )
@@ -235,7 +238,8 @@ def summarize(trades: list[Trade], label: str) -> dict:
 def main():
     parser = argparse.ArgumentParser(description="Walk-forward validation")
     parser.add_argument("--watchlist", default="NIFTY 50")
-    parser.add_argument("--signal", choices=["price_divergence", "nextgen"], default="price_divergence",
+    parser.add_argument("--signal", choices=["price_divergence", "nextgen", "savgol_cts"],
+                        default="price_divergence",
                         help="Signal strategy to use (default: price_divergence)")
     args = parser.parse_args()
 
@@ -248,6 +252,9 @@ def main():
     if args.signal == "nextgen":
         entry_cfg = NextGenEntryConfig()
         exit_cfg = NextGenExitConfig()
+    elif args.signal == "savgol_cts":
+        entry_cfg = SavgolCTSEntryConfig()
+        exit_cfg = SavgolCTSExitConfig()
     else:
         entry_cfg = PriceDivergenceEntryConfig()
         exit_cfg = PriceDivergenceExitConfig()

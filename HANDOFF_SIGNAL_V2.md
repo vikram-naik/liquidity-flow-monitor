@@ -618,7 +618,175 @@ Removed 36 uptrend entries (avg -2.89%, 31.2% win, 0.78x payoff). 12 borderline 
 
 1. ~~**Exclude uptrend regime**~~: ✅ Done — see above.
 2. **Further coherence tightening**: coh<=0.25 was tested (fewer trades, similar quality) — diminishing returns below 0.3.
-3. **Integration path**: This CTS -1/+1 system is a separate paradigm from 6-gate NextGen. User exploring both tracks. May converge or may be complementary (different market conditions).
+3. **Integration path**: CTS -1/+1 is the primary signal. PSZ explored extensively as complement (see PSZ Studies section below) — no complementary juice found. CTS -1/+1 stands alone.
+
+---
+
+## PSZ Studies (2026-03-21) — ✅ INVESTIGATED, NO CHANGE
+
+### PSZ Exit Study (`scripts/psz_exit_study.py`)
+
+Tested whether PSZ extremes could improve exits for CTS -1/+1 trades. Four variants:
+- A: Baseline CTS BT/-1 exit
+- B: Hold if psz_clipped > 0 at CTS exit, release when psz drops to 0
+- C: Exit only when psz_clipped hits P90 ceiling
+- D: Delay exit if psz_smooth > psz_sell_threshold
+
+Results (NIFTY 500):
+
+| Strategy | Win% | AvgPnL | Payoff | AvgBars |
+|----------|------|--------|--------|---------|
+| A Baseline | 40.1% | **+1.00%** | **1.93x** | 23.5 |
+| B Hold if PSZ>0 | 40.5% | +1.04% | 1.91x | 24.0 |
+| C PSZ ceiling exit | 52.9% | +0.73% | 1.11x | 16 |
+| D Delay on PSZ>ST | 38.7% | +0.66% | 1.87x | 24.1 |
+
+**Conclusion**: No improvement. When CTS hits BT, PSZ is already negative 59% of the time — they are correlated, not independent. Strategy C (PSZ ceiling) destroys payoff. Baseline CTS BT/-1 exit is optimal.
+
+### PSZ Entry Complement Study (`scripts/psz_complement_study.py`)
+
+Tested whether PSZ-level or PSZ-crossing signals catch entries CTS -1 misses.
+
+Key finding (NIFTY 500 forward returns, 10-bar):
+- CTS -1 signals (N=1,045): 43.3% win, -0.93% avg (raw, no exit management)
+- PSZ-level complement (N=1,954): 37.1% win, **-1.99%** avg — worse
+- PSZ-crossing complement (N=4,017): 48.9% win, -0.03% avg — near breakeven
+
+**Conclusion**: PSZ at its P10 level (complement to CTS -1) is bad — mean -1.99%. PSZ crossing P10 upward has near-zero expected value.
+
+### PSZ Entry Prototype (`scripts/psz_entry_prototype.py`)
+
+Full trade simulation of PSZ crossing entries with 4 exit strategies × 6 gate configs on NIFTY 500.
+
+Best result: ungated + no uptrend, Exit B (PSZ drops to buy_threshold):
+- N=2,505, 34.7% win, **-0.15%** avg, 1.80x payoff, 25.7 bars
+
+The `psz_hit_bt` exits (when PSZ crosses up then drops back below P10) average **-5.2% to -6.3% with 0% win rate** across all configs — they are catastrophic losers. CTS -1.0 is a natural clip boundary; PSZ P10 is just a rolling percentile that can be re-crossed repeatedly.
+
+**Conclusion**: PSZ crossing entries don't work. CTS -1 is structurally superior because it's a hard clipped boundary, not a percentile threshold.
+
+---
+
+## savgol_cts.py — ✅ IMPLEMENTED (2026-03-21, updated 2026-03-21)
+
+`src/trading/signals/savgol_cts.py` rewritten with PSZ raw crossover entry logic. This is now the **canonical signal class** for the CTS -1/+1 system.
+
+### Entry — PSZ Raw Crossover (2026-03-21, v3)
+
+**Paradigm shift from v2**: The prior entry (v2) fired when CTS first hit -1.0 with psz_v velocity gates (rising 3 bars, spread > 0.02, psz_raw < -0.26). This produced false positives where psz_v showed positive blips but PSZ raw was flat — velocity without displacement (e.g., CIPLA Jan 20 2026: psz_v=0.045 but PSZ raw stuck at -0.33 for 12 bars).
+
+**v3 replaces all psz_v/bend/pdd/regime gates with a single PSZ raw crossover check.** When CTS and BT are pinned at -1.0, wait for PSZ raw to actually cross above -0.25 — structural turn confirmed by displacement, not velocity noise.
+
+```python
+SavgolCTSEntryConfig:
+    cts_floor: float = -1.0              # CTS at maximum oversold
+    psz_cross_threshold: float = -0.25   # PSZ raw must cross above this level
+```
+
+**Entry fires when ALL of:**
+1. `CTS <= -1.0` — maximum oversold
+2. `BT <= -1.0` — buy threshold also at floor (sustained oversold)
+3. `PSZ raw > -0.25` on current bar AND `PSZ raw <= -0.25` on previous bar — crossover
+
+**Gates removed (no longer needed with crossover approach):**
+- `coherence_max` — crossover filters false setups that coherence was catching
+- `pdd_floor` (-10.0) — tested: blocks 39 trades averaging +1.85% (25W/14L), net harmful
+- `exclude_uptrend` — tested: blocks only 3 trades including MAXHEALTH +18.87%, net harmful
+- `psz_v_min`, `psz_v_rising_bars`, `psz_v_min_spread` — replaced by crossover (displacement > velocity)
+- `psz_raw_max` (-0.26) — contradicts crossover (can't be < -0.26 AND cross above -0.25)
+- `psz_raw_bend_lookback/min_delta` — intermediate approach, superseded by crossover
+
+**Why -0.25 threshold (NIFTY 50 sweep, 2019–2026):**
+
+| PSZ cross level | N | Win% | AvgPnL | Payoff | Bars |
+|-----------------|---|------|--------|--------|------|
+| -0.28 | 269 | 69.1% | +1.89% | 1.05x | 14.9 |
+| **-0.25** | **292** | **65.4%** | **+2.03%** | **1.33x** | **12.2** |
+| -0.20 | 227 | 62.6% | +1.38% | 1.17x | 11.5 |
+| -0.15 | 182 | 58.8% | +1.04% | 1.21x | 10.0 |
+
+-0.25 has the best AvgPnL and strong payoff. Tighter thresholds (-0.20, -0.15) enter later with shorter holds but lower returns.
+
+**PSZ-only complement study (2026-03-21):** Tested PSZ crossover without CTS/BT requirement (catching non-bottomed setups). PSZ-only at -0.25 generates 2251 trades (57.7% win, +1.29% avg, 1.26x payoff). Positive expectancy but lower quality than CTS+BT+PSZ. Combined OR gate adds no value — PSZ-only volume swamps the CTS+BT trades. **No change warranted.**
+
+**Evolution of PSZ entry gates (2026-03-21):**
+1. **psz_v gates** (v2): psz_v > 0.01, rising 3 bars, spread > 0.02. Failed on CIPLA Jan 20 — psz_v positive but PSZ raw flat.
+2. **PSZ raw bend delta** (intermediate): `PSZ[today] - PSZ[today-3] >= threshold`. Simple delta at 0.03 gave 84 trades, 79.8% win, +3.63% avg, 1.05x payoff. Better but still a displacement proxy.
+3. **Elbow detection** (tested, rejected): `scipy.signal.find_peaks` for trough detection. More principled but empirically inferior to simple delta — `find_peaks` looks up to 10 bars back, allowing slow grinds from distant troughs to pass.
+4. **PSZ raw crossover** (v3, final): Level-crossing at -0.25. Simplest, most intuitive, best payoff (1.33x). Fewer trades than bend approach but higher quality per trade.
+
+### Intensity (0–100)
+- Base 60 for passing all gates
+- +0–15: coherence bonus (coh < 0.5 = more divergence = better)
+- +0–15: PDD bonus (closer to 0 = less exhausted = better quality)
+- +10: downtrend regime bonus; +5: notrend bonus
+
+### Reason strings
+- `"SavgolCTS: STRONG [CTS=-1.00, coh=0.15, pdd=-3.0, downtrend, psz=-0.240, prev_psz=-0.260]"` (intensity >= 80)
+- `"SavgolCTS: good [...]"` (intensity >= 65)
+- `"SavgolCTS: [...]"` (below 65)
+
+### Exit
+```python
+SavgolCTSExitConfig:
+    st_crossover_tolerance: float = 0.03   # Relaxed sell-threshold crossover detection
+    floor_tolerance: float = 0.10          # CTS/BT near-floor suppression zone
+    psz_stall_min_delta: float = 0.005     # PSZ raw must rise this much from entry by T+N
+    psz_stall_check_bar: int = 3           # check at T+3
+```
+
+Uses `delivery_bad_count` parameter as `cts_rose` flag (repurposed — this signal doesn't use delivery tracking).
+
+**Exit suppressions (checked before any exit logic):**
+1. **Floor suppression**: If CTS <= -0.90 AND BT <= -0.90, suppress exit — trade is still in setup zone. Discovered via MAXHEALTH 03-Feb-2025: CTS=-1.0, BT=-0.9432, exited prematurely, trade went on to close with better gain. Tolerance of 0.10 covers near-floor BT values.
+2. **PSZ raw suppression**: If `price_slope_z < -0.26`, suppress exit — stock is still deeply oversold, hold the position.
+
+**Exit triggers (after suppressions):**
+- Ceiling exit: CTS >= 1.0 → `"CTS ceiling hit"`
+- Sell threshold exit: CTS crosses below sell_threshold with tolerance 0.03 on crossover detection. Discovered via INDIGO 11-Feb-2026: CTS=0.8225, ST=0.8319, gap of only 0.0094 — strict crossover missed because prev_cts was already marginally below ST.
+- Floor exit: CTS drops to buy_threshold → `"CTS hit BT (-0.xxx)"`
+- Floor exit: CTS drops to -1.0 → `"CTS hit -1.0"`
+
+### chart.py wired to savgol_cts
+`src/divergence_engine/chart.py` now uses `SavgolCTSEntryConfig` / `SavgolCTSExitConfig` / `SignalFactory.get_signal("savgol_cts")` for UI marker generation.
+
+### Backtest Results — NIFTY 50, Jan 2026+ (realized trades only)
+
+```
+Signal: savgol_cts | 8 trades | 75.0% win | +5.68% avg | 3.50x payoff
+
+Symbol      Entry       Exit          PnL%    MFE%    MAE%    Days  Reason
+APOLLOHOSP  2026-01-28  2026-02-09    4.85    4.85    1.11       8  CTS ceiling hit
+CIPLA       2026-01-21  2026-02-11   -1.44    0.06    4.23      15  CTS ceiling hit
+ETERNAL     2026-01-30  2026-02-10   11.04   11.04    0.35       7  CTS ceiling hit
+INDIGO      2026-01-20  2026-02-12    4.03    4.67    4.04      17  CTS sell threshold hit
+LT          2026-01-23  2026-02-06    8.66    9.17    0.00      10  CTS ceiling hit
+MARUTI      2026-01-22  2026-02-13   -3.35    0.00    8.76      16  CTS ceiling hit
+POWERGRID   2026-01-21  2026-02-04   13.14   13.14    0.65      10  CTS ceiling hit
+TITAN       2026-01-29  2026-02-12    8.53    8.53    0.00      10  CTS ceiling hit
+
+Avg winner: +8.38% | Avg loser: -2.40% | Avg duration: 11.6 bars
+```
+
+**Observations:**
+- Winners move decisively (7-10 bars, MFE near PnL — little give-back)
+- Losers (MARUTI, CIPLA) show zero/near-zero MFE — setup failed from bar one
+- 87.5% exits via CTS ceiling hit — the system is catching genuine mean-reversion cycles
+- Potential future refinement: early-exit gate if no MFE after ~5-6 bars (would cut MARUTI/CIPLA losses earlier)
+
+---
+
+## PSZ Panels — ✅ IMPLEMENTED (2026-03-21, updated 2026-03-21)
+
+Two PSZ panels added to the UI for visual inspection.
+
+**`src/web/js/divergence_engine.js`**:
+
+1. **`"psz"` — PSZ Velocity**: Simplified to show only `psz_v` as a histogram (purple positive, red negative) with zero line. Previously showed raw PSZ + smooth + thresholds — stripped down since the raw PSZ now has its own panel.
+
+2. **`"price_slope_z"` — Price Slope Z (Raw)**: New panel showing just the raw `price_slope_z` line (solid blue) with zero line. Added for direct visual inspection of the -0.26 entry gate threshold.
+
+Activate in UI via panel settings (stored in `localStorage` as `de_panel_config`).
 
 ---
 
@@ -638,26 +806,33 @@ Bull extra: cts_slope >= 0.0001
 ```
 Exit: Hard stop (2×ATR) → CWVAP → Early stop (1×ATR, bars 2–7)
 
-**2. CTS -1/+1 Threshold** in `scripts/entry_crossover_prototype.py` (latest work):
+**2. CTS -1/+1 Threshold** — `scripts/entry_crossover_prototype.py` (prototype) + `src/trading/signals/savgol_cts.py` (formal class):
 ```
 Entry: CTS <= -1.0 AND coherence <= 0.3 AND pdd_120 > -10.0 AND regime != "uptrend"
 Exit:  CTS drops to buy_threshold OR CTS drops to -1.0 (after having risen above -1)
 ```
+Results: NIFTY 500 → 553 trades, 40.0% win, +1.00% avg, 1.94x payoff
+         NIFTY 50  →  48 trades, 47.9% win, +2.67% avg, 2.10x payoff
 
-**3. Savgol CTS Signal** in `src/trading/signals/savgol_cts.py` (formal class):
-- Entry: cts <= cts_buy_threshold (P10)
-- Exit: cts >= cts_sell_threshold (P90)
+The `savgol_cts` signal is **the active signal** wired into chart.py for UI markers.
 
 ### Modified files (uncommitted)
 - `src/trading/signals/nextgen.py` — Gates 3, 5, 6 + early stop exit
+- `src/trading/signals/savgol_cts.py` — **CTS -1/+1 full implementation** with PSZ gates (psz_v rising + spread + raw floor), exit suppressions (floor tolerance, PSZ raw, ST crossover tolerance), intensity scoring, descriptive reasons
+- `src/trading/signals/base.py` — Trade dataclass, SignalInterface with tag_signals()
+- `src/trading/signals/__init__.py` — exports SavgolCTSEntryConfig, SavgolCTSExitConfig, SavgolCTSSignal
 - `src/divergence_engine/dvl_ledger.py` — `vel_dp5` in `compute_all()`
-- `src/divergence_engine/chart.py` — `vel_dp5` in `UI_COLUMNS`
+- `src/divergence_engine/chart.py` — switched to savgol_cts signal; added psz_smooth, psz_v, psz_buy_threshold, psz_sell_threshold to UI_COLUMNS
 - `src/divergence_engine/engine.py` — `cts_strategy="causal_savgol"` (line 244)
-- `src/trading/signals/savgol_cts.py` — new file, SavgolCTSSignal class
+- `src/web/js/divergence_engine.js` — PSZ panel simplified to psz_v only; new "price_slope_z" raw panel added
+- `scripts/backtest_long_signals.py` — removed end-of-data force-close (realized trades only)
 
 ### Analysis scripts (untracked)
-- `scripts/entry_crossover_prototype.py` — **CTS -1/+1 threshold prototype** (latest)
+- `scripts/entry_crossover_prototype.py` — **CTS -1/+1 prototype** (primary backtest, use this)
 - `scripts/cts_fizzle_study.py` — fizzle analysis for CTS -1/+1 trades
+- `scripts/psz_exit_study.py` — PSZ exit override study (no improvement found)
+- `scripts/psz_complement_study.py` — PSZ entry complement study (no complement found)
+- `scripts/psz_entry_prototype.py` — PSZ crossing entry prototype (no value found)
 - `scripts/feature_correlation.py` — feature correlation study
 - `scripts/gate4_pdd_nifty500.py` — Gate 4 relaxation study (no change warranted)
 - `scripts/gate_slope_guard_nifty500.py` — slope guard study (no change warranted)
@@ -665,8 +840,340 @@ Exit:  CTS drops to buy_threshold OR CTS drops to -1.0 (after having risen above
 - `scripts/exit_prototype_nifty500.py` — 10 exit strategy variants (A–J)
 - `scripts/entry_quality_study.py` — pdd_rel × cts_margin gate sweep
 - `scripts/hard_stop_study.py` — CTS discriminator study for hard-stop reduction
+- `scripts/psz_v_momentum_study.py` — **post-entry psz_v amplitude/decay study** (active investigation)
+
+### Output files
+- `output/cts_threshold_no_uptrend.txt` — NIFTY 500 final run with uptrend exclusion
+- `output/psz_exit_study.txt` — PSZ exit study results
+- `output/psz_entry_prototype.txt` — PSZ entry prototype results
 
 ### Run with
 ```bash
 venv/bin/python3  # always use venv, not system python
 ```
+
+### PSZ_v Momentum Decay Study — IN PROGRESS (2026-03-21)
+
+**Hypothesis**: Post-entry psz_v amplitude and cycle behavior predicts trade outcome. Duds show rapid amplitude decay and narrowing half-cycle widths; winners sustain or accelerate.
+
+**Observations from NIFTY 50 Jan 2026 (8 trades)**:
+- psz_v has a natural ~5-bar half-cycle (5 bars up, 5 bars down visually)
+- Winners: avg abs(psz_v) over bars +1 to +5 ranges 0.038–0.128 (sustained amplitude)
+- Losers/duds: avg abs(psz_v) collapses — NEWGEN 0.008, CIPLA 0.018 (momentum dies)
+- When intensity is low, half-cycle widths narrow (fewer bars per up/down swing)
+- Two-cycle narrowing (3up/3down shrinking further) is a strong visual signal of exhaustion
+
+**Study script**: `scripts/psz_v_momentum_study.py`
+```bash
+venv/bin/python3 scripts/psz_v_momentum_study.py --watchlist "NIFTY 50"
+```
+
+Measures per trade:
+- Cycle 1 amplitude (avg abs(psz_v) bars +1 to +5) vs Cycle 2 (bars +6 to +10)
+- Decay ratio (cycle 2 / cycle 1)
+- Half-cycle widths (consecutive same-sign bars) — early vs late
+- Threshold sweeps for c1_avg_abs and decay_ratio
+- Bar-by-bar abs(psz_v) winner vs loser comparison
+- Two regime splits: 2020–2023 (bull) and 2024–present (choppy)
+
+Output: `output/psz_v_momentum_study.csv` (raw per-trade data)
+
+**Results (212 trades, NIFTY 50, 2019–2026)**:
+
+c1_avg_abs (avg abs(psz_v) bars +1 to +5) — **primary discriminator** (r=+0.311):
+
+| Threshold | N (above) | Win% | Avg PnL | N (below) | Win% | Avg PnL |
+|-----------|-----------|------|---------|-----------|------|---------|
+| >= 0.020 | 188 | 71.3% | +2.17% | 24 | 29.2% | -6.18% |
+| >= 0.030 | 162 | 75.3% | +3.14% | 50 | 38.0% | -4.99% |
+| >= 0.040 | 142 | 77.5% | +3.74% | 70 | 44.3% | -3.90% |
+| >= 0.050 | 127 | 78.7% | +3.77% | 85 | 48.2% | -2.59% |
+
+**Regime-robust** — c1_avg_abs >= 0.03:
+- Regime 1 (2020–2023, bull): 78.7% win, +3.50% (above) vs 23.8% win, -9.92% (below)
+- Regime 2 (2024+, choppy): 74.6% win, +3.05% (above) vs 47.1% win, -2.69% (below)
+
+n_half_cycles (r=-0.298) — fewer sign flips = better:
+
+| Half-cycles | N | Win% | Avg PnL |
+|-------------|---|------|---------|
+| 1 (no flip) | 105 | 82.9% | +4.17% |
+| 2 | 84 | 52.4% | -1.15% |
+| 3+ | 23 | 43.5% | -3.49% |
+
+Bar-by-bar gap (winners vs losers) widens from +0.005 at bar +1 to +0.053 at bar +5, confirming the 5-bar half-cycle observation. Winners sustain at 0.103, losers decay to 0.051 by bar +5.
+
+**Proposed early-exit gate**: At bar +5 post-entry, if avg abs(psz_v) over bars +1 to +5 < 0.03, exit. Catches 50 dud trades (38% win, -5% avg) while keeping 162 (75% win, +3.14%).
+
+### Agreed Algorithm — Rolling Momentum Fade Exit
+
+**Logic**: For an open trade, from bar +5 onward, compute a rolling 5-bar avg abs(psz_v) every bar. If it drops below threshold (0.03 from study), exit — momentum has faded.
+
+```
+Bars 1–4:  No momentum check, let trade breathe
+Bar 5+:    Every bar, compute rolling_5bar_avg = mean(abs(psz_v) over last 5 bars)
+           If rolling_5bar_avg < 0.03 → exit "momentum fade"
+```
+
+**Why this works**:
+- Duds: psz_v never sustains, rolling avg drops below 0.03 at bar 5 itself
+- Mid-life exhaustion: started strong, cycles narrow, rolling avg eventually breaches
+- Strong runners: psz_v sustains amplitude, rolling avg stays healthy, trade runs indefinitely
+- Rolling window smooths the 5-bar half-cycle rhythm — single-bar dips don't trigger false exits
+- Does not conflict with existing CTS exits (ceiling, sell threshold, floor) — those fire first if applicable
+
+**Implementation**: Add to `check_exit()` in `savgol_cts.py`. Needs access to psz_v history for the trade — either pass via `records`/`idx` or accumulate in the trade simulation loop. Check **after** existing CTS exit suppressions but **before** CTS exit triggers.
+
+**Threshold 0.03 empirical basis** (212 trades, NIFTY 50, 2019–2026):
+- c1_avg_abs >= 0.03: N=162, 75.3% win, +3.14% avg
+- c1_avg_abs < 0.03: N=50, 38.0% win, -4.99% avg
+- Regime-robust: R1 (bull) 78.7%/+3.50% vs R2 (choppy) 74.6%/+3.05%
+
+### Backlog: PSZ_v flat-lining in cruise-control mode (2026-03-21)
+
+**Observation**: When a trade enters cruise control (CTS pegged at +1.0, price gliding above CWVAP/VA_high in a steady uptrend), psz_v goes nearly flat (abs < 0.005). The price slope is strongly positive but *not changing* — zero acceleration = zero psz_v. Example: BHARATFORG Jan 30 – Mar 10, 2026 (+33% move). CTS at +1.0 from Feb 3 onward, psz_v flatlines from Feb 12, rolling 5-bar avg|psz_v| drops below 0.03 on Feb 12 and stays there for 18 bars. A naive momentum fade would exit at +20% instead of riding to +33%.
+
+**Implication**: psz_v flat-lining is NOT always bad. It has two modes:
+1. **Dead trade**: CTS near floor, psz_v flat = trade never launched → EXIT
+2. **Cruise control**: CTS at ceiling, psz_v flat = steady non-accelerating trend → HOLD
+
+This dual-mode behavior must be accounted for. The cruise-control mode is a feature to leverage for trend-riding, not a signal to exit.
+
+### Rolling Momentum Fade — Implementation & Study (2026-03-21)
+
+**Implemented** in `savgol_cts.py` `check_exit()`: rolling 5-bar avg|psz_v| checked from bar +5 onward. Config: `momentum_fade_threshold=0.03`, `momentum_fade_window=5`, `momentum_fade_min_bars=5`. Added `records`/`idx` optional params to `SignalInterface.check_exit()` and all implementations.
+
+**NIFTY 50 full-history results (momentum fade HURTS)**:
+
+| Metric | Baseline (no fade) | With fade (0.03) |
+|--------|-------------------|------------------|
+| Trades | 213 | 223 |
+| Win% | 66.7% | 61.4% |
+| AvgPnL | +1.23% | +0.36% |
+| Payoff | 0.72x | 0.70x |
+| AvgBars | 24.6 | 17.1 |
+
+Fade catches 84 trades: 30 winners (avg +3.52%) cut early + 54 losers (avg -7.87%). Cutting winners at +3.52% that would have run to ceiling (+4.00%) destroys value.
+
+**CTS level study — duds vs winners at bar 5/10/15 (213 trades, NIFTY 50)**:
+
+Duds (losers with c1_avg_abs < 0.03, N=31, avg PnL -11.68%):
+- Bar 5: **100% CTS < 0**, median CTS = -0.993
+- Bar 10: 90.3% CTS < 0, median = -1.000
+- Bar 15: 80.6% CTS < 0, median = -0.465
+
+Weak winners (winners with c1_avg_abs < 0.03, N=19, avg PnL +5.93%):
+- Bar 5: 94.7% CTS < 0, median = -1.000 (identical to duds)
+- Bar 10: 43.8% CTS < 0, median = +0.186 (diverging!)
+- Bar 15: 25.0% CTS < 0, median = +0.482 (launched)
+
+**Key finding**: At bar 5, duds and weak winners look identical (both CTS ~-1.0). By bar 10, weak winners have climbed to median +0.19 while duds are stuck at -1.0. The rolling check (not one-shot at bar 5) with a CTS gate is the correct approach — it catches duds that stay stuck while sparing slow starters that eventually launch.
+
+CTS gating (at fade-eligible bar): `CTS < 0.0` catches 31/31 duds while sparing cruise-control trades (CTS at ceiling).
+
+### Momentum Fade with CTS Gate — Tested, Still Hurts (2026-03-21)
+
+Added `momentum_fade_cts_gate=0.0` to only fire fade when CTS < 0. Results:
+
+| Config | Trades | Win% | AvgPnL | Payoff |
+|--------|--------|------|--------|--------|
+| Baseline | 213 | 66.7% | +1.23% | 0.72x |
+| Fade 0.03 + CTS<0 | 221 | 61.5% | +0.59% | 0.75x |
+| Fade 0.015 + CTS<0 | 218 | 63.3% | +0.76% | 0.73x |
+
+CTS gate reduced winner damage (30→14 at 0.03) but still hurts AvgPnL. **Momentum fade approach abandoned.**
+
+### PSZ Raw as Post-Entry Discriminator (2026-03-21)
+
+**Key discovery**: PSZ raw trajectory post-entry completely separates duds from winners.
+
+| Bar | Winners PSZ raw | Duds PSZ raw | Winners delta from entry | Duds delta from entry |
+|-----|----------------|-------------|------------------------|---------------------|
+| Entry | -0.280 | -0.317 | — | — |
+| T+2 | -0.223 | -0.315 | +0.057 | +0.001 |
+| T+3 | -0.142 | -0.316 | **+0.138** | **+0.001** |
+| T+5 | +0.025 | -0.310 | +0.305 | +0.007 |
+
+Winners: PSZ raw rises relentlessly, 90.8% positive delta by T+3.
+Duds: PSZ raw is dead flat, 54.8% positive delta (coin flip).
+
+**Pre-entry PSZ features (psz_v, psz_v spread, psz_bend) cannot discriminate** — duds and winners look identical at signal time. The divergence only appears post-entry.
+
+### PSZ Stall Early Exit — ✅ IMPLEMENTED (2026-03-21)
+
+At T+3 post-entry, if PSZ raw hasn't risen by >= 0.005 from its value at entry, exit. Catches trades where PSZ is stalled (knife-catch that never recovered).
+
+```python
+SavgolCTSExitConfig:
+    psz_stall_min_delta: float = 0.005  # PSZ raw must rise this much from entry
+    psz_stall_check_bar: int = 3        # check exactly at this bar
+```
+
+Checked **before** floor/PSZ suppressions (capital protection overrides hold logic).
+
+**Results (NIFTY 50, full history)**:
+
+| Config | Trades | Win% | AvgPnL | Payoff | Stall caught |
+|--------|--------|------|--------|--------|-------------|
+| Baseline | 213 | 66.7% | +1.23% | 0.72x | — |
+| **d<0.005 T+3** | **216** | **64.4%** | **+1.26%** | **0.83x** | **16 (1W + 15L)** |
+| d<0.010 T+3 | 216 | 63.9% | +1.24% | 0.84x | 18 (1W + 17L) |
+| d<0.020 T+3 | 216 | 63.0% | +1.19% | 0.86x | 21 (1W + 20L) |
+
+**d<0.005 at T+3** is the sweet spot: 15:1 loser:winner catch ratio, payoff +0.11x improvement, AvgPnL slightly better. The 1 clipped winner was +0.41% (negligible). Avg loss improves from -8.48% to -7.11% because duds get cut at -2.95% instead of bleeding to -11%+.
+
+---
+
+## BT-Cross Complement Entry (2026-03-21)
+
+### Problem: V-Bottom Entries Missed
+
+The PSZ crossover entry requires both CTS and BT at -1.0 (floor). For stocks that crash quickly (V-bottoms), CTS hits -1.0 but BT (rolling P10 over 60 bars) hasn't had time to reach -1.0. Examples:
+
+- **BHARATFORG Jan 21–22**: CTS=-1.0 but BT=-0.60. PSZ crossover fires on Jan 22 (-0.2716 → -0.2610 crosses -0.25) but BT gate blocks. Stock rallied +33% from 1380 to 1800+.
+- **DATAPATTNS Jan 27**: CTS=-1.0, BT=-0.98. BT nearly there but not yet. Stock rallied +11% from 2562 to 2840+.
+
+### Solution: CTS Crosses BT From Below
+
+New complementary entry: when CTS crosses above its own buy_threshold from below while still in oversold territory, this is a structural turn signal — CTS was below its rolling P10 and is now recovering.
+
+**Entry logic (signal bar i, execute bar i+1):**
+1. `prev_cts <= prev_bt` — CTS was at or below buy threshold
+2. `cts > bt` — CTS crosses above BT on this bar
+3. `cts <= bt_cross_oversold_threshold` (-0.50) — still in oversold zone
+
+**Threshold sweep (NIFTY 50, full history, CTS-based exits):**
+
+| Threshold | N | Win% | AvgPnL | Payoff | AvgBars |
+|-----------|------|------|--------|--------|---------|
+| CTS <= -0.50 | 1365 | 56.8% | +0.89% | 1.07x | 14.2 |
+| CTS <= -0.60 | 1096 | 57.8% | +0.88% | 1.03x | 14.4 |
+| CTS <= -0.70 | 838 | 58.8% | +0.87% | 0.97x | 14.3 |
+| CTS <= -0.80 | 550 | 57.5% | +0.69% | 0.96x | 14.1 |
+| CTS <= -0.90 | 279 | 59.1% | +0.87% | 0.95x | 13.6 |
+
+Chose -0.50 for maximum coverage — positive expectancy at all thresholds.
+
+### PSZ Glide Exit for BT-Cross Trades
+
+BT-cross trades exit too early with CTS-based exits (ceiling/sell threshold/hit BT). Investigated PSZ-based exit: hold until PSZ drops below a threshold after having risen above it.
+
+**PSZ peak distribution** during BT-cross trades (NIFTY 50): median max PSZ = 0.325. Winners peak at P50=0.336, losers at P50=0.283.
+
+**Exit threshold sweep (NIFTY 50, BT-cross trades only):**
+
+| Exit Strategy | N | Win% | AvgPnL | Payoff | AvgBars |
+|--------------|-----|------|--------|--------|---------|
+| CTS exits (baseline) | 1368 | 52.9% | +0.77% | 1.25x | 12.1 |
+| PSZ glide < 0.15 | 1369 | 43.4% | +0.52% | 1.72x | 9.7 |
+| PSZ glide < 0.20 | 1368 | 44.5% | +0.49% | 1.63x | 9.7 |
+| PSZ glide < 0.25 | 1369 | 47.7% | +0.45% | 1.38x | 10.0 |
+| PSZ glide < 0.30 | 1367 | 52.2% | +0.62% | 1.22x | 11.4 |
+| PSZ glide < 0.35 | 1359 | 43.9% | +2.29% | 2.40x | 29.9 |
+
+**Chose PSZ < 0.30**: balances payoff (1.22x) with reasonable hold time (11.4 bars). At 0.30, 67% of trades reach the threshold and those are 64.8% win / +7.15% avg.
+
+### Exit Structure (BT-Cross)
+
+Three-layer exit, each handling a distinct failure mode:
+
+1. **PSZ stall (T+3)**: If PSZ raw hasn't risen by >= 0.005 from entry, exit. Catches dead trades early.
+2. **PSZ glide exit (< 0.30)**: Once PSZ rises above 0.30 then drops back below, exit. Primary exit for healthy trades — 81.4% win, +3.94% avg.
+3. **CTS hit BT / hit floor**: Safety nets for trades that never reached PSZ 0.30. Captures round-trip failures.
+
+PSZ entries keep their original CTS-based exits (ceiling / sell threshold / floor) unchanged.
+
+### Combined Signal Results (NIFTY 50, full history)
+
+| Entry Path | N | Win% | AvgPnL | Payoff | AvgBars |
+|------------|-----|------|--------|--------|---------|
+| **Combined** | **1386** | **54.8%** | **+0.87%** | **1.22x** | **12.1** |
+| PSZ (original) | 287 | 65.5% | +2.11% | 1.36x | 12.0 |
+| BT-cross (new) | 1099 | 52.0% | +0.55% | 1.18x | 12.2 |
+
+BT-cross exit breakdown:
+
+| Exit | N | Win% | AvgPnL | AvgBars |
+|------|---|------|--------|---------|
+| PSZ glide exit | 624 | 81.4% | +3.94% | 14.8 |
+| CTS hit BT | 285 | 8.4% | -5.24% | 12.5 |
+| PSZ stall | 190 | 21.1% | -1.93% | 3.0 |
+
+### Walk-Forward Validation — ✅ COMPLETE (2026-03-21)
+
+`venv/bin/python3 scripts/walk_forward.py --signal savgol_cts --watchlist "NIFTY 50"`
+`venv/bin/python3 scripts/walk_forward.py --signal savgol_cts --watchlist "NIFTY 500"`
+
+**NIFTY 50:**
+
+| Metric | Train (2019–2023) | Test (2024–2026) | Delta |
+|--------|-------------------|-------------------|-------|
+| Trades | 922 | 430 | |
+| Win% | 55.6% | 53.7% | -1.9 pp |
+| AvgPnL | +0.96% | +0.53% | -0.43 |
+| Payoff | 1.19x | 1.15x | -0.04 |
+| Avg MFE | 4.42% | 3.37% | -1.05 |
+| Avg MAE | 3.25% | 2.48% | -0.77 |
+
+**NIFTY 500:**
+
+| Metric | Train (2019–2023) | Test (2024–2026) | Delta |
+|--------|-------------------|-------------------|-------|
+| Trades | 8,013 | 4,813 | |
+| Win% | 53.8% | 46.9% | -6.9 pp |
+| AvgPnL | +1.62% | +0.26% | -1.36 |
+| Payoff | 1.44x | 1.25x | -0.19 |
+| Avg MFE | 5.98% | 4.59% | -1.39 |
+| Avg MAE | 3.87% | 4.04% | +0.17 |
+
+**Stability comparison with previous NextGen signal:**
+
+| | NextGen gap | SavgolCTS gap |
+|--|-------------|---------------|
+| Win% delta | -10.8 pp | -6.9 pp |
+| AvgPnL delta | -2.84% | -1.36% |
+| Payoff delta | -1.58x | -0.19x |
+
+Significantly more stable. NIFTY 50 is remarkably tight (-1.9 pp, -0.04 payoff). NIFTY 500 test period still net positive with 1.25x payoff.
+
+### Implementation
+
+**Entry config** (`SavgolCTSEntryConfig`):
+```python
+cts_floor: float = -1.0
+psz_cross_threshold: float = -0.25
+bt_cross_enabled: bool = True
+bt_cross_oversold_threshold: float = -0.50
+```
+
+**Exit config** (`SavgolCTSExitConfig`):
+```python
+st_crossover_tolerance: float = 0.03
+floor_tolerance: float = 0.10
+psz_stall_min_delta: float = 0.005
+psz_stall_check_bar: int = 3
+bt_cross_psz_glide_threshold: float = 0.30
+```
+
+**`check_entry`** tries PSZ crossover first, falls through to BT crossover. Returns `entry_tag` ("PSZ" or "BT-cross") in meta dict.
+
+**`check_exit`** branches on `trade.entry_tag`:
+- PSZ entries → original CTS exits (ceiling / sell threshold / hit BT / hit floor)
+- BT-cross entries → PSZ stall at T+3 → PSZ glide exit (< 0.30) → CTS hit BT / hit floor safety nets
+
+**`Trade` dataclass**: Added `entry_tag: str = ""` field to track entry path.
+
+**`tag_signals`** in `base.py`: Updated to propagate `entry_tag` through pending_entry → Trade.
+
+**`walk_forward.py`**: Added `--signal savgol_cts` choice, passes `records`/`idx` to `check_exit`, sets `entry_tag` on Trade.
+
+### Modified Files (this session)
+- `src/trading/signals/savgol_cts.py` — BT-cross entry + PSZ glide exit, refactored into `_check_psz_crossover`, `_check_bt_crossover`, `_exit_psz`, `_exit_bt_cross`
+- `src/trading/signals/base.py` — `entry_tag` field on Trade, `entry_tag` propagation in `tag_signals`
+- `scripts/walk_forward.py` — savgol_cts support, `records`/`idx` to `check_exit`, `entry_tag` on Trade
+- `scripts/cts_cross_bt_study.py` — new, CTS-cross-BT sweep study
+
+### Next Steps
+- Integration into paper trading pipeline (`src/trading/scanner.py`)
+- UI verification: check chart.py markers show both PSZ and BT-cross entries correctly
+- Monitor PSZ glide exit behavior on live data — 0.30 threshold validated on historical data, may need seasonal adjustment

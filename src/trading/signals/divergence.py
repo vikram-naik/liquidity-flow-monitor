@@ -131,6 +131,8 @@ class LongDivergenceSignal(SignalInterface):
         delivery_bad_count: int,
         cwvap_values: list[float],
         cfg: BaseExitConfig,
+        records: list[dict] | None = None,
+        idx: int = 0,
     ) -> tuple[str | None, int]:
         
         if not isinstance(cfg, LongDivergenceExitConfig):

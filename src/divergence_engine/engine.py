@@ -240,7 +240,7 @@ class DivergenceEngine:
         dvl = DVLLedger()
         df = dvl.compute_all(df)
 
-        # Module 3 — Composite VWAP
+        # Module 3 — Composite VWAP (fast CTS, window=15)
         cwvap = CompositeVWAP(va_pct=_VA_PCT, cts_strategy="causal_savgol")
         df = cwvap.compute_all(df)
 

@@ -21,7 +21,8 @@
         "cdvl":      { label: "CDVL — Delivery (Gate 3)" },
         "velocity":  { label: "Velocity 60 Norm (Gate 3)" },
         "pdd_120":   { label: "PDD-120 (Gate 4)" },
-        "psz":       { label: "PSZ — Price Slope Z" }
+        "psz":       { label: "PSZ — Price Slope Z" },
+        "price_slope_z": { label: "Price Slope Z (Raw)" }
     };
 
     function getActivePanels() {
@@ -204,8 +205,8 @@
 
             if (r.exit_signal) {
                 exitMarkers.push({
-                    time: t, position: 'aboveBar', color: '#ff1744',
-                    shape: 'arrowDown', text: r.exit_reason ? r.exit_reason.substring(0, 20) : 'EXIT'
+                    time: t, position: 'aboveBar', color: '#FFD700',
+                    shape: 'arrowDown', text: ''
                 });
             }
 
@@ -241,7 +242,7 @@
         }
 
         var container = document.getElementById("chart-container");
-        var existingSubs = container.querySelectorAll(".p-sub");
+        var existingSubs = container.querySelectorAll(".p-sub, .p-sub-lg");
         existingSubs.forEach(function (node) { node.remove(); });
 
         function getW(id) { var el = document.getElementById(id); return el ? el.clientWidth : 800; }
@@ -288,7 +289,7 @@
 
             var panelDiv = document.createElement("div");
             panelDiv.id = panelId;
-            panelDiv.className = "panel p-sub";
+            panelDiv.className = panelKey === "cts" ? "panel p-sub-lg" : "panel p-sub";
             panelDiv.innerHTML = '<div id="legSub' + i + '" class="legend"></div>';
             container.appendChild(panelDiv);
 
@@ -322,7 +323,7 @@
                 
                 var sCtsZ = c.addSeries(LC.LineSeries, { color: "rgba(139, 148, 158, 0.3)", lineWidth: 1, lineStyle: 0, lastValueVisible: false, priceLineVisible: false });
                 sCtsZ.setData(ctsArr.map(d => ({ time: d.time, value: 0 })));
-                
+
                 legConfig.push({ api: sCts, label: "CTS", col: "cts", color: "#4fc3f7" });
                 legConfig.push({ api: sCtsBuy, label: "Buy Thresh (P10)", col: "cts_buy_threshold", color: "#42b883", dashed: true });
                 legConfig.push({ api: sCtsSell, label: "Sell Thresh (P90)", col: "cts_sell_threshold", color: "#ef5350", dashed: true });
@@ -382,56 +383,38 @@
                 legConfig.push({ api: sPdd120, label: "PDD-120", col: "pdd_120", color: "#ff7043" });
                 legConfig.push({ api: sPdd120T, label: "Threshold", col: "pdd_120_threshold", color: "#ffd54f", dashed: true });
             } else if (panelKey === "psz") {
-                // PSZ: price_slope_z (raw) + psz_smooth + buy/sell thresholds
-                var sPsz = c.addSeries(LC.LineSeries, {
-                    color: "rgba(100, 181, 246, 0.45)", lineWidth: 1,
+                // PSZ: psz_v velocity histogram + zero line
+                var sPszV = c.addSeries(LC.HistogramSeries, {
+                    color: "rgba(206, 147, 216, 0.6)",
                     lastValueVisible: false, priceLineVisible: false
                 });
-                sPsz.setData(pszArr);
-
-                var sPszSmooth = c.addSeries(LC.LineSeries, {
-                    color: "#64b5f6", lineWidth: 2,
-                    lastValueVisible: false, priceLineVisible: false
-                });
-                sPszSmooth.setData(pszSmoothArr);
-
-                var sPszBuy = c.addSeries(LC.LineSeries, {
-                    color: "#42b883", lineWidth: 1, lineStyle: 2,
-                    lastValueVisible: false, priceLineVisible: false
-                });
-                sPszBuy.setData(pszBuyThreshArr);
-
-                var sPszSell = c.addSeries(LC.LineSeries, {
-                    color: "#ef5350", lineWidth: 1, lineStyle: 2,
-                    lastValueVisible: false, priceLineVisible: false
-                });
-                sPszSell.setData(pszSellThreshArr);
+                sPszV.setData(pszVArr.map(d => ({
+                    time: d.time,
+                    value: d.value != null ? d.value : undefined,
+                    color: (d.value != null && d.value >= 0) ? "rgba(206, 147, 216, 0.6)" : "rgba(239, 83, 80, 0.5)"
+                })));
 
                 // Zero line
                 var sPszZ = c.addSeries(LC.LineSeries, {
                     color: "rgba(139, 148, 158, 0.3)", lineWidth: 1,
                     lastValueVisible: false, priceLineVisible: false
                 });
-                sPszZ.setData(pszArr.map(d => ({ time: d.time, value: 0 })));
+                sPszZ.setData(pszVArr.map(d => ({ time: d.time, value: 0 })));
 
-                // PSZ_v as a faint histogram overlay
-                var sPszV = c.addSeries(LC.HistogramSeries, {
-                    color: "rgba(206, 147, 216, 0.35)",
-                    lastValueVisible: false, priceLineVisible: false,
-                    priceScaleId: "psz_v"
-                });
-                sPszV.setData(pszVArr.map(d => ({
-                    time: d.time,
-                    value: d.value != null ? d.value : undefined,
-                    color: (d.value != null && d.value >= 0) ? "rgba(206, 147, 216, 0.35)" : "rgba(239, 83, 80, 0.25)"
-                })));
-                c.priceScale("psz_v").applyOptions({ visible: false, scaleMargins: { top: 0.6, bottom: 0 } });
-
-                legConfig.push({ api: sPszSmooth, label: "PSZ Smooth", col: "psz_smooth", color: "#64b5f6" });
-                legConfig.push({ api: sPsz, label: "PSZ Raw", col: "price_slope_z", color: "rgba(100, 181, 246, 0.45)" });
-                legConfig.push({ api: sPszBuy, label: "Buy Thresh (P10)", col: "psz_buy_threshold", color: "#42b883", dashed: true });
-                legConfig.push({ api: sPszSell, label: "Sell Thresh (P70)", col: "psz_sell_threshold", color: "#ef5350", dashed: true });
                 legConfig.push({ api: sPszV, label: "PSZ_v", col: "psz_v", color: "#ce93d8" });
+            } else if (panelKey === "price_slope_z") {
+                // Raw price_slope_z line only
+                var sPszRaw = c.addSeries(LC.LineSeries, {
+                    color: "#64b5f6", lineWidth: 2,
+                    lastValueVisible: false, priceLineVisible: false
+                });
+                sPszRaw.setData(pszArr);
+                var sPszRawZ = c.addSeries(LC.LineSeries, {
+                    color: "rgba(139, 148, 158, 0.3)", lineWidth: 1,
+                    lastValueVisible: false, priceLineVisible: false
+                });
+                sPszRawZ.setData(pszArr.map(d => ({ time: d.time, value: 0 })));
+                legConfig.push({ api: sPszRaw, label: "Price Slope Z", col: "price_slope_z", color: "#64b5f6" });
             }
 
             allLegConfigs.push({ id: "legSub" + i, config: legConfig });
@@ -523,6 +506,7 @@
                 if (param.time === undefined || param.point === undefined || param.point.x < 0 || param.point.y < 0) {
                     charts.forEach(c2 => { if (c1 !== c2) c2.clearCrosshairPosition(); });
                     refreshUI();
+                    tooltipEl.style.display = "none";
                 } else {
                     charts.forEach(c2 => {
                         if (c1 !== c2) {
@@ -532,9 +516,18 @@
                         }
                     });
                     refreshUI(param);
-                }
 
-                tooltipEl.style.display = "none";
+                    var idx = timeToIndex[param.time];
+                    var row = idx !== undefined ? ledger[idx] : null;
+                    if (row && row.exit_signal && row.exit_reason && param.sourceEvent) {
+                        tooltipEl.innerHTML = '<span style="color:#FFD700">&#9660; EXIT</span> ' + row.exit_reason;
+                        tooltipEl.style.display = "block";
+                        tooltipEl.style.left = (param.sourceEvent.clientX + 14) + "px";
+                        tooltipEl.style.top  = (param.sourceEvent.clientY - 36) + "px";
+                    } else {
+                        tooltipEl.style.display = "none";
+                    }
+                }
             });
 
             c1.timeScale().subscribeVisibleLogicalRangeChange(range => {

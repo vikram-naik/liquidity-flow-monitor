@@ -27,6 +27,7 @@ from src.divergence_engine.engine import DivergenceEngine
 from src.trading.signals import (
     FAVORABLE_SHAPES, PriceDivergenceEntryConfig, PriceDivergenceExitConfig,
     NextGenEntryConfig, NextGenExitConfig,
+    SavgolCTSEntryConfig, SavgolCTSExitConfig,
     Trade, SignalFactory,
 )
 from src.trading.signals.base import BaseEntryConfig, BaseExitConfig
@@ -106,6 +107,7 @@ def simulate_trades(
             reason, delivery_bad_count = signal.check_exit(
                 row, prev, trade, peak_close, bars_held,
                 delivery_bad_count, cwvap_values, exit_cfg,
+                records, i,
             )
 
             if reason:
@@ -153,18 +155,6 @@ def simulate_trades(
             qualifies, soft_count, fdetails = signal.check_entry(row, prev, entry_cfg, records, i)
             if qualifies:
                 pending_signal = {"soft_count": soft_count, "details": fdetails}
-
-    # Close any open trade at end of data
-    if in_trade and trade:
-        last = records[-1]
-        trade.exit_date = str(last.get("date", ""))[:10]
-        trade.exit_price = last.get("close", trade.entry_price)
-        trade.exit_reason = "end_of_data"
-        trade.pnl_pct = round((trade.exit_price / trade.entry_price - 1) * 100, 2)
-        trade.duration = n - 1 - trade.entry_idx
-        trade.mfe_pct = round(trade.mfe_pct, 2)
-        trade.mae_pct = round(trade.mae_pct, 2)
-        trades.append(trade)
 
     return trades
 
@@ -315,7 +305,7 @@ def main():
     group.add_argument("--symbol", help="Single symbol to backtest")
 
     parser.add_argument("--start-date", help="Start date for entry signals (YYYY-MM-DD)")
-    parser.add_argument("--signal", choices=["price_divergence", "nextgen"], default="price_divergence",
+    parser.add_argument("--signal", choices=["price_divergence", "nextgen", "savgol_cts"], default="price_divergence",
                         help="Signal strategy to use (default: price_divergence)")
 
     args = parser.parse_args()
@@ -323,6 +313,9 @@ def main():
     if args.signal == "nextgen":
         entry_cfg = NextGenEntryConfig()
         exit_cfg = NextGenExitConfig()
+    elif args.signal == "savgol_cts":
+        entry_cfg = SavgolCTSEntryConfig()
+        exit_cfg = SavgolCTSExitConfig()
     else:
         entry_cfg = PriceDivergenceEntryConfig()
         exit_cfg = PriceDivergenceExitConfig()
