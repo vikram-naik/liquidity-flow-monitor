@@ -60,3 +60,7 @@ scripts/cei_crossing_validation_weekly.json
 *analysis.png
 RELIANCE_150_savgol_psz_analysis.png
 output
+scripts/study_*.py
+bt_hit_trades.csv
+.gitignore
+PSZV_BASE_BREAK_STUDY.md
