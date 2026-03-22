@@ -31,8 +31,8 @@ UI_COLUMNS = [
     "cwvap_dist", "rdv", "cwc", "cdvl", "gradient_shape", "pdd_30", "pdd_120", "mcs_composite",
     "cts", "cts_slope", "cts_accel",
     "velocity_60_norm", "vel_dp5",
-    # PSZ (price slope z) smoothed + thresholds
-    "psz_smooth", "psz_v", "psz_buy_threshold", "psz_sell_threshold",
+    # PSZ (price slope z) raw + thresholds
+    "psz_v", "psz_buy_threshold", "psz_sell_threshold",
     # NextGen gate thresholds (rolling percentiles from trend_participation)
     "cts_buy_threshold", "cts_sell_threshold", "cts_accel_threshold", "pdd_120_threshold",
     # Divergence

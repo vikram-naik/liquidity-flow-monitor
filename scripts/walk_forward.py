@@ -71,6 +71,8 @@ def simulate_trades(
     delivery_bad_count = 0
     cwvap_values: list[float] = []
     pending_signal: dict | None = None
+    # EOD lag for exits: signal fires on bar i, execute at open of bar i+1
+    pending_exit_reason: str | None = None
 
     for i in range(1, n):
         row = records[i]
@@ -81,6 +83,24 @@ def simulate_trades(
 
         cw = row.get("cwvap", np.nan)
         cwvap_values.append(cw)
+
+        # Execute pending exit at today's open (EOD-lag: signal fired previous bar)
+        if pending_exit_reason is not None:
+            open_price = row.get("open", np.nan)
+            exit_price = open_price if not np.isnan(open_price) else close
+            trade.exit_date = str(row.get("date", ""))[:10]
+            trade.exit_price = round(exit_price, 2)
+            trade.exit_reason = pending_exit_reason
+            trade.pnl_pct = round((exit_price / trade.entry_price - 1) * 100, 2)
+            trade.duration = i - trade.entry_idx
+            trade.mfe_pct = round(trade.mfe_pct, 2)
+            trade.mae_pct = round(trade.mae_pct, 2)
+            trades.append(trade)
+            in_trade = False
+            trade = None
+            delivery_bad_count = 0
+            pending_exit_reason = None
+            continue
 
         if in_trade:
             if close > peak_close:
@@ -101,17 +121,8 @@ def simulate_trades(
             )
 
             if reason:
-                trade.exit_date = str(row.get("date", ""))[:10]
-                trade.exit_price = close
-                trade.exit_reason = reason
-                trade.pnl_pct = round((close / trade.entry_price - 1) * 100, 2)
-                trade.duration = bars_held
-                trade.mfe_pct = round(trade.mfe_pct, 2)
-                trade.mae_pct = round(trade.mae_pct, 2)
-                trades.append(trade)
-                in_trade = False
-                trade = None
-                delivery_bad_count = 0
+                # EOD lag: schedule exit at next bar's open
+                pending_exit_reason = reason
 
         elif pending_signal is not None:
             sig = pending_signal

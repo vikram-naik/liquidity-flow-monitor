@@ -403,7 +403,7 @@
 
                 legConfig.push({ api: sPszV, label: "PSZ_v", col: "psz_v", color: "#ce93d8" });
             } else if (panelKey === "price_slope_z") {
-                // Raw price_slope_z line only
+                // Raw price_slope_z line
                 var sPszRaw = c.addSeries(LC.LineSeries, {
                     color: "#64b5f6", lineWidth: 2,
                     lastValueVisible: false, priceLineVisible: false
@@ -414,7 +414,7 @@
                     lastValueVisible: false, priceLineVisible: false
                 });
                 sPszRawZ.setData(pszArr.map(d => ({ time: d.time, value: 0 })));
-                legConfig.push({ api: sPszRaw, label: "Price Slope Z", col: "price_slope_z", color: "#64b5f6" });
+                legConfig.push({ api: sPszRaw, label: "PSZ Raw", col: "price_slope_z", color: "#64b5f6" });
             }
 
             allLegConfigs.push({ id: "legSub" + i, config: legConfig });
@@ -519,8 +519,13 @@
 
                     var idx = timeToIndex[param.time];
                     var row = idx !== undefined ? ledger[idx] : null;
-                    if (row && row.exit_signal && row.exit_reason && param.sourceEvent) {
-                        tooltipEl.innerHTML = '<span style="color:#FFD700">&#9660; EXIT</span> ' + row.exit_reason;
+                    if (row && param.sourceEvent && (row.exit_signal && row.exit_reason || row.entry_signal && row.entry_reason)) {
+                        var parts = [];
+                        if (row.entry_signal && row.entry_reason)
+                            parts.push('<span style="color:#00e676">&#9650; ENTRY</span> ' + row.entry_reason);
+                        if (row.exit_signal && row.exit_reason)
+                            parts.push('<span style="color:#FFD700">&#9660; EXIT</span> ' + row.exit_reason);
+                        tooltipEl.innerHTML = parts.join('<br>');
                         tooltipEl.style.display = "block";
                         tooltipEl.style.left = (param.sourceEvent.clientX + 14) + "px";
                         tooltipEl.style.top  = (param.sourceEvent.clientY - 36) + "px";
@@ -578,7 +583,6 @@
             "<tr><td>CTS Slope</td><td class='val'>" + fmt(l.cts_slope, 4) + "</td></tr>" +
             "<tr><td>CTS Accel</td><td class='val'>" + fmt(l.cts_accel, 4) + "</td></tr>" +
             "<tr><td>PSZ</td><td class='val'>" + fmt(l.price_slope_z, 4) + "</td></tr>" +
-            "<tr><td>PSZ Smooth</td><td class='val'>" + fmt(l.psz_smooth, 4) + "</td></tr>" +
             "<tr><td>PSZ_v</td><td class='val'>" + fmt(l.psz_v, 5) + "</td></tr>" +
             "<tr><td>RSZ</td><td class='val'>" + fmt(l.rdv_slope_z, 4) + "</td></tr>" +
             (function() {
