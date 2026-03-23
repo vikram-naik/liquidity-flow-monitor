@@ -35,6 +35,7 @@ class SavgolCTSEntryConfig(BaseEntryConfig):
     psz_bend_quiescence_min_bars: int = 5
     psz_bend_v_floor: float = -0.05
     psz_bend_v_min_at_signal: float = 0.02
+    psz_bend_cts_oversold_threshold: float = -0.50
     # Mean psz_v gate: if the average psz_v over the lookback is above this,
     # PSZ was already drifting upward (not a fresh base) — empirically (NIFTY 50
     # 2024+) mean_v >= 0.010 drops WR below 50% and avg PnL near zero.
@@ -43,11 +44,19 @@ class SavgolCTSEntryConfig(BaseEntryConfig):
     # Catches V-bottoms where CTS hits floor but BT hasn't caught up.
     bt_cross_enabled: bool = True
     bt_cross_oversold_threshold: float = -0.50
-    # BT depth gate: reject BT-cross when BT is too shallow (not deeply oversold).
-    # Empirically (NIFTY 500): trades with bt > -0.71 have 51% WR and near-zero
-    # median PnL — gating at -0.71 drops 25% of BT-cross volume but lifts WR +2pp.
-    bt_cross_bt_max: float = -0.71
-
+    # BT depth gate: removed (2026-03-23). Restudy on NIFTY 500 showed trades with
+    # bt > -0.71 are net positive (+0.91 avg, 1.39 payoff). The oversold_threshold
+    # at -0.50 already caps BT-cross to the oversold zone.
+    # Study: scripts/study_bt_cross_depth_gate.py
+    # PSZ min threshold: reject BT-cross when PSZ is too shallow (not deeply oversold).
+    psz_min_threshold: float = -0.25
+    # Path 4 (PSZv flat): PSZv in (0, 0.04) and PSZ <= -0.3 for last 3 bars.
+    pszv_flat_enabled: bool = True
+    pszv_flat_v_min: float = 0.0
+    pszv_flat_v_max: float = 0.04
+    pszv_flat_psz_max: float = -0.3
+    pszv_flat_lookback: int = 3
+    
 
 @dataclass
 class SavgolCTSExitConfig(BaseExitConfig):
@@ -71,6 +80,32 @@ class SavgolCTSExitConfig(BaseExitConfig):
     bt_cross_psz_glide_threshold: float = 0.30
 
 
+@dataclass
+class SavgolCTSExitState:
+    """Helper to manage the delivery_bad_count bitfield state."""
+    cts_rose: bool = False
+    psz_was_above: bool = False
+    cts_above_bt: bool = False
+    exit_suppressed: bool = False
+
+    @classmethod
+    def from_int(cls, val: int) -> SavgolCTSExitState:
+        return cls(
+            cts_rose=bool(val & 1),
+            psz_was_above=bool((val >> 1) & 1),
+            cts_above_bt=bool((val >> 2) & 1),
+            exit_suppressed=bool((val >> 3) & 1)
+        )
+
+    def to_int(self) -> int:
+        return (
+            (int(self.exit_suppressed) << 3) |
+            (int(self.cts_above_bt) << 2) |
+            (int(self.psz_was_above) << 1) |
+            int(self.cts_rose)
+        )
+
+
 class SavgolCTSSignal(SignalInterface):
     """CTS -1/+1 mean-reversion signal with three entry paths (priority order).
 
@@ -81,6 +116,7 @@ class SavgolCTSSignal(SignalInterface):
         Fires independent of CTS level.
     Path 3 (BT-cross):        CTS crosses BT from below in oversold zone.
         BT depth gate (bt_max=-0.71) filters shallow entries.
+    Path 4 (PSZv flat):        PSZv flat (0,0.04) and last 3 bars of PSZ <= -0.3
 
     Exit:  CTS drops to buy_threshold OR -1.0 (after having risen above -1).
            Floor-leave trades skip sell threshold — ceiling and BT exits only.
@@ -159,7 +195,7 @@ class SavgolCTSSignal(SignalInterface):
         lookback = cfg.psz_bend_lookback
         start = max(0, idx - lookback)
         if start >= idx:
-            return True  # not enough history — don't block
+            return False  # not enough history block
 
         # Condition 3: upward turn at signal bar while PSZ is still negative
         # (if PSZ is already positive we're entering late — the move has run)
@@ -170,6 +206,7 @@ class SavgolCTSSignal(SignalInterface):
             return False
         if psz_raw_now >= 0:
             return False
+        # psz_v must be positive and greater than the previous bar's psz_v
         if psz_v_now < cfg.psz_bend_v_min_at_signal or psz_v_now <= psz_v_prev:
             return False
 
@@ -238,6 +275,10 @@ class SavgolCTSSignal(SignalInterface):
         if np.isnan(cts) or np.isnan(prev_cts):
             return False, 0, {"reason": "Missing CTS data"}
 
+        psz_raw = row.get("price_slope_z", np.nan)
+        if not np.isnan(psz_raw) and (psz_raw >= 0 or psz_raw >= cfg.psz_min_threshold):
+            return False, 0, {"reason": f"PSZ: ({psz_raw:.3f}), late entry"}
+
         floor = cfg.cts_floor + cfg.floor_touch_tolerance
         if not (prev_cts <= floor and cts > floor):
             return False, 0, {"reason": "CTS not leaving floor"}
@@ -264,6 +305,13 @@ class SavgolCTSSignal(SignalInterface):
         psz_prev = prev_row.get("price_slope_z", np.nan)
         if np.isnan(psz_raw) or np.isnan(psz_prev):
             return False, 0, {"reason": "Missing PSZ data"}
+
+        # Check CTS is in the oversold zone
+
+        cts = row.get("cts", np.nan)
+        if not np.isnan(cts) and cts > cfg.psz_bend_cts_oversold_threshold:
+            return False, 0, {"reason": f"CTS [{cts:.3f} > {cfg.psz_bend_cts_oversold_threshold:.3f}] not in oversold zone"}
+
         if not self._is_psz_bending(records, idx, cfg):
             return False, 0, {"reason": "PSZ not bending (psz_v not quiescent)"}
 
@@ -309,12 +357,10 @@ class SavgolCTSSignal(SignalInterface):
 
         # PSZ must still be negative — if already positive we're entering late
         psz_raw = row.get("price_slope_z", np.nan)
-        if not np.isnan(psz_raw) and psz_raw >= 0:
-            return False, 0, {"reason": f"PSZ already positive ({psz_raw:.3f}), late entry"}
+        if not np.isnan(psz_raw) and (psz_raw >= 0 or psz_raw >= cfg.psz_min_threshold):
+            return False, 0, {"reason": f"PSZ: ({psz_raw:.3f}), late entry"}
 
-        # BT depth gate: BT must be sufficiently oversold
-        if not np.isnan(bt) and bt > cfg.bt_cross_bt_max:
-            return False, 0, {"reason": f"BT {bt:.3f} not deep enough (max {cfg.bt_cross_bt_max})"}
+        # BT depth gate: removed — oversold_threshold already caps BT-cross zone
 
         coh = row.get("coherence", np.nan)
         pdd = row.get("pdd_120", np.nan)
@@ -322,6 +368,52 @@ class SavgolCTSSignal(SignalInterface):
         intensity_int, meta = self._compute_intensity(
             cts, coh, pdd, regime, "BT-cross",
             [f"bt={bt:.3f}", f"prev_cts={prev_cts:.3f}"],
+        )
+        return True, intensity_int, meta
+
+    def _check_pszv_flat(
+        self, row: dict, cfg: SavgolCTSEntryConfig,
+        records: list[dict] | None = None, idx: int = 0,
+    ) -> tuple[bool, int, dict]:
+        """Path 4: PSZv flat (0,0.01) and last 3 bars of PSZ <= -0.3.
+        
+        Fires when PSZ velocity is quiescent (flat) and PSZ has been pinned
+        in the deep oversold zone for several bars.
+        """
+        if not cfg.pszv_flat_enabled:
+            return False, 0, {"reason": "PSZv flat disabled"}
+
+        psz_v = row.get("psz_v", np.nan)
+        psz_raw = row.get("price_slope_z", np.nan)
+        
+        if np.isnan(psz_v) or np.isnan(psz_raw):
+            return False, 0, {"reason": "Missing PSZv/PSZ data"}
+            
+        if not (cfg.pszv_flat_v_min <= psz_v <= cfg.pszv_flat_v_max and psz_raw <= cfg.pszv_flat_psz_max):
+            return False, 0, {"reason": f"PSZv [{psz_v:.4f}] not flat or PSZ [{psz_raw:.3f}] > {cfg.pszv_flat_psz_max}"}
+
+        if records is None or idx < cfg.pszv_flat_lookback:
+            return False, 0, {"reason": "Insufficient history for PSZv flat check"}
+
+        # Ensure cts is floored.
+        cts = row.get("cts", np.nan)
+        if np.isnan(cts) or cts > cfg.cts_floor:
+            return False, 0, {"reason": f"PSZv Flat: CTS {cts:.3f} not at floor"}
+
+        # Perform lookback check
+        for i in range(1, cfg.pszv_flat_lookback + 1):
+            psz_prev = records[idx-i].get("price_slope_z", np.nan)
+            if np.isnan(psz_prev) or psz_prev > cfg.pszv_flat_psz_max:
+                return False, 0, {"reason": f"PSZ at bar -{i} [{psz_prev:.3f}] > {cfg.pszv_flat_psz_max}"}
+
+        cts = row.get("cts", np.nan)
+        coh = row.get("coherence", np.nan)
+        pdd = row.get("pdd_120", np.nan)
+        regime = row.get("regime", "")
+        
+        intensity_int, meta = self._compute_intensity(
+            cts, coh, pdd, regime, "PSZv-flat",
+            [f"psz={psz_raw:.3f}", f"v={psz_v:.4f}"],
         )
         return True, intensity_int, meta
 
@@ -355,6 +447,11 @@ class SavgolCTSSignal(SignalInterface):
         if passed:
             return True, intensity, meta
 
+        # Path 4: PSZv flat — flat base and deeply oversold
+        passed, intensity, meta = self._check_pszv_flat(row, cfg, records, idx)
+        if passed:
+            return True, intensity, meta
+
         return False, 0, meta
 
     def check_exit(
@@ -370,221 +467,248 @@ class SavgolCTSSignal(SignalInterface):
         records: list[dict] | None = None,
         idx: int = 0,
     ) -> tuple[str | None, int]:
-        """Exit logic, branched by entry path.
-
-        ``delivery_bad_count`` is repurposed as a bitfield:
-          bit 0 (& 1): cts_rose — CTS has risen above -1.0
-          bit 1 (& 2): psz_was_above — PSZ crossed above glide threshold
-                        (BT-cross trades only)
-        """
+        """Exit logic, branched by entry path."""
         if not isinstance(cfg, SavgolCTSExitConfig):
             cfg = SavgolCTSExitConfig()
 
         tag = trade.entry_tag if trade is not None else ""
 
+        # Dispatch to specific indicator logic
         if tag in ("CTS-floor-leave", "CTS-BT-floor"):
-            return self._exit_floor(
+            exit_status = self._exit_floor(
                 row, prev_row, trade, peak_close, bars_held,
                 delivery_bad_count, cfg, records, idx,
             )
-        if tag == "BT-cross":
-            return self._exit_bt_cross(
+            # If floor indicator allows, check PSZ glide
+            if exit_status[0] is None:
+                exit_status = self._exit_psz_glide(
+                    row, prev_row, trade, exit_status[1], cfg, records, idx
+                )
+        elif tag == "BT-cross":
+            exit_status = self._exit_bt_cross(
                 row, prev_row, trade, peak_close, bars_held,
                 delivery_bad_count, cfg, records, idx,
             )
-        return self._exit_psz(
-            row, prev_row, trade, peak_close, bars_held,
-            delivery_bad_count, cfg, records, idx,
-        )
+        else:
+            exit_status = self._exit_psz(
+                row, prev_row, trade, peak_close, bars_held,
+                delivery_bad_count, cfg, records, idx,
+            )
+
+        # Refined Stateful Price Guard
+        res, state_returned = exit_status
+        st = SavgolCTSExitState.from_int(state_returned)
+        
+        # If an indicator proposed an exit, mark it as suppressed for memory
+        if res is not None:
+            st.exit_suppressed = True
+
+        close = row.get("close", np.nan)
+        psz_raw = row.get("price_slope_z", np.nan)
+        cts = row.get("cts", np.nan)
+
+        if cwvap_values and not np.isnan(close):
+            cwvap = cwvap_values[-1]
+            if not np.isnan(cwvap) and close > cwvap:
+                # Rule A: Suppress exit while momentum positive above CWVAP.
+                # Extended glide: hold as long as PSZ or CTS is positive.
+                # Study: scripts/study_cwvap_extended_glide.py (NIFTY 500)
+                # Rule A: Extreme over-extension OR sustained extreme momentum
+                psz_strong = not np.isnan(psz_raw) and psz_raw > 0.00
+                cts_strong = not np.isnan(cts) and cts > 0.00
+                is_strong_momentum = psz_strong or cts_strong
+
+                if is_strong_momentum:
+                    return None, st.to_int()
+                
+                # Rule B: Release a previously suppressed exit now that momentum faded
+                if res is not None or st.exit_suppressed:
+                    return (res if res else "CWVAP momentum exhaustion"), st.to_int()
+                return None, st.to_int()
+            
+            # Below CWVAP
+            if st.exit_suppressed:
+                # If we were holding despite an indicator exit, now we must go.
+                return res if res else "Suppressed exit triggered (price barrier)", st.to_int()
+
+        return res, st.to_int()
 
     def _exit_floor(
         self,
         row: dict, prev_row: dict, trade: Trade,
-        peak_close: float, bars_held: int, state: int,
+        peak_close: float, bars_held: int, state_val: int,
         cfg: SavgolCTSExitConfig, records: list[dict] | None, idx: int,
     ) -> tuple[str | None, int]:
-        """Exit logic for CTS-floor-leave entries (also handles legacy CTS-BT-floor tag).
+        """Exit logic for CTS-floor-leave entries (also handles legacy CTS-BT-floor tag)."""
+        cts = row.get("cts", np.nan)
+        bt = row.get("cts_buy_threshold", np.nan)
+        psz_raw = row.get("price_slope_z", np.nan)
 
-        Sell threshold suppressed — floor entries have the full CTS range to travel.
-        Empirically (NIFTY 500): 63.9% WR, +2.52% avg, 73.1% ceiling exits.
-        Exits: ceiling hit, CTS hit BT, CTS hit -1.0.
-        """
-        cts      = row.get("cts", np.nan)
-        bt       = row.get("cts_buy_threshold", np.nan)
-        psz_raw  = row.get("price_slope_z", np.nan)
-        cts_rose     = state & 1
-        cts_above_bt = (state >> 2) & 1
+        st = SavgolCTSExitState.from_int(state_val)
 
         if np.isnan(cts):
-            return None, state
+            return None, st.to_int()
 
         if cts > -1.0:
-            cts_rose = 1
+            st.cts_rose = True
         if not np.isnan(bt) and cts > bt:
-            cts_above_bt = 1
-        state = (cts_above_bt << 2) | (state & 2) | cts_rose
+            st.cts_above_bt = True
+        
+        # Track if PSZ raw ever rose above glide threshold.
+        if not np.isnan(psz_raw) and psz_raw >= cfg.bt_cross_psz_glide_threshold:
+            st.psz_was_above = True
 
-        stalled, stall_reason = self._is_psz_stalled(records, trade, idx, bars_held, cfg)
-        if stalled:
-            return stall_reason, state
+        # Safety: CTS hit -1.0 (after having risen)
+        # if st.cts_rose and cts <= -1.0:
+        #     return "CTS hit floor", st.to_int()
 
-        if not cts_rose:
-            return None, state
-
-        floor_zone = -1.0 + cfg.floor_tolerance
-        if cts <= floor_zone and not np.isnan(bt) and bt <= floor_zone:
-            return None, state
-
-        if not np.isnan(psz_raw) and psz_raw < -0.26:
-            return None, state
-
+        # Floor-leave specific: Hit BT (mean reversion complete)
+        # if st.cts_above_bt and not np.isnan(bt) and cts <= bt:
+        #     return "CTS hit BT", st.to_int()
+        
         # Ceiling-leave exit: CTS drops below ceiling after having been there
         ceiling = 1.0 - cfg.ceiling_leave_tolerance
         prev_cts = prev_row.get("cts", np.nan)
         if not np.isnan(prev_cts) and prev_cts >= ceiling and cts < ceiling:
-            return "CTS ceiling hit", state
+            return "CTS ceiling hit", st.to_int()
 
-        # Sell threshold intentionally omitted for floor entries.
+        return None, st.to_int()
 
-        # Hit BT
-        if not np.isnan(bt) and bt > floor_zone and cts <= bt and cts_above_bt:
-            return f"CTS hit BT ({bt:.3f})", state
-
-        # Hit floor
-        if cts <= -1.0:
-            return "CTS hit -1.0", state
-
-        return None, state
 
     def _exit_psz(
         self,
         row: dict, prev_row: dict, trade: Trade,
-        peak_close: float, bars_held: int, state: int,
+        peak_close: float, bars_held: int, state_val: int,
         cfg: SavgolCTSExitConfig, records: list[dict] | None, idx: int,
     ) -> tuple[str | None, int]:
-        """Original exit logic for PSZ crossover entries."""
+        """Core mean-reversion exit logic (shared by Path 2 and Path 4).
+
+        PSZ glide exit: track psz_was_above, exit when PSZ drops below
+        glide threshold (0.30) after having been above it.
+        Study: scripts/study_psz_entry_glide_exit.py
+        PSZ path:  64.0% WR, +2.24% avg, 12.3 bars
+        PSZv-flat: 70.9% WR, +2.31% avg, 15.8 bars
+        """
         cts = row.get("cts", np.nan)
-        prev_cts = prev_row.get("cts", np.nan)
         bt = row.get("cts_buy_threshold", np.nan)
-        cts_rose = state & 1
-        cts_above_bt = (state >> 2) & 1  # bit 2: CTS has been above BT
+        psz_raw = row.get("price_slope_z", np.nan)
+
+        st = SavgolCTSExitState.from_int(state_val)
 
         if np.isnan(cts):
-            return None, state
+            return None, st.to_int()
 
         if cts > -1.0:
-            cts_rose = 1
+            st.cts_rose = True
         if not np.isnan(bt) and cts > bt:
-            cts_above_bt = 1
-        state = (cts_above_bt << 2) | (state & 2) | cts_rose
+            st.cts_above_bt = True
 
-        # PSZ stall early exit
-        psz_raw = row.get("price_slope_z", np.nan)
-        stalled, stall_reason = self._is_psz_stalled(records, trade, idx, bars_held, cfg)
-        if stalled:
-            return stall_reason, state
+        # Track PSZ above glide threshold
+        if not np.isnan(psz_raw) and psz_raw >= cfg.bt_cross_psz_glide_threshold:
+            st.psz_was_above = True
 
-        if not cts_rose:
-            return None, state
-
-        # Suppress exit: floor zone — both CTS and BT deeply oversold,
-        # stock has room to revive
-        floor_zone = -1.0 + cfg.floor_tolerance
-        if cts <= floor_zone and not np.isnan(bt) and bt <= floor_zone:
-            return None, state
-
-        # Suppress exit: deeply negative PSZ
-        if not np.isnan(psz_raw) and psz_raw < -0.26:
-            return None, state
+        # Safety: CTS hit -1.0 (after having risen)
+        # if st.cts_rose and cts <= -1.0:
+        #     return "CTS hit floor", st.to_int()
 
         # Ceiling-leave exit: CTS drops below ceiling after having been there
         ceiling = 1.0 - cfg.ceiling_leave_tolerance
+        prev_cts = prev_row.get("cts", np.nan)
         if not np.isnan(prev_cts) and prev_cts >= ceiling and cts < ceiling:
-            return "CTS ceiling hit", state
+            return "CTS ceiling hit", st.to_int()
 
-        # Sell threshold exit
-        st = row.get("cts_sell_threshold", np.nan)
-        if not np.isnan(st) and prev_cts > (st - cfg.st_crossover_tolerance) and cts < 1.0 and cts < prev_cts and cts < st:
-            return "CTS sell threshold hit", state
+        # PSZ glide exit: once PSZ was above threshold, exit when it drops below
+        if st.psz_was_above:
+            res, _ = self._exit_psz_glide(row, prev_row, trade, st.to_int(), cfg, records, idx)
+            if res:
+                return res, st.to_int()
 
-        # Floor exit: hit BT (only if BT above floor zone AND CTS was above BT
-        # at some point — prevents premature exit when PSZ bend enters with
-        # CTS already below BT)
-        if not np.isnan(bt) and bt > floor_zone and cts <= bt and cts_above_bt:
-            return f"CTS hit BT ({bt:.3f})", state
-
-        # Floor exit: hit -1.0
-        if cts <= -1.0:
-            return "CTS hit -1.0", state
-
-        return None, state
+        return None, st.to_int()
 
     def _exit_bt_cross(
         self,
         row: dict, prev_row: dict, trade: Trade,
-        peak_close: float, bars_held: int, state: int,
+        peak_close: float, bars_held: int, state_val: int,
         cfg: SavgolCTSExitConfig, records: list[dict] | None, idx: int,
     ) -> tuple[str | None, int]:
-        """PSZ glide exit for BT-cross entries.
+        """BT-cross specific exit logic.
 
         Hold until PSZ raw drops below glide threshold after having been above it.
         Safety nets: hit_bt / hit_floor still active.
         """
         cts = row.get("cts", np.nan)
-        bt = row.get("cts_buy_threshold", np.nan)
         psz_raw = row.get("price_slope_z", np.nan)
-        prev_psz_raw = prev_row.get("price_slope_z", np.nan)
 
-        cts_rose = state & 1
-        psz_was_above = (state >> 1) & 1
+        st = SavgolCTSExitState.from_int(state_val)
 
         if np.isnan(cts):
-            return None, state
+            return None, st.to_int()
 
         if cts > -1.0:
-            cts_rose = 1
+            st.cts_rose = True
 
         # Track if PSZ raw ever rose above glide threshold.
         if not np.isnan(psz_raw) and psz_raw >= cfg.bt_cross_psz_glide_threshold:
-            psz_was_above = 1
-
-        state = (psz_was_above << 1) | cts_rose
+            st.psz_was_above = True
 
         # PSZ stall early exit
         stalled, stall_reason = self._is_psz_stalled(records, trade, idx, bars_held, cfg)
         if stalled:
-            return stall_reason, state
+            return stall_reason, st.to_int()
 
-        if not cts_rose:
-            return None, state
+        if not st.cts_rose:
+            return None, st.to_int()
 
-        # Suppress exit: floor zone — both CTS and BT deeply oversold,
-        # stock has room to revive
+        # Safety: CTS hit -1.0
+        # if cts <= -1.0:
+        #     return "CTS hit floor", st.to_int()
+
+        # Floor zone protection
         floor_zone = -1.0 + cfg.floor_tolerance
+        bt = row.get("cts_buy_threshold", np.nan)
         if cts <= floor_zone and not np.isnan(bt) and bt <= floor_zone:
-            return None, state
+            return None, st.to_int()
 
         # Ceiling-leave exit: mean reversion complete — exit regardless of PSZ state.
-        # PSZ glide is the primary exit but may not fire if PSZ never crossed
-        # the glide threshold; ceiling is the definitive safety net.
         ceiling = 1.0 - cfg.ceiling_leave_tolerance
         prev_cts = prev_row.get("cts", np.nan)
         if not np.isnan(prev_cts) and prev_cts >= ceiling and cts < ceiling:
-            return "CTS ceiling hit", state
+            return "CTS ceiling hit", st.to_int()
 
-        # PSZ glide exit: once PSZ raw was above threshold, exit when it drops below.
-        if psz_was_above and not np.isnan(psz_raw) and not np.isnan(prev_psz_raw):
-            if psz_raw < cfg.bt_cross_psz_glide_threshold and prev_psz_raw >= cfg.bt_cross_psz_glide_threshold:
-                return f"PSZ glide exit (<{cfg.bt_cross_psz_glide_threshold})", state
+        # PSZ glide exit logic: only check if PSZ was above threshold.
+        if st.psz_was_above:
+            res, _ = self._exit_psz_glide(row, prev_row, trade, st.to_int(), cfg, records, idx)
+            if res:
+                return res, st.to_int()
 
-        # Safety: CTS drops back to BT (only if BT above floor — at floor
-        # the stock is deeply oversold and has room to revive)
-        if not np.isnan(bt) and bt > floor_zone and cts <= bt:
-            return f"CTS hit BT ({bt:.3f})", state
+        # Safety: CTS drops back to BT (only if BT above floor)
+        # if not np.isnan(bt) and bt > floor_zone and cts <= bt:
+        #     return "CTS hit BT", st.to_int()
 
-        # Safety: CTS drops to floor
-        if cts <= -1.0:
-            return "CTS hit -1.0", state
+        return None, st.to_int()
+
+    def _exit_psz_glide(
+        self,
+        row: dict, prev_row: dict, trade: Trade,
+        state: int, cfg: SavgolCTSExitConfig,
+        records: list[dict] = None, idx: int = 0,
+    ) -> tuple[str | None, int]:
+        """PSZ glide exit logic (uses 5-bar mean)."""
+        psz_raw = row.get("price_slope_z", np.nan)
+        
+        if records is not None and idx >= 4:
+            # 5-bar mean of PSZ
+            lookback_pszs = [records[j].get("price_slope_z", np.nan) for j in range(idx - 4, idx + 1)]
+            if not any(np.isnan(lookback_pszs)):
+                mean_psz = sum(lookback_pszs) / 5.0
+                if mean_psz >= cfg.bt_cross_psz_glide_threshold and psz_raw < cfg.bt_cross_psz_glide_threshold:
+                    return f"PSZ glide exit (<{cfg.bt_cross_psz_glide_threshold})", state
+        else:
+            # Fallback to 1-bar if records not provided or insufficient history
+            prev_psz_raw = prev_row.get("price_slope_z", np.nan)
+            if not np.isnan(psz_raw) and not np.isnan(prev_psz_raw):
+                if psz_raw < cfg.bt_cross_psz_glide_threshold and prev_psz_raw >= cfg.bt_cross_psz_glide_threshold:
+                    return f"PSZ glide exit (<{cfg.bt_cross_psz_glide_threshold})", state
 
         return None, state
 
