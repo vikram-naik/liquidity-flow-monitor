@@ -26,6 +26,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.divergence_engine.engine import DivergenceEngine
 from src.trading.signals import Trade
+from src.trading.signals.enums import ExitReason
 
 DB_PATH = Path(__file__).resolve().parent.parent / "liquidity_monitor.db"
 
@@ -154,7 +155,7 @@ def simulate_trades(ticker: str, df: pd.DataFrame, exclude_uptrend: bool = True)
         last = records[-1]
         trade.exit_date = str(last.get("date", ""))[:10]
         trade.exit_price = last.get("close", trade.entry_price)
-        trade.exit_reason = "end_of_data"
+        trade.exit_reason = ExitReason.END_OF_DATA
         trade.pnl_pct = round((trade.exit_price / trade.entry_price - 1) * 100, 2)
         trade.duration = n - 1 - trade.entry_idx
         trade.mfe_pct = round(trade.mfe_pct, 2)
@@ -177,7 +178,7 @@ def summarize(trades: list[Trade], label: str):
         "mfe": t.mfe_pct,
         "mae": t.mae_pct,
         "bars": t.duration,
-        "reason": t.exit_reason,
+        "reason": t.exit_reason.value if hasattr(t.exit_reason, "value") else str(t.exit_reason),
         "regime": t.regime_at_entry,
     } for t in trades])
 

@@ -5,6 +5,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from src.trading.signals.base import BaseEntryConfig, BaseExitConfig, SignalInterface, Trade
+from src.trading.signals.enums import EntryTag, ExitReason
 
 
 @dataclass
@@ -56,6 +57,10 @@ class SavgolCTSEntryConfig(BaseEntryConfig):
     pszv_flat_v_max: float = 0.04
     pszv_flat_psz_max: float = -0.3
     pszv_flat_lookback: int = 3
+    # Cooldown period: prevent entry within N bars after specific exit reasons.
+    cooldown_enabled: bool = True
+    cooldown_bars: int = 10
+    cooldown_exit_reasons: tuple[ExitReason, ...] = (ExitReason.SUPPRESSED_EXIT,)
     
 
 @dataclass
@@ -125,8 +130,14 @@ class SavgolCTSSignal(SignalInterface):
     as a bitfield tracking per-trade state (see SIGNAL_FLOW.md).
     """
 
+    def __init__(self):
+        super().__init__()
+        # Cross-trade state for cooldowns
+        self._last_exit_idx: int = -1
+        self._last_exit_reason: ExitReason | str = ""
+
     def _compute_intensity(
-        self, cts: float, coh: float, pdd: float, regime: str, tag: str,
+        self, cts: float, coh: float, pdd: float, regime: str, tag: EntryTag,
         extra_parts: list[str] | None = None,
     ) -> tuple[int, dict]:
         """Shared intensity scoring and reason string for both entry paths."""
@@ -162,11 +173,11 @@ class SavgolCTSSignal(SignalInterface):
             parts.extend(extra_parts)
 
         if intensity >= 80:
-            reason = f"SavgolCTS {tag}: STRONG [{', '.join(parts)}]"
+            reason = f"SavgolCTS {tag.value}: STRONG [{', '.join(parts)}]"
         elif intensity >= 65:
-            reason = f"SavgolCTS {tag}: good [{', '.join(parts)}]"
+            reason = f"SavgolCTS {tag.value}: good [{', '.join(parts)}]"
         else:
-            reason = f"SavgolCTS {tag}: [{', '.join(parts)}]"
+            reason = f"SavgolCTS {tag.value}: [{', '.join(parts)}]"
 
         return intensity_int, {"reason": reason, "entry_tag": tag}
 
@@ -257,8 +268,8 @@ class SavgolCTSSignal(SignalInterface):
             return False, ""
 
         if psz_v <= 0:
-            return True, f"PSZ stall (v={psz_v:+.4f} at bar {bars_held})"
-        return False, ""
+            return True, ExitReason.PSZ_STALL
+        return False, None
 
     def _check_floor_leave(
         self, row: dict, prev_row: dict, cfg: SavgolCTSEntryConfig,
@@ -287,7 +298,7 @@ class SavgolCTSSignal(SignalInterface):
         pdd    = row.get("pdd_120", np.nan)
         regime = row.get("regime", "")
         intensity_int, meta = self._compute_intensity(
-            cts, coh, pdd, regime, "CTS-floor-leave",
+            cts, coh, pdd, regime, EntryTag.CTS_FLOOR_LEAVE,
             [f"prev_cts={prev_cts:.3f}"],
         )
         return True, intensity_int, meta
@@ -320,7 +331,7 @@ class SavgolCTSSignal(SignalInterface):
         pdd = row.get("pdd_120", np.nan)
         regime = row.get("regime", "")
         intensity_int, meta = self._compute_intensity(
-            cts, coh, pdd, regime, "PSZ",
+            cts, coh, pdd, regime, EntryTag.PSZ,
             [f"psz={psz_raw:.3f}", f"prev_psz={psz_prev:.3f}"],
         )
         return True, intensity_int, meta
@@ -366,7 +377,7 @@ class SavgolCTSSignal(SignalInterface):
         pdd = row.get("pdd_120", np.nan)
         regime = row.get("regime", "")
         intensity_int, meta = self._compute_intensity(
-            cts, coh, pdd, regime, "BT-cross",
+            cts, coh, pdd, regime, EntryTag.BT_CROSS,
             [f"bt={bt:.3f}", f"prev_cts={prev_cts:.3f}"],
         )
         return True, intensity_int, meta
@@ -412,7 +423,7 @@ class SavgolCTSSignal(SignalInterface):
         regime = row.get("regime", "")
         
         intensity_int, meta = self._compute_intensity(
-            cts, coh, pdd, regime, "PSZv-flat",
+            cts, coh, pdd, regime, EntryTag.PSZV_FLAT,
             [f"psz={psz_raw:.3f}", f"v={psz_v:.4f}"],
         )
         return True, intensity_int, meta
@@ -427,6 +438,13 @@ class SavgolCTSSignal(SignalInterface):
     ) -> tuple[bool, int, dict]:
         if not isinstance(cfg, SavgolCTSEntryConfig):
             cfg = SavgolCTSEntryConfig()
+
+        # Check cooldown period
+        if cfg.cooldown_enabled and self._last_exit_idx != -1:
+            bars_since_exit = idx - self._last_exit_idx
+            if 0 <= bars_since_exit <= cfg.cooldown_bars:
+                if any(r == self._last_exit_reason for r in cfg.cooldown_exit_reasons):
+                    return False, 0, {"reason": f"Cooldown active ({bars_since_exit}/{cfg.cooldown_bars} bars after {self._last_exit_reason})", "cooldown": True}
 
         cts = row.get("cts", np.nan)
         if np.isnan(cts):
@@ -474,7 +492,7 @@ class SavgolCTSSignal(SignalInterface):
         tag = trade.entry_tag if trade is not None else ""
 
         # Dispatch to specific indicator logic
-        if tag in ("CTS-floor-leave", "CTS-BT-floor"):
+        if tag in (EntryTag.CTS_FLOOR_LEAVE.value, EntryTag.CTS_BT_FLOOR.value):
             exit_status = self._exit_floor(
                 row, prev_row, trade, peak_close, bars_held,
                 delivery_bad_count, cfg, records, idx,
@@ -484,7 +502,7 @@ class SavgolCTSSignal(SignalInterface):
                 exit_status = self._exit_psz_glide(
                     row, prev_row, trade, exit_status[1], cfg, records, idx
                 )
-        elif tag == "BT-cross":
+        elif tag == EntryTag.BT_CROSS.value:
             exit_status = self._exit_bt_cross(
                 row, prev_row, trade, peak_close, bars_held,
                 delivery_bad_count, cfg, records, idx,
@@ -497,6 +515,12 @@ class SavgolCTSSignal(SignalInterface):
 
         # Refined Stateful Price Guard
         res, state_returned = exit_status
+
+        # Update cross-trade cooldown state
+        if res is not None:
+            self._last_exit_idx = idx
+            self._last_exit_reason = res
+
         st = SavgolCTSExitState.from_int(state_returned)
         
         # If an indicator proposed an exit, mark it as suppressed for memory
@@ -519,19 +543,29 @@ class SavgolCTSSignal(SignalInterface):
                 is_strong_momentum = psz_strong or cts_strong
 
                 if is_strong_momentum:
-                    return None, st.to_int()
+                    res, final_state = None, st.to_int()
                 
                 # Rule B: Release a previously suppressed exit now that momentum faded
-                if res is not None or st.exit_suppressed:
-                    return (res if res else "CWVAP momentum exhaustion"), st.to_int()
-                return None, st.to_int()
+                elif res is not None or st.exit_suppressed:
+                    res, final_state = (res if res else ExitReason.CWVAP_EXHAUSTION), st.to_int()
+                else:
+                    res, final_state = None, st.to_int()
             
             # Below CWVAP
-            if st.exit_suppressed:
+            elif st.exit_suppressed:
                 # If we were holding despite an indicator exit, now we must go.
-                return res if res else "Suppressed exit triggered (price barrier)", st.to_int()
+                res, final_state = (res if res else ExitReason.SUPPRESSED_EXIT), st.to_int()
+            else:
+                res, final_state = res, st.to_int()
+        else:
+            res, final_state = res, st.to_int()
 
-        return res, st.to_int()
+        # Update cross-trade cooldown state with the FINAL decision
+        if res is not None:
+            self._last_exit_idx = idx
+            self._last_exit_reason = res
+
+        return res, final_state
 
     def _exit_floor(
         self,
@@ -560,17 +594,17 @@ class SavgolCTSSignal(SignalInterface):
 
         # Safety: CTS hit -1.0 (after having risen)
         # if st.cts_rose and cts <= -1.0:
-        #     return "CTS hit floor", st.to_int()
+        #     return ExitReason.FLOOR_HIT, st.to_int()
 
         # Floor-leave specific: Hit BT (mean reversion complete)
         # if st.cts_above_bt and not np.isnan(bt) and cts <= bt:
-        #     return "CTS hit BT", st.to_int()
+        #     return ExitReason.BT_HIT, st.to_int()
         
         # Ceiling-leave exit: CTS drops below ceiling after having been there
         ceiling = 1.0 - cfg.ceiling_leave_tolerance
         prev_cts = prev_row.get("cts", np.nan)
         if not np.isnan(prev_cts) and prev_cts >= ceiling and cts < ceiling:
-            return "CTS ceiling hit", st.to_int()
+            return ExitReason.CEILING_HIT, st.to_int()
 
         return None, st.to_int()
 
@@ -609,13 +643,13 @@ class SavgolCTSSignal(SignalInterface):
 
         # Safety: CTS hit -1.0 (after having risen)
         # if st.cts_rose and cts <= -1.0:
-        #     return "CTS hit floor", st.to_int()
+        #     return ExitReason.FLOOR_HIT, st.to_int()
 
         # Ceiling-leave exit: CTS drops below ceiling after having been there
         ceiling = 1.0 - cfg.ceiling_leave_tolerance
         prev_cts = prev_row.get("cts", np.nan)
         if not np.isnan(prev_cts) and prev_cts >= ceiling and cts < ceiling:
-            return "CTS ceiling hit", st.to_int()
+            return ExitReason.CEILING_HIT, st.to_int()
 
         # PSZ glide exit: once PSZ was above threshold, exit when it drops below
         if st.psz_was_above:
@@ -661,7 +695,7 @@ class SavgolCTSSignal(SignalInterface):
 
         # Safety: CTS hit -1.0
         # if cts <= -1.0:
-        #     return "CTS hit floor", st.to_int()
+        #     return ExitReason.FLOOR_HIT, st.to_int()
 
         # Floor zone protection
         floor_zone = -1.0 + cfg.floor_tolerance
@@ -673,7 +707,7 @@ class SavgolCTSSignal(SignalInterface):
         ceiling = 1.0 - cfg.ceiling_leave_tolerance
         prev_cts = prev_row.get("cts", np.nan)
         if not np.isnan(prev_cts) and prev_cts >= ceiling and cts < ceiling:
-            return "CTS ceiling hit", st.to_int()
+            return ExitReason.CEILING_HIT, st.to_int()
 
         # PSZ glide exit logic: only check if PSZ was above threshold.
         if st.psz_was_above:
@@ -683,7 +717,7 @@ class SavgolCTSSignal(SignalInterface):
 
         # Safety: CTS drops back to BT (only if BT above floor)
         # if not np.isnan(bt) and bt > floor_zone and cts <= bt:
-        #     return "CTS hit BT", st.to_int()
+        #     return ExitReason.BT_HIT, st.to_int()
 
         return None, st.to_int()
 
@@ -702,13 +736,13 @@ class SavgolCTSSignal(SignalInterface):
             if not any(np.isnan(lookback_pszs)):
                 mean_psz = sum(lookback_pszs) / 5.0
                 if mean_psz >= cfg.bt_cross_psz_glide_threshold and psz_raw < cfg.bt_cross_psz_glide_threshold:
-                    return f"PSZ glide exit (<{cfg.bt_cross_psz_glide_threshold})", state
+                    return ExitReason.PSZ_GLIDE, state
         else:
             # Fallback to 1-bar if records not provided or insufficient history
             prev_psz_raw = prev_row.get("price_slope_z", np.nan)
             if not np.isnan(psz_raw) and not np.isnan(prev_psz_raw):
                 if psz_raw < cfg.bt_cross_psz_glide_threshold and prev_psz_raw >= cfg.bt_cross_psz_glide_threshold:
-                    return f"PSZ glide exit (<{cfg.bt_cross_psz_glide_threshold})", state
+                    return ExitReason.PSZ_GLIDE, state
 
         return None, state
 

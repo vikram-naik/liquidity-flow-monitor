@@ -221,7 +221,7 @@ def simulate_and_extract(ticker: str, signal, entry_cfg, exit_cfg,
                     metrics["symbol"] = ticker
                     metrics["entry_date"] = entry_date
                     metrics["exit_date"] = date_str
-                    metrics["exit_reason"] = reason
+                    metrics["exit_reason"] = reason.value if hasattr(reason, "value") else str(reason)
                     metrics["regime"] = regime
                     metrics["duration"] = bars_held
                     if start_date is None or entry_date >= start_date:

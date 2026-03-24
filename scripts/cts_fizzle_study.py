@@ -25,6 +25,7 @@ from tabulate import tabulate
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.divergence_engine.engine import DivergenceEngine
+from src.trading.signals.enums import ExitReason
 
 DB_PATH = Path(__file__).resolve().parent.parent / "liquidity_monitor.db"
 OUT_PATH = Path(__file__).resolve().parent.parent / "output"
@@ -137,7 +138,7 @@ def collect_trades(symbols: list[str], start: str, end: str) -> list[dict]:
                 bars_held = n - 1 - entry_idx
                 trade_rec = _build_trade(
                     sym, entry_bar, trade_bars, entry_price, close,
-                    bars_held, pnl_pct, "end_of_data",
+                    bars_held, pnl_pct, ExitReason.END_OF_DATA.value,
                 )
                 all_trades.append(trade_rec)
 
@@ -296,7 +297,7 @@ def analyze(trades: list[dict], label: str):
     df = pd.DataFrame(trades)
     total = len(df)
     completed = df[df["exit_reason"] == "cts_hit_+1"]
-    fizzled = df[df["exit_reason"] == "end_of_data"]
+    fizzled = df[df["exit_reason"] == ExitReason.END_OF_DATA.value]
 
     out_lines = []
     def p(s=""):

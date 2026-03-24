@@ -262,7 +262,8 @@ def print_summary(all_trades: list[Trade], label: str = ""):
     # Exit reason breakdown
     reasons = {}
     for t in all_trades:
-        reasons[t.exit_reason] = reasons.get(t.exit_reason, 0) + 1
+        r = t.exit_reason.value if hasattr(t.exit_reason, "value") else str(t.exit_reason)
+        reasons[r] = reasons.get(r, 0) + 1
 
     header = f"{'=' * 60}"
     if label:

@@ -111,6 +111,7 @@ class SignalInterface(ABC):
 
         entry_flags   = [0]    * n
         entry_reasons = [None] * n
+        cooldown_flags = [False] * n
         exit_flags    = [0]    * n
         exit_reasons  = [None] * n
 
@@ -169,6 +170,7 @@ class SignalInterface(ABC):
             else:
                 ok, intensity, det = self.check_entry(row, prev, entry_cfg, records, i)
                 entry_reasons[i] = det.get("reason")
+                cooldown_flags[i] = det.get("cooldown", False)
                 if ok:
                     entry_flags[i] = intensity
                     pending_entry = {"intensity": intensity, "entry_tag": det.get("entry_tag", "")}
@@ -176,6 +178,7 @@ class SignalInterface(ABC):
         df = df.copy()
         df["entry_signal"] = entry_flags
         df["entry_reason"] = entry_reasons
+        df["cooldown"]     = cooldown_flags
         df["exit_signal"]  = exit_flags
         df["exit_reason"]  = exit_reasons
         return df

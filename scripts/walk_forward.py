@@ -30,6 +30,7 @@ from src.trading.signals import (
 )
 from src.trading.signals.savgol_cts import SavgolCTSEntryConfig, SavgolCTSExitConfig
 from src.trading.signals.base import BaseEntryConfig, BaseExitConfig
+from src.trading.signals.enums import ExitReason
 
 DB_PATH = Path(__file__).resolve().parent.parent / "liquidity_monitor.db"
 
@@ -72,7 +73,7 @@ def simulate_trades(
     cwvap_values: list[float] = []
     pending_signal: dict | None = None
     # EOD lag for exits: signal fires on bar i, execute at open of bar i+1
-    pending_exit_reason: str | None = None
+    pending_exit_reason: ExitReason | str | None = None
 
     for i in range(1, n):
         row = records[i]
@@ -160,7 +161,7 @@ def simulate_trades(
         last = records[-1]
         trade.exit_date = str(last.get("date", ""))[:10]
         trade.exit_price = last.get("close", trade.entry_price)
-        trade.exit_reason = "end_of_data"
+        trade.exit_reason = ExitReason.END_OF_DATA
         trade.pnl_pct = round((trade.exit_price / trade.entry_price - 1) * 100, 2)
         trade.duration = n - 1 - trade.entry_idx
         trade.mfe_pct = round(trade.mfe_pct, 2)
@@ -202,7 +203,8 @@ def summarize(trades: list[Trade], label: str) -> dict:
 
     df = pd.DataFrame([{
         "pnl": t.pnl_pct, "mfe": t.mfe_pct, "mae": t.mae_pct,
-        "bars": t.duration, "reason": t.exit_reason,
+        "bars": t.duration,
+        "reason": t.exit_reason.value if hasattr(t.exit_reason, "value") else str(t.exit_reason),
     } for t in trades])
 
     total = len(df)

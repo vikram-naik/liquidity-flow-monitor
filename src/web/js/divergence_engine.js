@@ -15,13 +15,13 @@
     var aggMode = "daily";
 
     var PANEL_DEFINITIONS = {
-        "cts":       { label: "CTS — Trend Score (Gate 2)" },
+        "cts": { label: "CTS — Trend Score (Gate 2)" },
         "cts_slope": { label: "CTS Slope (Bull Gate)" },
         "cts_accel": { label: "CTS Acceleration (Gate 1)" },
-        "cdvl":      { label: "CDVL — Delivery (Gate 3)" },
-        "velocity":  { label: "Velocity 60 Norm (Gate 3)" },
-        "pdd_120":   { label: "PDD-120 (Gate 4)" },
-        "psz":       { label: "PSZ — Price Slope Z" },
+        "cdvl": { label: "CDVL — Delivery (Gate 3)" },
+        "velocity": { label: "Velocity 60 Norm (Gate 3)" },
+        "pdd_120": { label: "PDD-120 (Gate 4)" },
+        "psz": { label: "PSZ — Price Slope Z" },
         "price_slope_z": { label: "Price Slope Z (Raw)" }
     };
 
@@ -29,7 +29,7 @@
         try {
             var conf = JSON.parse(localStorage.getItem("de_panel_config"));
             if (Array.isArray(conf) && conf.length > 0) return conf;
-        } catch (e) {}
+        } catch (e) { }
         return ["cts", "cts_accel", "cdvl", "pdd_120"]; // defaults: one panel per gate
     }
 
@@ -59,7 +59,7 @@
     var engineContent = document.getElementById("engine-state-content");
     var engineChevron = document.getElementById("engine-state-chevron");
     if (engineToggle && engineContent) {
-        engineToggle.addEventListener("click", function(e) {
+        engineToggle.addEventListener("click", function (e) {
             var isHidden = engineContent.style.display === "none";
             engineContent.style.display = isHidden ? "" : "none";
             if (engineChevron) {
@@ -203,6 +203,15 @@
                 });
             }
 
+            if (r.cooldown) {
+                entryMarkers.push({
+                    time: t,
+                    position: 'aboveBar',
+                    color: '#00bcd4',
+                    shape: 'circle'
+                });
+            }
+
             if (r.exit_signal) {
                 exitMarkers.push({
                     time: t, position: 'aboveBar', color: '#FFD700',
@@ -314,13 +323,13 @@
 
                 var sCts = c.addSeries(LC.LineSeries, { color: "#4fc3f7", lineWidth: 2, lastValueVisible: false, priceLineVisible: false });
                 sCts.setData(ctsArr);
-                
+
                 var sCtsBuy = c.addSeries(LC.LineSeries, { color: "#42b883", lineWidth: 1, lineStyle: 2, lastValueVisible: false, priceLineVisible: false });
                 sCtsBuy.setData(ctsBuyThreshArr);
-                
+
                 var sCtsSell = c.addSeries(LC.LineSeries, { color: "#ef5350", lineWidth: 1, lineStyle: 2, lastValueVisible: false, priceLineVisible: false });
                 sCtsSell.setData(ctsSellThreshArr);
-                
+
                 var sCtsZ = c.addSeries(LC.LineSeries, { color: "rgba(139, 148, 158, 0.3)", lineWidth: 1, lineStyle: 0, lastValueVisible: false, priceLineVisible: false });
                 sCtsZ.setData(ctsArr.map(d => ({ time: d.time, value: 0 })));
 
@@ -528,7 +537,7 @@
                         tooltipEl.innerHTML = parts.join('<br>');
                         tooltipEl.style.display = "block";
                         tooltipEl.style.left = (param.sourceEvent.clientX + 14) + "px";
-                        tooltipEl.style.top  = (param.sourceEvent.clientY - 36) + "px";
+                        tooltipEl.style.top = (param.sourceEvent.clientY - 36) + "px";
                     } else {
                         tooltipEl.style.display = "none";
                     }
@@ -548,7 +557,7 @@
             var mainContainer = document.getElementById("chart-container");
             if (mainContainer && mainContainer.clientWidth > 0 && mainContainer.clientHeight > 0) {
                 pc.resize(getW("p1"), getH("p1"));
-                activePanels.forEach(function(pane, i) {
+                activePanels.forEach(function (pane, i) {
                     var panelId = "pSub" + i;
                     var c = charts[i + 1];
                     if (c) c.resize(getW(panelId), getH(panelId));
@@ -585,13 +594,13 @@
             "<tr><td>PSZ</td><td class='val'>" + fmt(l.price_slope_z, 4) + "</td></tr>" +
             "<tr><td>PSZ_v</td><td class='val'>" + fmt(l.psz_v, 5) + "</td></tr>" +
             "<tr><td>RSZ</td><td class='val'>" + fmt(l.rdv_slope_z, 4) + "</td></tr>" +
-            (function() {
+            (function () {
                 if (!l.entry_reason || l.entry_reason === "Neutral/No Entry" || l.entry_reason === "Hold") return "";
                 var color = l.entry_signal ? "#00e676" : "#ff7043";
                 var label = l.entry_signal ? "Signal Reason" : "Rejected Reason";
                 return "<tr><td>" + label + "</td><td class='val' style='color:" + color + "; font-size:11px'>" + l.entry_reason + "</td></tr>";
             })() +
-            (function() {
+            (function () {
                 if (!l.exit_reason) return "";
                 return "<tr><td>Exit Signal</td><td class='val' style='color:#ff1744; font-size:11px'>" + l.exit_reason + "</td></tr>";
             })();
@@ -600,11 +609,11 @@
         if (window.currentTrendAnalysis) {
             var ta = window.currentTrendAnalysis;
             var taHtml = "<tr><td colspan='2' style='text-align:center; padding-top:10px; border-bottom:1px solid #30363d; font-weight:bold; color:#c9d1d9'>CTS Trend Analysis</td></tr>";
-            
+
             var dirColor = ta.direction === "TrendDirection.RISING" ? "#3fb950" : (ta.direction === "TrendDirection.FALLING" ? "#ef5350" : "#8b949e");
             var dirStr = ta.direction ? ta.direction.replace('TrendDirection.', '') : '—';
             taHtml += "<tr><td>Direction</td><td class='val' style='color:" + dirColor + "'>" + dirStr + "</td></tr>";
-            
+
             var bendStr = ta.bend_type ? ta.bend_type.replace('BendType.', '') : '—';
             taHtml += "<tr><td>Bend Type</td><td class='val'>" + bendStr + "</td></tr>";
             taHtml += "<tr><td>Strength</td><td class='val'>" + fmt(ta.trend_strength, 2) + "</td></tr>";
@@ -617,7 +626,7 @@
                     taHtml += "<tr><td>Nearest Trough</td><td class='val'>" + ta.extrema.nearest_trough.distance_to_latest + " bars ago</td></tr>";
                 }
             }
-            
+
             document.getElementById("state-table").innerHTML += taHtml;
         }
 
@@ -660,7 +669,7 @@
         init: function () {
             var defStr = localStorage.getItem("de_default_watchlist");
             if (defStr) {
-                try { this.defaultWlId = parseInt(defStr) || null; } catch(e) {}
+                try { this.defaultWlId = parseInt(defStr) || null; } catch (e) { }
             }
             this.fetchLists();
             this.bindEvents();
@@ -679,17 +688,17 @@
             document.getElementById("wl-delete").onclick = () => { if (!this.currentWlId || !confirm("Delete this watchlist?")) return; this.api("/de/api/watchlists/" + this.currentWlId, "DELETE").then(() => { if (this.currentWlId == this.defaultWlId) { this.defaultWlId = null; localStorage.removeItem("de_default_watchlist"); } this.currentWlId = null; this.fetchLists(); }).catch(err => alert("Error deleting watchlist: " + err.message)); };
 
             var btnDefault = document.getElementById("wl-set-default");
-            if(btnDefault) {
+            if (btnDefault) {
                 btnDefault.onclick = () => {
-                   if(!this.currentWlId) return;
-                   if(this.currentWlId == this.defaultWlId) {
-                       this.defaultWlId = null;
-                       localStorage.removeItem("de_default_watchlist");
-                   } else {
-                       this.defaultWlId = parseInt(this.currentWlId);
-                       localStorage.setItem("de_default_watchlist", this.defaultWlId.toString());
-                   }
-                   this.fetchLists(true);
+                    if (!this.currentWlId) return;
+                    if (this.currentWlId == this.defaultWlId) {
+                        this.defaultWlId = null;
+                        localStorage.removeItem("de_default_watchlist");
+                    } else {
+                        this.defaultWlId = parseInt(this.currentWlId);
+                        localStorage.setItem("de_default_watchlist", this.defaultWlId.toString());
+                    }
+                    this.fetchLists(true);
                 };
             }
 
@@ -775,7 +784,7 @@
 
                 // Determine current selection safely
                 var current = null;
-                if(keepCurrentSelection && this.currentWlId) {
+                if (keepCurrentSelection && this.currentWlId) {
                     current = this.currentWlId;
                 } else {
                     if (this.defaultWlId && lists.some(l => l.id == this.defaultWlId)) {
@@ -805,10 +814,10 @@
                 if (document.getElementById("wl-import-dropdown").style.display === "block") this.renderImportList();
             });
         },
-        updateUIState: function() {
+        updateUIState: function () {
             var btnDefault = document.getElementById("wl-set-default");
-            if(btnDefault) {
-                if(this.currentWlId && this.currentWlId == this.defaultWlId) {
+            if (btnDefault) {
+                if (this.currentWlId && this.currentWlId == this.defaultWlId) {
                     btnDefault.classList.add("active");
                     btnDefault.title = "Current watchlist is default";
                 } else {
@@ -866,8 +875,8 @@
         settingsOverlay.classList.remove("hidden");
     };
 
-    document.querySelectorAll(".settings-tab").forEach(function(btn) {
-        btn.addEventListener("click", function() {
+    document.querySelectorAll(".settings-tab").forEach(function (btn) {
+        btn.addEventListener("click", function () {
             document.querySelectorAll(".settings-tab").forEach(b => b.classList.remove("active"));
             this.classList.add("active");
             document.querySelectorAll(".settings-body").forEach(b => b.classList.add("hidden"));
@@ -892,19 +901,19 @@
         currentPanelsConfig.forEach(function (key, i) {
             var label = PANEL_DEFINITIONS[key] ? PANEL_DEFINITIONS[key].label : key;
             html += '<div class="panel-setting-item" data-key="' + key + '">'
-                 + '<div class="panel-setting-controls">'
-                 + '<button class="mini-btn move-up" data-idx="' + i + '">\u25B2</button>'
-                 + '<button class="mini-btn move-down" data-idx="' + i + '">\u25BC</button>'
-                 + '</div>'
-                 + '<span class="panel-setting-label">' + label + '</span>'
-                 + '<button class="mini-button delete-panel" data-idx="' + i + '">\u00d7</button>'
-                 + '</div>';
+                + '<div class="panel-setting-controls">'
+                + '<button class="mini-btn move-up" data-idx="' + i + '">\u25B2</button>'
+                + '<button class="mini-btn move-down" data-idx="' + i + '">\u25BC</button>'
+                + '</div>'
+                + '<span class="panel-setting-label">' + label + '</span>'
+                + '<button class="mini-button delete-panel" data-idx="' + i + '">\u00d7</button>'
+                + '</div>';
         });
         listContainer.innerHTML = html;
 
         var select = document.getElementById("add-panel-select");
         var selHtml = '<option value="">-- Select Panel --</option>';
-        Object.keys(PANEL_DEFINITIONS).forEach(function(key) {
+        Object.keys(PANEL_DEFINITIONS).forEach(function (key) {
             if (currentPanelsConfig.indexOf(key) === -1) {
                 selHtml += '<option value="' + key + '">' + PANEL_DEFINITIONS[key].label + '</option>';
             }
@@ -912,30 +921,30 @@
         select.innerHTML = selHtml;
         document.getElementById("add-panel-btn").disabled = currentPanelsConfig.length >= Object.keys(PANEL_DEFINITIONS).length;
 
-        listContainer.querySelectorAll(".move-up").forEach(function(btn) {
-            btn.onclick = function() {
+        listContainer.querySelectorAll(".move-up").forEach(function (btn) {
+            btn.onclick = function () {
                 var idx = parseInt(this.dataset.idx);
                 if (idx > 0) {
                     var tmp = currentPanelsConfig[idx];
-                    currentPanelsConfig[idx] = currentPanelsConfig[idx-1];
-                    currentPanelsConfig[idx-1] = tmp;
+                    currentPanelsConfig[idx] = currentPanelsConfig[idx - 1];
+                    currentPanelsConfig[idx - 1] = tmp;
                     updatePanelsUI();
                 }
             };
         });
-        listContainer.querySelectorAll(".move-down").forEach(function(btn) {
-            btn.onclick = function() {
+        listContainer.querySelectorAll(".move-down").forEach(function (btn) {
+            btn.onclick = function () {
                 var idx = parseInt(this.dataset.idx);
                 if (idx < currentPanelsConfig.length - 1) {
                     var tmp = currentPanelsConfig[idx];
-                    currentPanelsConfig[idx] = currentPanelsConfig[idx+1];
-                    currentPanelsConfig[idx+1] = tmp;
+                    currentPanelsConfig[idx] = currentPanelsConfig[idx + 1];
+                    currentPanelsConfig[idx + 1] = tmp;
                     updatePanelsUI();
                 }
             };
         });
-        listContainer.querySelectorAll(".delete-panel").forEach(function(btn) {
-            btn.onclick = function() {
+        listContainer.querySelectorAll(".delete-panel").forEach(function (btn) {
+            btn.onclick = function () {
                 var idx = parseInt(this.dataset.idx);
                 currentPanelsConfig.splice(idx, 1);
                 updatePanelsUI();
@@ -943,7 +952,7 @@
         });
     }
 
-    document.getElementById("add-panel-btn").onclick = function() {
+    document.getElementById("add-panel-btn").onclick = function () {
         var val = document.getElementById("add-panel-select").value;
         if (val) {
             currentPanelsConfig.push(val);

@@ -31,6 +31,7 @@ from src.trading.signals import (
     Trade, SignalFactory,
 )
 from src.trading.signals.base import BaseEntryConfig, BaseExitConfig
+from src.trading.signals.enums import ExitReason
 
 DB_PATH = Path(__file__).resolve().parent.parent / "liquidity_monitor.db"
 
@@ -78,7 +79,7 @@ def simulate_trades(
     # Initialize with CWVAP of the first bar (index 0)
     cwvap_values = [records[0].get("cwvap", np.nan)]
     # EOD lag for exits: signal fires on bar i, execute at open of bar i+1
-    pending_exit_reason: str | None = None
+    pending_exit_reason: ExitReason | str | None = None
 
     for i in range(1, n):
         row = records[i]
@@ -168,6 +169,17 @@ def simulate_trades(
             if qualifies:
                 pending_signal = {"soft_count": soft_count, "details": fdetails}
 
+    if in_trade and trade:
+        last = records[-1]
+        trade.exit_date = str(last.get("date", ""))[:10]
+        trade.exit_price = last.get("close", trade.entry_price)
+        trade.exit_reason = ExitReason.END_OF_DATA
+        trade.pnl_pct = round((trade.exit_price / trade.entry_price - 1) * 100, 2)
+        trade.duration = n - 1 - trade.entry_idx
+        trade.mfe_pct = round(trade.mfe_pct, 2)
+        trade.mae_pct = round(trade.mae_pct, 2)
+        trades.append(trade)
+
     return trades
 
 
@@ -199,7 +211,7 @@ def print_results(all_trades: list[Trade]):
             "symbol": t.symbol,
             "entry": t.entry_date,
             "exit": t.exit_date,
-            "reason": t.exit_reason,
+            "reason": t.exit_reason.value if hasattr(t.exit_reason, "value") else str(t.exit_reason),
             "pnl": t.pnl_pct,
             "mfe": t.mfe_pct,
             "mae": t.mae_pct,

@@ -42,6 +42,7 @@ UI_COLUMNS = [
     # Signal markers (computed by check_entry/check_exit from src.trading.signals)
     "entry_signal", "entry_reason",
     "exit_signal", "exit_reason",
+    "cooldown",
 ]
 
 _SIGNAL: SavgolCTSSignal = SignalFactory.get_signal("savgol_cts")
