@@ -19,6 +19,24 @@ check_entry(row, prev_row, cfg, records, idx)
   |
   |-- [Guard] CTS is NaN? --> REJECT "Missing CTS data"
   |
+  |-- PATH 0: Floor Touch (_check_floor_touch)
+  |     |
+  |     |-- [Guard] CTS or BT is NaN? --> REJECT
+  |     |
+  |     |-- [Guard] PINNED: CTS <= -0.98 AND BT <= -0.98
+  |     |     FAIL --> REJECT "CTS/BT not pinned"
+  |     |
+  |     |-- [Guard] PSZ OVERSOLD: psz_raw < -0.25
+  |     |     FAIL --> REJECT "PSZ >= -0.25"
+  |     |
+  |     |-- [Guard] CWVAP distance gate 
+  |     |     close < CWVAP * (1 + floor_leave_cwvap_max_dist / 100)
+  |     |     FAIL --> REJECT "CWVAP distance"
+  |     |
+  |     +-- ALL conditions met --> PASS
+  |           Tag: EntryTag.CTS_FLOOR_TOUCH
+  |           --> ENTRY SIGNAL
+  |
   |-- PATH 1: CTS-floor-leave  (_check_floor_leave)
   |     |
   |     |-- [Guard] CTS or prev_CTS is NaN? --> REJECT
@@ -390,6 +408,8 @@ like BAJAJ-AUTO 2026-01-28 where CWVAP fired with no underlying indicator signal
 | `bt_cross_psz_glide_threshold` | 0.30 | PSZ level for glide exit (BT-cross and floor-leave PSZ glide) |
 | `cwvap_tolerance_pct` | 1.00 | Allowable percentage dip below CWVAP while suppressed (0.0 disables) |
 | `cwvap_tolerance_bars` | 3 | Max bars to hold price below CWVAP within tolerance |
+| `bt_hit_min_bars` | 5 | Grace period (in bars) before "CTS hit BT" exit is allowed |
+| `floor_hit_min_bars` | 5 | Grace period (in bars) before "CTS hit Floor" exit is allowed |
 
 ---
 

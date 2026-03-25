@@ -30,7 +30,7 @@ class SavgolCTSEntryConfig(BaseEntryConfig):
     psz_cross_threshold: float = -0.25
     # PSZ bend quality gate: require PSZ velocity to have been quiescent
     # (flat base) before crossover, filtering out V-bounce "bumps".
-    psz_bend_enabled: bool = True
+    psz_bend_enabled: bool = False
     psz_bend_lookback: int = 8
     psz_bend_quiescence_threshold: float = 0.05
     psz_bend_quiescence_min_bars: int = 5
@@ -57,8 +57,12 @@ class SavgolCTSEntryConfig(BaseEntryConfig):
     bt_cross_flat_gate_lookback: int = 3
     psz_min_threshold: float = -0.25
     floor_leave_cwvap_max_dist: float = -5.0
+    # Path 0 (Floor Touch): enter while CTS and BT are both pinned at floor.
+    floor_touch_enabled: bool = True
+    floor_touch_psz_max: float = -0.25  # PSZ must be below this (deeply oversold)
+    floor_touch_tolerance: float = 0.02
     # Path 4 (PSZv flat): PSZv in (0, 0.04) and PSZ <= -0.3 for last 3 bars.
-    pszv_flat_enabled: bool = True
+    pszv_flat_enabled: bool = False
     pszv_flat_v_min: float = 0.0
     pszv_flat_v_max: float = 0.04
     pszv_flat_psz_max: float = -0.3
@@ -68,6 +72,8 @@ class SavgolCTSEntryConfig(BaseEntryConfig):
     cooldown_bars: int = 10
     cooldown_exit_reasons: tuple[ExitReason, ...] = (
         ExitReason.SUPPRESSED_EXIT, 
+        ExitReason.FLOOR_HIT,
+        ExitReason.BT_HIT
     )
     
 
@@ -98,6 +104,10 @@ class SavgolCTSExitConfig(BaseExitConfig):
     cwvap_tolerance_pct: float = 1.00
     # CWVAP Price Guard Time Stop: max bars to hold while below CWVAP within tolerance
     cwvap_tolerance_bars: int = 3
+    # Grace period (bars) before structural exits are allowed.
+    # Prevents "one-day trades" on minor post-entry fluctuations.
+    bt_hit_min_bars: int = 5
+    floor_hit_min_bars: int = 5
 
 
 @dataclass
@@ -107,6 +117,7 @@ class SavgolCTSExitState:
     psz_was_above: bool = False
     cts_above_bt: bool = False
     exit_suppressed: bool = False
+    suppressed_this_bar: bool = False
 
     @classmethod
     def from_int(cls, val: int) -> SavgolCTSExitState:
@@ -114,11 +125,13 @@ class SavgolCTSExitState:
             cts_rose=bool(val & 1),
             psz_was_above=bool((val >> 1) & 1),
             cts_above_bt=bool((val >> 2) & 1),
-            exit_suppressed=bool((val >> 3) & 1)
+            exit_suppressed=bool((val >> 3) & 1),
+            suppressed_this_bar=bool((val >> 4) & 1)
         )
 
     def to_int(self) -> int:
         return (
+            (int(self.suppressed_this_bar) << 4) |
             (int(self.exit_suppressed) << 3) |
             (int(self.cts_above_bt) << 2) |
             (int(self.psz_was_above) << 1) |
@@ -216,7 +229,7 @@ class SavgolCTSSignal(SignalInterface):
         Returns True when all conditions are met (or gate is disabled).
         """
         if not cfg.psz_bend_enabled or records is None:
-            return True
+            return False
 
         lookback = cfg.psz_bend_lookback
         start = max(0, idx - lookback)
@@ -327,6 +340,48 @@ class SavgolCTSSignal(SignalInterface):
         )
         return True, intensity_int, meta
 
+    def _check_floor_touch(
+        self, row: dict, prev_row: dict, cfg: SavgolCTSEntryConfig,
+    ) -> tuple[bool, int, dict]:
+        """Path 0: Floor Touch — enter while CTS and BT are both pinned at floor.
+
+        Fires when both CTS and BT are at or below -0.98 and PSZ is deeply
+        oversold (psz < -0.25). Captures entries earlier than Floor-Leave.
+        """
+        if not cfg.floor_touch_enabled:
+            return False, 0, {"reason": "Floor Touch disabled"}
+
+        cts = row.get("cts", np.nan)
+        bt = row.get("cts_buy_threshold", np.nan)
+        if np.isnan(cts) or np.isnan(bt):
+            return False, 0, {"reason": "Missing CTS/BT data"}
+
+        floor = cfg.cts_floor + cfg.floor_touch_tolerance
+        if not (cts <= floor and bt <= floor):
+            return False, 0, {"reason": f"CTS/BT not pinned: CTS={cts:.3f}, BT={bt:.3f}"}
+
+        psz_raw = row.get("price_slope_z", np.nan)
+        if np.isnan(psz_raw) or psz_raw >= cfg.floor_touch_psz_max:
+            return False, 0, {"reason": f"PSZ [{psz_raw:.3f}] >= {cfg.floor_touch_psz_max}"}
+
+        # Reuse CWVAP distance guard from Floor-Leave
+        if cfg.floor_leave_cwvap_max_dist < 0.0:
+            cwvap = row.get("cwvap", np.nan)
+            close = row.get("close", np.nan)
+            if not np.isnan(cwvap) and not np.isnan(close) and cwvap > 0:
+                cwvap_dist_pct = (close - cwvap) / cwvap * 100.0
+                if cwvap_dist_pct < cfg.floor_leave_cwvap_max_dist:
+                    return False, 0, {"reason": f"CWVAP dist {cwvap_dist_pct:.1f}% < {cfg.floor_leave_cwvap_max_dist:.1f}%"}
+
+        coh    = row.get("coherence", np.nan)
+        pdd    = row.get("pdd_120", np.nan)
+        regime = row.get("regime", "")
+        intensity_int, meta = self._compute_intensity(
+            cts, coh, pdd, regime, EntryTag.CTS_FLOOR_TOUCH,
+            [f"bt={bt:.3f}"],
+        )
+        return True, intensity_int, meta
+
     def _check_psz_bend(
         self, row: dict, prev_row: dict, cfg: SavgolCTSEntryConfig,
         records: list[dict] | None = None, idx: int = 0,
@@ -336,6 +391,8 @@ class SavgolCTSSignal(SignalInterface):
         Fires when PSZ velocity has been quiescent (flat base) near the
         oversold zone and PSZ is now turning up.
         """
+        if not cfg.psz_bend_enabled:
+            return False, 0, {"reason": "PSZ bend disabled"}
         psz_raw = row.get("price_slope_z", np.nan)
         psz_prev = prev_row.get("price_slope_z", np.nan)
         if np.isnan(psz_raw) or np.isnan(psz_prev):
@@ -486,6 +543,11 @@ class SavgolCTSSignal(SignalInterface):
         if np.isnan(cts):
             return False, 0, {"reason": "Missing CTS data"}
 
+        # Path 0: Floor Touch — enter while CTS+BT pinned at floor
+        passed, intensity, meta = self._check_floor_touch(row, prev_row, cfg)
+        if passed:
+            return True, intensity, meta
+
         # Path 1: CTS-floor-leave — CTS rising above floor after being pinned
         passed, intensity, meta = self._check_floor_leave(row, prev_row, cfg)
         if passed:
@@ -528,7 +590,7 @@ class SavgolCTSSignal(SignalInterface):
         tag = trade.entry_tag if trade is not None else ""
 
         # Dispatch to specific indicator logic
-        if tag in (EntryTag.CTS_FLOOR_LEAVE.value, EntryTag.CTS_BT_FLOOR.value):
+        if tag in (EntryTag.CTS_FLOOR_LEAVE.value, EntryTag.CTS_BT_FLOOR.value, EntryTag.CTS_FLOOR_TOUCH.value):
             exit_status = self._exit_floor(
                 row, prev_row, trade, peak_close, bars_held,
                 delivery_bad_count, cfg, records, idx,
@@ -571,10 +633,13 @@ class SavgolCTSSignal(SignalInterface):
             self._last_exit_reason = res
 
         st = SavgolCTSExitState.from_int(state_returned)
+        # Clear per-bar flag from previous bar
+        st.suppressed_this_bar = False
         
         # If an indicator proposed an exit, mark it as suppressed for memory
         if res is not None:
             st.exit_suppressed = True
+            st.suppressed_this_bar = True
 
         close = row.get("close", np.nan)
         psz_raw = row.get("price_slope_z", np.nan)
@@ -597,12 +662,17 @@ class SavgolCTSSignal(SignalInterface):
                     
                     # Rule B: Release a previously suppressed exit now that momentum faded
                     elif res is not None or st.exit_suppressed:
+                        # If we are releasing, clear hit_this_bar since it's now a REAL exit
+                        st.suppressed_this_bar = False
                         res, final_state = (res if res else ExitReason.CWVAP_EXHAUSTION), st.to_int()
                     else:
+                        st.suppressed_this_bar = False
                         res, final_state = None, st.to_int()
                 
                 # Below CWVAP
                 elif st.exit_suppressed:
+                    # Propagate "suppressed this bar" if we stay within tolerance
+                    st.suppressed_this_bar = True
                     if cfg.cwvap_tolerance_pct > 0.0 and cfg.cwvap_tolerance_bars > 0:
                         dist_pct = (close - cwvap) / cwvap * 100.0
                         if dist_pct >= -cfg.cwvap_tolerance_pct:
@@ -672,11 +742,13 @@ class SavgolCTSSignal(SignalInterface):
 
         # Safety: CTS hit -1.0 (after having risen)
         if st.cts_rose and cts <= -1.0:
-            return ExitReason.FLOOR_HIT, st.to_int()
+            if bars_held >= cfg.floor_hit_min_bars:
+                return ExitReason.FLOOR_HIT, st.to_int()
 
         # Floor-leave specific: Hit BT (mean reversion complete)
         if st.cts_above_bt and not np.isnan(bt) and cts <= bt:
-            return ExitReason.BT_HIT, st.to_int()
+            if bars_held >= cfg.bt_hit_min_bars:
+                return ExitReason.BT_HIT, st.to_int()
         
         # Ceiling-leave exit: CTS drops below ceiling after having been there
         ceiling = 1.0 - cfg.ceiling_leave_tolerance
@@ -721,7 +793,8 @@ class SavgolCTSSignal(SignalInterface):
 
         # Safety: CTS hit -1.0 (after having risen)
         if st.cts_rose and cts <= -1.0:
-            return ExitReason.FLOOR_HIT, st.to_int()
+            if bars_held >= cfg.floor_hit_min_bars:
+                return ExitReason.FLOOR_HIT, st.to_int()
 
         # Ceiling-leave exit: CTS drops below ceiling after having been there
         ceiling = 1.0 - cfg.ceiling_leave_tolerance
@@ -773,7 +846,8 @@ class SavgolCTSSignal(SignalInterface):
 
         # Safety: CTS hit -1.0
         if cts <= -1.0:
-            return ExitReason.FLOOR_HIT, st.to_int()
+            if bars_held >= cfg.floor_hit_min_bars:
+                return ExitReason.FLOOR_HIT, st.to_int()
 
         # Floor zone protection
         floor_zone = -1.0 + cfg.floor_tolerance
@@ -795,7 +869,8 @@ class SavgolCTSSignal(SignalInterface):
 
         # Safety: CTS drops back to BT (only if BT above floor)
         if not np.isnan(bt) and bt > floor_zone and cts <= bt:
-            return ExitReason.BT_HIT, st.to_int()
+            if bars_held >= cfg.bt_hit_min_bars:
+                return ExitReason.BT_HIT, st.to_int()
 
         return None, st.to_int()
 

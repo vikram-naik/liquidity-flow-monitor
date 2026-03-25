@@ -236,6 +236,12 @@ def print_results(all_trades: list[Trade]):
             "exit_cwvap": "Bullish" if t.exit_cwvap_bullish else "Bearish",
         })
     df = pd.DataFrame(data)
+    
+    # [FILTER] Exclude open trades from performance metrics (PnL, MFA, MFE, Win Rate)
+    # They stay in the detailed log and exit breakdown but are removed from aggregate math.
+    open_trade_label = ExitReason.END_OF_DATA.value
+    realized_df = df[df["reason"] != open_trade_label].copy()
+    num_open = len(df) - len(realized_df)
 
     # ── Table 0: Detailed Trade Log ──────────────────────────────────────
     print("\n" + "=" * 100)
@@ -249,10 +255,10 @@ def print_results(all_trades: list[Trade]):
 
     # ── Table 1: Per-symbol summary ──────────────────────────────────────
     sym_agg = (
-        df.groupby("symbol")
+        realized_df.groupby("symbol")
         .agg(
             count=("pnl", "size"),
-            win_rate=("pnl", lambda x: round((x > 0).mean() * 100, 1)),
+            win_rate=("pnl", lambda x: round((x > 0).mean() * 100, 1) if len(x) > 0 else 0),
             avg_pnl=("pnl", "mean"),
             avg_mfe=("mfe", "mean"),
             avg_mae=("mae", "mean"),
@@ -262,34 +268,38 @@ def print_results(all_trades: list[Trade]):
         .round(2)
     )
     print("\n" + "=" * 100)
-    print("PER-SYMBOL SUMMARY")
+    print("PER-SYMBOL SUMMARY (Realized Only)")
     print("=" * 100)
     print(tabulate(
         sym_agg, headers=["Symbol", "Trades", "Win%", "Avg PnL%", "Avg MFE%", "Avg MAE%", "Avg Bars"],
         tablefmt="simple", floatfmt=".2f", showindex=False,
     ))
 
-    # ── Table 2: Aggregate ───────────────────────────────────────────────
-    total = len(df)
-    winners = (df["pnl"] > 0).sum()
+    # ── Table 2: Aggregate (Realized Only) ───────────────────────────────
+    total_realized = len(realized_df)
+    winners = (realized_df["pnl"] > 0).sum()
     print("\n" + "=" * 100)
-    print("AGGREGATE SUMMARY")
+    print("AGGREGATE SUMMARY (Realized Trades)")
     print("=" * 100)
-    print(f"  Total trades:  {total}")
-    print(f"  Win rate:      {winners/total*100:.1f}%")
-    print(f"  Avg P&L:       {df['pnl'].mean():+.2f}%")
-    print(f"  Med P&L:       {df['pnl'].median():+.2f}%")
-    print(f"  Avg MFE:       {df['mfe'].mean():.2f}%")
-    print(f"  Avg MAE:       {df['mae'].mean():.2f}%")
-    print(f"  Avg duration:  {df['bars'].mean():.1f} bars")
-    avg_win = df.loc[df["pnl"] > 0, "pnl"].mean() if winners > 0 else 0
-    avg_loss = df.loc[df["pnl"] <= 0, "pnl"].mean() if (total - winners) > 0 else 0
-    print(f"  Avg winner:    {avg_win:+.2f}%")
-    print(f"  Avg loser:     {avg_loss:+.2f}%")
-    if avg_loss != 0:
-        print(f"  Payoff ratio:  {abs(avg_win/avg_loss):.2f}x")
+    print(f"  Total trades:  {total_realized + num_open} ({num_open} still open)")
+    if total_realized > 0:
+        print(f"  Win rate:      {winners/total_realized*100:.1f}%")
+        print(f"  Avg P&L:       {realized_df['pnl'].mean():+.2f}%")
+        print(f"  Med P&L:       {realized_df['pnl'].median():+.2f}%")
+        print(f"  Avg MFE:       {realized_df['mfe'].mean():.2f}%")
+        print(f"  Avg MAE:       {realized_df['mae'].mean():.2f}%")
+        print(f"  Avg duration:  {realized_df['bars'].mean():.1f} bars")
+        avg_win = realized_df.loc[realized_df["pnl"] > 0, "pnl"].mean() if winners > 0 else 0
+        avg_loss = realized_df.loc[realized_df["pnl"] <= 0, "pnl"].mean() if (total_realized - winners) > 0 else 0
+        print(f"  Avg winner:    {avg_win:+.2f}%")
+        print(f"  Avg loser:     {avg_loss:+.2f}%")
+        if avg_loss != 0:
+            print(f"  Payoff ratio:  {abs(avg_win/avg_loss):.2f}x")
+    else:
+        print("  (No realized trades yet)")
 
-    # ── Table 3: Exit reason breakdown ───────────────────────────────────
+    # ── Table 3: Exit reason breakdown (All Trades) ──────────────────────
+    total = len(df)
     reason_agg = (
         df.groupby("reason")
         .agg(
@@ -312,47 +322,48 @@ def print_results(all_trades: list[Trade]):
     ))
 
 
-    # ── Table 5: Entry CWVAP Context ─────────────────────────────────────
-    entry_cv_agg = (
-        df.groupby("entry_cwvap")
-        .agg(
-            count=("pnl", "size"),
-            win_rate=("pnl", lambda x: round((x > 0).mean() * 100, 1)),
-            avg_pnl=("pnl", "mean"),
-            avg_mfe=("mfe", "mean"),
-            avg_mae=("mae", "mean"),
+    # ── Table 5: Entry CWVAP Context (Realized) ─────────────────────────
+    if not realized_df.empty:
+        entry_cv_agg = (
+            realized_df.groupby("entry_cwvap")
+            .agg(
+                count=("pnl", "size"),
+                win_rate=("pnl", lambda x: round((x > 0).mean() * 100, 1)),
+                avg_pnl=("pnl", "mean"),
+                avg_mfe=("mfe", "mean"),
+                avg_mae=("mae", "mean"),
+            )
+            .reset_index()
+            .round(2)
         )
-        .reset_index()
-        .round(2)
-    )
-    print("\n" + "=" * 100)
-    print("ENTRY CWVAP CONTEXT BREAKDOWN (Close vs CWVAP on Signal Day)")
-    print("=" * 100)
-    print(tabulate(
-        entry_cv_agg, headers=["CWVAP State", "Trades", "Win%", "Avg PnL%", "Avg MFE%", "Avg MAE%"],
-        tablefmt="simple", floatfmt=".2f", showindex=False,
-    ))
+        print("\n" + "=" * 100)
+        print("ENTRY CWVAP CONTEXT BREAKDOWN (Realized Only)")
+        print("=" * 100)
+        print(tabulate(
+            entry_cv_agg, headers=["CWVAP State", "Trades", "Win%", "Avg PnL%", "Avg MFE%", "Avg MAE%"],
+            tablefmt="simple", floatfmt=".2f", showindex=False,
+        ))
 
-    # ── Table 6: Exit CWVAP Context ──────────────────────────────────────
-    exit_cv_agg = (
-        df.groupby("exit_cwvap")
-        .agg(
-            count=("pnl", "size"),
-            win_rate=("pnl", lambda x: round((x > 0).mean() * 100, 1)),
-            avg_pnl=("pnl", "mean"),
-            avg_mfe=("mfe", "mean"),
-            avg_mae=("mae", "mean"),
+        # ── Table 6: Exit CWVAP Context (Realized) ──────────────────────────
+        exit_cv_agg = (
+            realized_df.groupby("exit_cwvap")
+            .agg(
+                count=("pnl", "size"),
+                win_rate=("pnl", lambda x: round((x > 0).mean() * 100, 1)),
+                avg_pnl=("pnl", "mean"),
+                avg_mfe=("mfe", "mean"),
+                avg_mae=("mae", "mean"),
+            )
+            .reset_index()
+            .round(2)
         )
-        .reset_index()
-        .round(2)
-    )
-    print("\n" + "=" * 100)
-    print("EXIT CWVAP CONTEXT BREAKDOWN (Close vs CWVAP on Signal Day)")
-    print("=" * 100)
-    print(tabulate(
-        exit_cv_agg, headers=["CWVAP State", "Trades", "Win%", "Avg PnL%", "Avg MFE%", "Avg MAE%"],
-        tablefmt="simple", floatfmt=".2f", showindex=False,
-    ))
+        print("\n" + "=" * 100)
+        print("EXIT CWVAP CONTEXT BREAKDOWN (Realized Only)")
+        print("=" * 100)
+        print(tabulate(
+            exit_cv_agg, headers=["CWVAP State", "Trades", "Win%", "Avg PnL%", "Avg MFE%", "Avg MAE%"],
+            tablefmt="simple", floatfmt=".2f", showindex=False,
+        ))
 
 
 # ── Main ─────────────────────────────────────────────────────────────────────

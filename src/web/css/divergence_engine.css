@@ -239,6 +239,14 @@ body {
   border-color: #00e676;
 }
 
+.ov-suppressed { color: #2979ff }
+
+.pill.ov-suppressed input:checked+span {
+  background: #2979ff;
+  color: #fff;
+  border-color: #2979ff;
+}
+
 /* Aggregation mode pills (D / W / M) */
 .agg-mode-grp {
   margin-right: 8px;

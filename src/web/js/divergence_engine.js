@@ -146,6 +146,7 @@
         var pszArr = [], pszSmoothArr = [], pszVArr = [], pszBuyThreshArr = [], pszSellThreshArr = [];
         var entryMarkers = [];
         var exitMarkers = [];
+        var suppressedMarkers = [];
 
         for (var i = 0; i < ledger.length; i++) {
             var r = ledger[i];
@@ -219,6 +220,13 @@
                 });
             }
 
+            if (r.exit_suppressed) {
+                suppressedMarkers.push({
+                    time: t, position: 'aboveBar', color: '#2979ff',
+                    shape: 'square', size: 0.5
+                });
+            }
+
             if (r.delivery_qty != null) {
                 var mfm = r.mfm != null ? r.mfm : 0;
                 deliveryVol.push({
@@ -274,6 +282,7 @@
         cs.setData(ohlc);
         var entryMarkersPrimitive = LC.createSeriesMarkers(cs, entryMarkers);
         var exitMarkersPrimitive = LC.createSeriesMarkers(cs, exitMarkers);
+        var suppressedMarkersPrimitive = LC.createSeriesMarkers(cs, suppressedMarkers);
 
         var sCwvap = pc.addSeries(LC.LineSeries, { color: "#00bfa5", lineWidth: 2, lastValueVisible: false });
         sCwvap.setData(cwvap);
@@ -480,6 +489,13 @@
             });
         }
 
+        var cbSuppressed = document.getElementById("cbSuppressed");
+        if (cbSuppressed) {
+            cbSuppressed.addEventListener("change", function () {
+                suppressedMarkersPrimitive.setMarkers(this.checked ? suppressedMarkers : []);
+            });
+        }
+
         var toggleMap = { cbCWVAP: [sCwvap], cbVA: [sVaHigh, sVaLow], cbVol: [sVol] };
         Object.keys(toggleMap).forEach(id => {
             var cb = document.getElementById(id);
@@ -534,6 +550,8 @@
                             parts.push('<span style="color:#00e676">&#9650; ENTRY</span> ' + row.entry_reason);
                         if (row.exit_signal && row.exit_reason)
                             parts.push('<span style="color:#FFD700">&#9660; EXIT</span> ' + row.exit_reason);
+                        if (row.exit_suppressed)
+                            parts.push('<span style="color:#2979ff">&#9632; SUPPRESSED</span> Price Guard Active');
                         tooltipEl.innerHTML = parts.join('<br>');
                         tooltipEl.style.display = "block";
                         tooltipEl.style.left = (param.sourceEvent.clientX + 14) + "px";

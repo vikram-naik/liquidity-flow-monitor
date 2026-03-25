@@ -117,6 +117,7 @@ class SignalInterface(ABC):
         cooldown_flags = [False] * n
         exit_flags    = [0]    * n
         exit_reasons  = [None] * n
+        suppressed_flags = [False] * n
 
         in_trade = False
         trade: Trade | None = None
@@ -149,6 +150,10 @@ class SignalInterface(ABC):
                     in_trade = False
                     trade = None
                     delivery_bad_count = 0
+                
+                # Check for suppression (bit 4 of state bitfield: suppressed_this_bar)
+                elif delivery_bad_count & 0x10:
+                    suppressed_flags[i] = True
 
             elif pending_entry is not None:
                 atr = row.get("atr_20", 0) or 0
@@ -184,4 +189,5 @@ class SignalInterface(ABC):
         df["cooldown"]     = cooldown_flags
         df["exit_signal"]  = exit_flags
         df["exit_reason"]  = exit_reasons
+        df["exit_suppressed"] = suppressed_flags
         return df

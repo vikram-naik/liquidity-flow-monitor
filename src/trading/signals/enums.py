@@ -6,6 +6,7 @@ class EntryTag(str, Enum):
     PSZ = "SavgolCTS PSZ Bend"
     BT_CROSS = "SavgolCTS BT-Cross"
     PSZV_FLAT = "SavgolCTS PSZv-Flat"
+    CTS_FLOOR_TOUCH = "SavgolCTS Floor-Touch"
     CTS_BT_FLOOR = "SavgolCTS CTS-BT-Floor" # Legacy
     
     # Generic
