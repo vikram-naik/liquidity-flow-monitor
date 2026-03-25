@@ -64,3 +64,6 @@ scripts/study_*.py
 bt_hit_trades.csv
 .gitignore
 PSZV_BASE_BREAK_STUDY.md
+scripts/study_pszv_flat_lookback_post_guard.txt
+scripts/study_pszv_flat_lookback_results.txt
+scripts/verify_st_exit_v2.py

@@ -1,7 +1,7 @@
 # SavgolCTS Signal — Entry / Exit Flow
 
 **Source**: `src/trading/signals/savgol_cts.py`
-**Last updated**: 2026-03-23
+**Last updated**: 2026-03-25
 
 ---
 
@@ -11,6 +11,11 @@ Four independent entry paths evaluated in priority order. First match wins.
 
 ```
 check_entry(row, prev_row, cfg, records, idx)
+  |
+  |-- [Guard] Cooldown Active? (cfg.cooldown_enabled)
+  |     |-- bars_since_exit <= cfg.cooldown_bars
+  |     |   AND last_exit_reason in cfg.cooldown_exit_reasons
+  |     |   FAIL --> REJECT "Cooldown active", metadata: {"cooldown": True}
   |
   |-- [Guard] CTS is NaN? --> REJECT "Missing CTS data"
   |
@@ -31,7 +36,7 @@ check_entry(row, prev_row, cfg, records, idx)
   |     |     FAIL --> REJECT  (still pinned, or this is the touch bar)
   |     |
   |     +-- ALL conditions met --> PASS
-  |           Tag: "CTS-floor-leave"
+  |           Tag: EntryTag.CTS_FLOOR_LEAVE
   |           No BT constraint — BT-cross owns non-floor crossovers
   |           --> ENTRY SIGNAL
   |
@@ -77,7 +82,7 @@ check_entry(row, prev_row, cfg, records, idx)
   |           +-- ALL conditions met --> PASS
   |                 |
   |                 +--> Compute intensity (60 base + coh/pdd/regime bonuses)
-  |                      Tag: "PSZ"
+  |                      Tag: EntryTag.PSZ
   |                      --> ENTRY SIGNAL
   |
   |-- PATH 3: BT Crossover  (_check_bt_crossover)
@@ -85,6 +90,11 @@ check_entry(row, prev_row, cfg, records, idx)
   |     |-- [Gate] bt_cross_enabled=False? --> REJECT
   |     |
   |     |-- [Guard] prev_cts, prev_bt, or bt is NaN? --> REJECT
+  |     |
+  |     |-- [Guard] Flat psz_v lookback (cfg.bt_cross_flat_gate_enabled)
+  |     |     |psz_v| < cfg.bt_cross_flat_gate_threshold (0.02) for
+  |     |     cfg.bt_cross_flat_gate_lookback (3) bars before signal
+  |     |     FAIL --> REJECT "Flat PSZv before BT-cross"
   |     |
   |     |-- CONDITION A: CTS crosses BT from below
   |     |     prev_cts <= prev_bt AND cts > bt
@@ -105,7 +115,7 @@ check_entry(row, prev_row, cfg, records, idx)
   |     |     FAIL --> REJECT "PSZ late entry"
   |     |
   |     +--> Compute intensity (60 base + coh/pdd/regime bonuses)
-  |          Tag: "BT-cross"
+  |          Tag: EntryTag.BT_CROSS
   |          --> ENTRY SIGNAL
   |
   |-- PATH 4: PSZv Flat  (_check_pszv_flat)
@@ -132,7 +142,7 @@ check_entry(row, prev_row, cfg, records, idx)
         |     FAIL --> REJECT
         |
         +--> Compute intensity (60 base + coh/pdd/regime bonuses)
-             Tag: "PSZv-flat"
+             Tag: EntryTag.PSZV_FLAT
              --> ENTRY SIGNAL
 ```
 
@@ -159,10 +169,13 @@ indicator logic, then applies the Stateful CWVAP Price Guard.
 ```
 check_exit(row, prev_row, trade, peak_close, bars_held, state, ..., cfg, records, idx)
   |
-  |-- trade.entry_tag == "CTS-floor-leave"  --> _exit_floor + _exit_psz_glide fallback
-  |-- trade.entry_tag == "CTS-BT-floor"     --> _exit_floor + _exit_psz_glide fallback (legacy)
-  |-- trade.entry_tag == "BT-cross"         --> _exit_bt_cross
-  |-- otherwise                             --> _exit_psz
+  |-- trade.entry_tag == EntryTag.CTS_FLOOR_LEAVE  --> _exit_floor + _exit_psz_glide fallback
+  |-- trade.entry_tag == EntryTag.BT_CROSS
+  |     |-- BT-cross logic
+  |     |-- [NEW] Flat psz_v guard (|psz_v| < 0.02 for 3 bars)? --> REJECT
+  |     --> Path 3
+  |
+  |-- trade.entry_tag == EntryTag.PSZV_FLAT
   |
   +-- Indicator result (res) feeds into Stateful CWVAP Price Guard (see below)
 ```
@@ -180,7 +193,7 @@ bit 3 (& 0x08): exit_suppressed   — An indicator exit was suppressed by CWVAP 
 
 ### Exit Path: CTS-floor-leave entries  (`_exit_floor` + `_exit_psz_glide`)
 
-Tags routed here: `"CTS-floor-leave"`, `"CTS-BT-floor"` (legacy)
+Tags routed here: `EntryTag.CTS_FLOOR_LEAVE`
 
 ```
 _exit_floor(row, prev_row, trade, peak_close, bars_held, state, cfg, records, idx)
@@ -191,29 +204,31 @@ _exit_floor(row, prev_row, trade, peak_close, bars_held, state, cfg, records, id
   |-- Update cts_above_bt: if cts > bt, set bit 2
   |-- Update psz_was_above: if psz_raw >= bt_cross_psz_glide_threshold (0.30), set bit 1
   |
-  |-- [NOTE] Safety exits (CTS hit floor, CTS hit BT) are currently DISABLED
-  |     (commented out, lines 556-561). This means floor-leave trades can only
-  |     exit via ceiling-leave or the PSZ glide / CWVAP guard fallback.
-  |     Known issue: causes zombie trades when CTS never reaches ceiling.
+  |-- EXIT: CTS hit floor  (safety exit)
+  |     cts_rose=1 AND cts <= -1.0 --> EXIT ExitReason.CTS_HIT_FLOOR
+  |
+  |-- EXIT: CTS hit BT  (mean reversion exhausted)
+  |     cts_above_bt=1 AND bt > floor_zone AND cts <= bt
+  |     --> EXIT ExitReason.CTS_HIT_BT
   |
   |-- EXIT: CTS ceiling hit  (ceiling-leave flavor)
-  |     prev_cts >= 0.98 AND cts < 0.98 --> EXIT "CTS ceiling hit"
+  |     prev_cts >= 0.98 AND cts < 0.98 --> EXIT ExitReason.CTS_CEILING_HIT
   |
   +-- None of the above --> HOLD
         |
         +-- Fallback: _exit_psz_glide (called by check_exit if _exit_floor returned None)
               |
               |-- PSZ glide exit: 5-bar mean of psz_raw < 0.30 AND previous mean >= 0.30
-              |     --> EXIT "PSZ glide exit (<0.3)"
+              |     --> EXIT ExitReason.PSZ_GLIDE_EXIT
               |
               +-- else --> HOLD (feeds into CWVAP guard)
 ```
 
 ---
 
-### Exit Path: PSZ / PSZv-flat entries  (`_exit_psz`)
+### Exit Path: PSZ / PSZV-flat entries  (`_exit_psz`)
 
-Tags routed here: `"PSZ"`, `"PSZv-flat"`, any unrecognised tag.
+Tags routed here: `EntryTag.PSZ`, `EntryTag.PSZV_FLAT`, any unrecognised tag.
 
 ```
 _exit_psz(row, prev_row, trade, peak_close, bars_held, state, cfg, records, idx)
@@ -224,14 +239,14 @@ _exit_psz(row, prev_row, trade, peak_close, bars_held, state, cfg, records, idx)
   |-- Update cts_above_bt: if cts > bt, set bit 2
   |-- Track psz_was_above: if psz_raw >= bt_cross_psz_glide_threshold (0.30), set bit 1
   |
-  |-- EXIT: CTS hit floor  (DISABLED — commented out)
-  |     cts_rose=1 AND cts <= -1.0 --> EXIT "CTS hit floor"
+  |-- EXIT: CTS hit floor  (safety exit)
+  |     cts_rose=1 AND cts <= -1.0 --> EXIT ExitReason.CTS_HIT_FLOOR
   |
   |-- EXIT: CTS ceiling hit  (ceiling-leave flavor)
-  |     prev_cts >= 0.98 AND cts < 0.98 --> EXIT "CTS ceiling hit"
+  |     prev_cts >= 0.98 AND cts < 0.98 --> EXIT ExitReason.CTS_CEILING_HIT
   |
   |-- EXIT: PSZ glide exit  (via _exit_psz_glide)
-  |     psz_was_above=1 AND 5-bar mean of psz_raw crosses below 0.30 --> EXIT "PSZ glide exit"
+  |     psz_was_above=1 AND 5-bar mean of psz_raw crosses below 0.30 --> EXIT ExitReason.PSZ_GLIDE_EXIT
   |
   +-- None of the above --> HOLD
 ```
@@ -251,29 +266,29 @@ _exit_bt_cross(row, prev_row, trade, peak_close, bars_held, state, cfg, records,
   |-- PSZ Stall Check  (_is_psz_stalled)
   |     [Gate] psz_stall_enabled=False? --> skip
   |     At exactly bar N (psz_stall_check_bar=2) after entry:
-  |       if psz_v <= 0 --> EXIT "PSZ stall"
+  |       if psz_v <= 0 --> EXIT ExitReason.PSZ_STALL
   |
   |-- [Gate] cts_rose=0? --> HOLD
   |
   |-- EXIT: CTS hit floor
-  |     cts <= -1.0 --> EXIT "CTS hit floor"
+  |     cts <= -1.0 --> EXIT ExitReason.CTS_HIT_FLOOR
   |
   |-- SUPPRESS: Floor zone
   |     cts <= (-1.0 + floor_tolerance) AND bt <= (-1.0 + floor_tolerance)
   |     Both deeply oversold --> HOLD (room to revive)
   |
   |-- EXIT: CTS ceiling hit  (ceiling-leave flavor)
-  |     prev_cts >= 0.98 AND cts < 0.98 --> EXIT "CTS ceiling hit"
+  |     prev_cts >= 0.98 AND cts < 0.98 --> EXIT ExitReason.CTS_CEILING_HIT
   |
   |-- EXIT: PSZ glide exit  (via _exit_psz_glide)
   |     psz_was_above=1
   |     AND 5-bar mean of psz_raw < bt_cross_psz_glide_threshold (0.30)
   |     AND previous mean >= bt_cross_psz_glide_threshold
-  |     --> EXIT "PSZ glide exit"
+  |     --> EXIT ExitReason.PSZ_GLIDE_EXIT
   |
   |-- EXIT: CTS hit BT (only if BT above floor zone)
   |     bt > (-1.0 + floor_tolerance) AND cts <= bt
-  |     --> EXIT "CTS hit BT"
+  |     --> EXIT ExitReason.CTS_HIT_BT
   |
   +-- None of the above --> HOLD
 ```
@@ -301,13 +316,20 @@ check_exit — after indicator dispatch returns (res, state)
   |     |
   |     +-- Rule B: Momentum exhausted (PSZ <= 0 AND CTS <= 0)?
   |           |-- exit_suppressed=1 OR indicator proposed exit (res not None)?
-  |           |     --> RELEASE: return res or "CWVAP momentum exhaustion"
+  |           |     --> RELEASE: return res or ExitReason.CWVAP_MOMENTUM_EXHAUSTION
   |           +-- else (no prior exit to release)
   |                 --> HOLD (no standalone exit — prevents false positives)
   |
   |-- close <= CWVAP?
   |     |-- exit_suppressed=1?
-  |     |     --> RELEASE: return res or "Suppressed exit triggered (price barrier)"
+  |     |     |-- [Tolerance Check] distance % >= -cfg.cwvap_tolerance_pct (e.g. -1.0%)?
+  |     |     |     |-- Yes: count consecutive bars below CWVAP
+  |     |     |     |     |-- bars_below > cfg.cwvap_tolerance_bars (e.g. 3)?
+  |     |     |     |     |     --> RELEASE: return res or ExitReason.CWVAP_TIME_STOP
+  |     |     |     +-- No: dropped below tolerance threshold
+  |     |     |           --> RELEASE: return res or ExitReason.SUPPRESSED_EXIT
+  |     |     +-- [Disabled Tolerance] if cwvap_tolerance_pct == 0.0:
+  |     |           --> RELEASE: return res or ExitReason.SUPPRESSED_EXIT
   |     +-- else --> pass through res as-is
   |
   +-- Fallback: return res as-is
@@ -345,17 +367,23 @@ like BAJAJ-AUTO 2026-01-28 where CWVAP fired with no underlying indicator signal
 | `pszv_flat_v_max` | 0.04 | PSZv upper bound for flat range |
 | `pszv_flat_psz_max` | -0.3 | PSZ must be at/below this for PSZv flat |
 | `pszv_flat_lookback` | 3 | Bars of PSZ <= psz_max required |
+| `cooldown_enabled` | True | Enable reentry suppression |
+| `cooldown_bars` | 10 | Number of bars to stay in cooldown |
+| `cooldown_exit_reasons` | (SUPPRESSED_EXIT,) | Reasons that trigger cooldown |
 
 ### Exit (`SavgolCTSExitConfig`)
 
 | Parameter | Default | Description |
 |---|---|---|
 | `st_crossover_tolerance` | 0.03 | Tolerance for sell threshold crossover detection |
+| `st_exit_enabled` | False | Enable universal ST crossover exit (disabled — see research) |
 | `floor_tolerance` | 0.10 | Zone around -1.0 considered "floor" for suppression |
 | `ceiling_leave_tolerance` | 0.02 | Tolerance for ceiling-leave exit |
 | `psz_stall_enabled` | False | Enable PSZ stall early exit |
 | `psz_stall_check_bar` | 2 | Bar after entry to check psz_v |
 | `bt_cross_psz_glide_threshold` | 0.30 | PSZ level for glide exit (BT-cross and floor-leave PSZ glide) |
+| `cwvap_tolerance_pct` | 1.00 | Allowable percentage dip below CWVAP while suppressed (0.0 disables) |
+| `cwvap_tolerance_bars` | 3 | Max bars to hold price below CWVAP within tolerance |
 
 ---
 
@@ -394,21 +422,42 @@ trade's `entry_price` and `entry_idx` correspond to the next bar's close.
 - New Rule A: suppress exit when `close > CWVAP AND (PSZ > 0.00 OR CTS > 0.00)`.
 - Rationale: The previous combination (0.15/0.2) was an arbitrary guess that yielded 62.6% WR and 3.25% Avg PnL. A comprehensive 36-combination grid search (`scripts/study_cwvap_guard_thresholds.py`) across NIFTY 500 revealed that dropping both thresholds to 0.00 maximizes Avg PnL (3.60%) and Payoff (1.17x) while only slightly lowering WR (61.9%), by allowing the trade maximum breathing room above the CWVAP barrier as long as momentum is technically positive.
 
+### CWVAP Tolerance implemented — ADOPTED (2026-03-24)
+- Added `cwvap_tolerance_pct` (1.0%) and `cwvap_tolerance_bars` (3) for "kissing" CWVAP.
+- Setting `Tolerance=0.0%` completely disables the new path (strict baseline behavior).
+- NIFTY 500 study: `1.0% / 3 bars` improves avg P&L from 3.60% to 3.67%, payoff from 1.17 to 1.20, while only reducing WR slightly (61.9% to 61.1%).
+
+### Sell Threshold (ST) Universal Exit — DISABLED (2026-03-25)
+- Implemented a universal exit path that triggers when CTS hits the dynamic Sell Threshold (ST) from above.
+- Refinement: Only triggers when `CTS < 1.0` and `ST < 1.0` to avoid overlapping with the `CEILING_HIT` logic.
+- Integrated with the CWVAP Price Guard: strong momentum can suppress an ST exit crossover.
+- Walk-forward test (post safety exit re-enablement): ST exit **degrades** performance.
+  - WITH ST: Train 54.5% WR, +3.10% avg, 1.55x payoff | Test 44.3% WR, -0.05% avg, 1.24x payoff.
+  - WITHOUT ST: Train 54.3% WR, +3.52% avg, 1.62x payoff | Test 43.0% WR, -0.13% avg, 1.28x payoff.
+  - ST exits (603 train / 403 test) have 49.6% / 40.4% WR, -0.90% / -1.55% avg — net negative.
+  - Disabling ST improves payoff from 1.55→1.62 (train) and 1.24→1.28 (test).
+- Controlled by `st_exit_enabled` (default **False**).
+
 ### CTS-floor-leave lift magnitude gate — REJECTED (2026-03-23)
 - Motivation: ASIANPAINT 2026-01-27, CTS blipped from -1.0 to -0.943 for one bar.
 - NIFTY 500: dropped trades (CTS -0.98 to -0.95) are 66.2% WR, +1.56 avg —
   the best cohort. No clean cutoff exists. Gate counterproductive.
 - Study: `scripts/study_floor_leave_lift_gate.py`.
 
-### Floor-leave zombie trades — PENDING (2026-03-23)
-- `_exit_floor` has safety exits (CTS hit floor, CTS hit BT) commented out.
-  Only ceiling-leave exit is active. When CTS never reaches 0.98, the trade
-  becomes a zombie with no exit path.
-- NIFTY 500: 103 floor-leave zombies, avg open PnL = -6.4%.
-- Re-enabling safety exits: zombies drop to 57 (recent/unresolved), PSZ glide
-  WR 40.6% → 81.2%, ceiling WR 50.1% → 83.2%.
-- PDD and recent-ceiling entry guards tested and found unhelpful once exit is fixed.
-- Study: `scripts/study_floor_leave_zombie.py`. Decision pending.
+### Safety exits re-enabled across all paths — ADOPTED (2026-03-25)
+- Re-enabled CTS-hit-floor and CTS-hit-BT safety exits in `_exit_floor`,
+  `_exit_psz`, and `_exit_bt_cross`. Previously commented out, causing zombie
+  trades when CTS never reached ceiling (0.98) or PSZ glide threshold.
+- Prior study (`scripts/study_floor_leave_zombie.py`): 103 floor-leave zombies
+  with avg PnL = -6.4% reduced to 57.
+- Standalone CWVAP zombie guard studied (`scripts/study_cwvap_zombie_guard.py`)
+  and found too blunt — PnL/CWVAP-distance thresholds cut winners that temporarily
+  dip. Re-enabling safety exits is the better approach.
+- Walk-forward with safety exits + ST disabled:
+  Train 5489 trades, 54.3% WR, +3.52% avg, 1.62x payoff.
+  Test 3173 trades, 43.0% WR, -0.13% avg, 1.28x payoff.
+  CTS-hit-floor: highest-volume exit (1297 train / 995 test), 10% / 9% WR, -8.7% / -7.1% avg.
+  CTS-hit-BT: 939 / 510 trades, 22.5% / 18.4% WR, -2.4% / -3.5% avg.
 
 ### PSZ glide exit: raw vs smooth
 - Switched from `psz_smooth` to `psz_raw` in `_exit_bt_cross`.
@@ -441,13 +490,25 @@ trade's `entry_price` and `entry_idx` correspond to the next bar's close.
 - NIFTY 500 (n=1,263 suppressed): avg delta = +1.04% but only 32% improved.
   WR drops 95.6% → 91.1%. Original PSZ glide exit already times well.
 
+### Entry Cooldown Mechanism — ADOPTED (2026-03-24)
+- Problem: Re-entries immediately after a structural breakdown (Suppressed Exit) often lead to whipsaws.
+- Solution: Implement a configurable 10-bar cooldown that suppresses all entry paths if the last exit was a `SUPPRESSED_EXIT`.
+- Result: Visualization added to UI (teal circles) and study confirmed reduction in "bottom-fishing" false starts.
+
+### Signal Enum Migration — ADOPTED (2026-03-24)
+- Refactored all hardcoded strings for `EntryTag` and `ExitReason` into strongly-typed Enums.
+- Improves code maintainability/testability and prevents silent regression from typo-based string comparisons.
+- Backtest scripts and UI serialization updated to handle Enum-to-string conversion.
+
+### BT-cross flat psz_v gate — ADOPTED (2026-03-25)
+- Problem: BT-cross entries preceded by flat `psz_v` (straight-line fall) often lead to "falling knife" failures.
+- Study: `scripts/study_pszv_flat_lookback.py` (NIFTY 500) showed flat BT-cross trades have **-1.28%** avg PnL and 0.80x payoff vs +2.24% / 1.87x for non-flat.
+- Solution: Reject BT-cross signal if `|psz_v| < 0.02` for the last 3 bars before the signal.
+- Result: Highly effective filter for the most vulnerable mean-reversion entries.
+
 ---
 
 ## Backlog
-
-### [EXIT] Re-enable _exit_floor safety exits
-- See "Floor-leave zombie trades" above. Highest-leverage pending change.
-- Uncommenting lines 556-561 in `savgol_cts.py` resolves most zombies.
 
 ### [ENTRY] Uptrend regime gate for floor paths — REJECTED
 - 600 uptrend floor trades are 63.7% WR, +2.15% avg — comparable to system overall.

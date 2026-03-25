@@ -45,6 +45,9 @@ class Trade:
     mfe_pct: float = 0.0
     mae_pct: float = 0.0
     duration: int = 0
+    # CWVAP context on signal day
+    entry_cwvap_bullish: bool = False
+    exit_cwvap_bullish: bool = False
 
 
 class SignalInterface(ABC):

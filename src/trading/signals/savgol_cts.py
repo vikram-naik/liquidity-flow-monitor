@@ -49,6 +49,12 @@ class SavgolCTSEntryConfig(BaseEntryConfig):
     # bt > -0.71 are net positive (+0.91 avg, 1.39 payoff). The oversold_threshold
     # at -0.50 already caps BT-cross to the oversold zone.
     # Study: scripts/study_bt_cross_depth_gate.py
+    # BT-cross flat psz_v gate: reject BT-cross when psz_v has been flat
+    # (|psz_v| < threshold) for N consecutive bars before signal.
+    # Study: scripts/study_pszv_flat_lookback.py — flat BT-cross: -1.28% avg, 0.80x payoff.
+    bt_cross_flat_gate_enabled: bool = True
+    bt_cross_flat_gate_threshold: float = 0.02
+    bt_cross_flat_gate_lookback: int = 3
     # PSZ min threshold: reject BT-cross when PSZ is too shallow (not deeply oversold).
     psz_min_threshold: float = -0.25
     # Path 4 (PSZv flat): PSZv in (0, 0.04) and PSZ <= -0.3 for last 3 bars.
@@ -60,7 +66,9 @@ class SavgolCTSEntryConfig(BaseEntryConfig):
     # Cooldown period: prevent entry within N bars after specific exit reasons.
     cooldown_enabled: bool = True
     cooldown_bars: int = 10
-    cooldown_exit_reasons: tuple[ExitReason, ...] = (ExitReason.SUPPRESSED_EXIT,)
+    cooldown_exit_reasons: tuple[ExitReason, ...] = (
+        ExitReason.SUPPRESSED_EXIT, 
+    )
     
 
 @dataclass
@@ -76,6 +84,8 @@ class SavgolCTSExitConfig(BaseExitConfig):
     # Ceiling-leave tolerance: exit fires when CTS drops below (1.0 - tolerance)
     # after having been at or above it. Mirrors floor_touch_tolerance = 0.02.
     ceiling_leave_tolerance: float = 0.02
+    # Sell Threshold (ST) Exit enabled: applies to all entry types
+    st_exit_enabled: bool = False
     # PSZ stall early exit: at bar N after entry, if psz_v is non-positive
     # the momentum has not materialised — exit.
     psz_stall_enabled: bool = False
@@ -83,6 +93,11 @@ class SavgolCTSExitConfig(BaseExitConfig):
     # BT-cross PSZ glide exit: hold until PSZ drops below this after having been above it.
     # Only applies to BT-cross entries. Safety nets: hit_bt / hit_floor still active.
     bt_cross_psz_glide_threshold: float = 0.30
+    # CWVAP Price Guard Tolerance: allowable percentage dip below CWVAP while suppressed
+    # 0.0 disables this feature (strict baseline).
+    cwvap_tolerance_pct: float = 1.00
+    # CWVAP Price Guard Time Stop: max bars to hold while below CWVAP within tolerance
+    cwvap_tolerance_bars: int = 3
 
 
 @dataclass
@@ -338,8 +353,9 @@ class SavgolCTSSignal(SignalInterface):
 
     def _check_bt_crossover(
         self, row: dict, prev_row: dict, cfg: SavgolCTSEntryConfig,
+        records: list[dict] | None = None, idx: int = 0,
     ) -> tuple[bool, int, dict]:
-        """Path 2: CTS crosses BT from below while in oversold territory."""
+        """Path 3: CTS crosses BT from below while in oversold territory."""
         if not cfg.bt_cross_enabled:
             return False, 0, {"reason": "BT cross disabled"}
 
@@ -372,6 +388,17 @@ class SavgolCTSSignal(SignalInterface):
             return False, 0, {"reason": f"PSZ: ({psz_raw:.3f}), late entry"}
 
         # BT depth gate: removed — oversold_threshold already caps BT-cross zone
+
+        # Flat psz_v gate: reject when psz_v has been quiescent (straight-line fall, no bend)
+        if cfg.bt_cross_flat_gate_enabled and records and idx >= cfg.bt_cross_flat_gate_lookback:
+            all_flat = True
+            for j in range(idx - cfg.bt_cross_flat_gate_lookback, idx):
+                v = records[j].get("psz_v", np.nan)
+                if np.isnan(v) or abs(v) >= cfg.bt_cross_flat_gate_threshold:
+                    all_flat = False
+                    break
+            if all_flat:
+                return False, 0, {"reason": f"BT-cross flat psz_v gate ({cfg.bt_cross_flat_gate_lookback} bars)"}
 
         coh = row.get("coherence", np.nan)
         pdd = row.get("pdd_120", np.nan)
@@ -461,7 +488,7 @@ class SavgolCTSSignal(SignalInterface):
             return True, intensity, meta
 
         # Path 3: BT-cross — CTS crosses BT from below in oversold zone
-        passed, intensity, meta = self._check_bt_crossover(row, prev_row, cfg)
+        passed, intensity, meta = self._check_bt_crossover(row, prev_row, cfg, records, idx)
         if passed:
             return True, intensity, meta
 
@@ -516,6 +543,19 @@ class SavgolCTSSignal(SignalInterface):
         # Refined Stateful Price Guard
         res, state_returned = exit_status
 
+        # Universal Sell Threshold Exit Path (feature toggle)
+        if cfg.st_exit_enabled and res is None:
+            st_val = row.get("cts_sell_threshold", np.nan)
+            prev_st_val = prev_row.get("cts_sell_threshold", np.nan)
+            cts_val = row.get("cts", np.nan)
+            prev_cts_val = prev_row.get("cts", np.nan)
+            
+            if not np.isnan(st_val) and not np.isnan(prev_st_val) and not np.isnan(cts_val) and not np.isnan(prev_cts_val):
+                # Ensure we are not in the ceiling zone (cts < 1.0 and st < 1.0)
+                if cts_val < 1.0 and st_val < 1.0:
+                    if prev_cts_val >= prev_st_val and cts_val < st_val:
+                        res = ExitReason.ST_CROSS
+
         # Update cross-trade cooldown state
         if res is not None:
             self._last_exit_idx = idx
@@ -533,28 +573,57 @@ class SavgolCTSSignal(SignalInterface):
 
         if cwvap_values and not np.isnan(close):
             cwvap = cwvap_values[-1]
-            if not np.isnan(cwvap) and close > cwvap:
-                # Rule A: Suppress exit while momentum positive above CWVAP.
-                # Extended glide: hold as long as PSZ or CTS is positive.
-                # Study: scripts/study_cwvap_extended_glide.py (NIFTY 500)
-                # Rule A: Extreme over-extension OR sustained extreme momentum
-                psz_strong = not np.isnan(psz_raw) and psz_raw > 0.00
-                cts_strong = not np.isnan(cts) and cts > 0.00
-                is_strong_momentum = psz_strong or cts_strong
+            if not np.isnan(cwvap):
+                if close > cwvap:
+                    # Rule A: Suppress exit while momentum positive above CWVAP.
+                    # Extended glide: hold as long as PSZ or CTS is positive.
+                    # Study: scripts/study_cwvap_extended_glide.py (NIFTY 500)
+                    # Rule A: Extreme over-extension OR sustained extreme momentum
+                    psz_strong = not np.isnan(psz_raw) and psz_raw > 0.00
+                    cts_strong = not np.isnan(cts) and cts > 0.00
+                    is_strong_momentum = psz_strong or cts_strong
 
-                if is_strong_momentum:
-                    res, final_state = None, st.to_int()
+                    if is_strong_momentum:
+                        res, final_state = None, st.to_int()
+                    
+                    # Rule B: Release a previously suppressed exit now that momentum faded
+                    elif res is not None or st.exit_suppressed:
+                        res, final_state = (res if res else ExitReason.CWVAP_EXHAUSTION), st.to_int()
+                    else:
+                        res, final_state = None, st.to_int()
                 
-                # Rule B: Release a previously suppressed exit now that momentum faded
-                elif res is not None or st.exit_suppressed:
-                    res, final_state = (res if res else ExitReason.CWVAP_EXHAUSTION), st.to_int()
+                # Below CWVAP
+                elif st.exit_suppressed:
+                    if cfg.cwvap_tolerance_pct > 0.0 and cfg.cwvap_tolerance_bars > 0:
+                        dist_pct = (close - cwvap) / cwvap * 100.0
+                        if dist_pct >= -cfg.cwvap_tolerance_pct:
+                            # Check consecutive bars below CWVAP dynamically
+                            bars_below = 1  # 1 for current bar
+                            if records is not None and idx > 0:
+                                for j in range(1, cfg.cwvap_tolerance_bars + 1):
+                                    check_idx = idx - j
+                                    if check_idx <= trade.entry_idx:
+                                        break
+                                    prev_close = records[check_idx].get("close", np.nan)
+                                    prev_cwvap = records[check_idx].get("cwvap", np.nan)
+                                    if not np.isnan(prev_close) and not np.isnan(prev_cwvap):
+                                        if prev_close <= prev_cwvap:
+                                            bars_below += 1
+                                        else:
+                                            break
+                            
+                            if bars_below > cfg.cwvap_tolerance_bars:
+                                res, final_state = (res if res else f"CWVAP time stop ({cfg.cwvap_tolerance_bars} bars)"), st.to_int()
+                            else:
+                                res, final_state = None, st.to_int()  # Suppress and give chance
+                        else:
+                            # Dropped below tolerance
+                            res, final_state = (res if res else ExitReason.SUPPRESSED_EXIT), st.to_int()
+                    else:
+                        # Baseline: no tolerance enabled
+                        res, final_state = (res if res else ExitReason.SUPPRESSED_EXIT), st.to_int()
                 else:
-                    res, final_state = None, st.to_int()
-            
-            # Below CWVAP
-            elif st.exit_suppressed:
-                # If we were holding despite an indicator exit, now we must go.
-                res, final_state = (res if res else ExitReason.SUPPRESSED_EXIT), st.to_int()
+                    res, final_state = res, st.to_int()
             else:
                 res, final_state = res, st.to_int()
         else:
@@ -593,12 +662,12 @@ class SavgolCTSSignal(SignalInterface):
             st.psz_was_above = True
 
         # Safety: CTS hit -1.0 (after having risen)
-        # if st.cts_rose and cts <= -1.0:
-        #     return ExitReason.FLOOR_HIT, st.to_int()
+        if st.cts_rose and cts <= -1.0:
+            return ExitReason.FLOOR_HIT, st.to_int()
 
         # Floor-leave specific: Hit BT (mean reversion complete)
-        # if st.cts_above_bt and not np.isnan(bt) and cts <= bt:
-        #     return ExitReason.BT_HIT, st.to_int()
+        if st.cts_above_bt and not np.isnan(bt) and cts <= bt:
+            return ExitReason.BT_HIT, st.to_int()
         
         # Ceiling-leave exit: CTS drops below ceiling after having been there
         ceiling = 1.0 - cfg.ceiling_leave_tolerance
@@ -642,8 +711,8 @@ class SavgolCTSSignal(SignalInterface):
             st.psz_was_above = True
 
         # Safety: CTS hit -1.0 (after having risen)
-        # if st.cts_rose and cts <= -1.0:
-        #     return ExitReason.FLOOR_HIT, st.to_int()
+        if st.cts_rose and cts <= -1.0:
+            return ExitReason.FLOOR_HIT, st.to_int()
 
         # Ceiling-leave exit: CTS drops below ceiling after having been there
         ceiling = 1.0 - cfg.ceiling_leave_tolerance
@@ -694,8 +763,8 @@ class SavgolCTSSignal(SignalInterface):
             return None, st.to_int()
 
         # Safety: CTS hit -1.0
-        # if cts <= -1.0:
-        #     return ExitReason.FLOOR_HIT, st.to_int()
+        if cts <= -1.0:
+            return ExitReason.FLOOR_HIT, st.to_int()
 
         # Floor zone protection
         floor_zone = -1.0 + cfg.floor_tolerance
@@ -716,8 +785,8 @@ class SavgolCTSSignal(SignalInterface):
                 return res, st.to_int()
 
         # Safety: CTS drops back to BT (only if BT above floor)
-        # if not np.isnan(bt) and bt > floor_zone and cts <= bt:
-        #     return ExitReason.BT_HIT, st.to_int()
+        if not np.isnan(bt) and bt > floor_zone and cts <= bt:
+            return ExitReason.BT_HIT, st.to_int()
 
         return None, st.to_int()
 

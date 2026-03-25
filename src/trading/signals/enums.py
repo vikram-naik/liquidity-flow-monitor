@@ -22,6 +22,7 @@ class ExitReason(str, Enum):
     PSZ_STALL = "PSZ stall early exit"
     CWVAP_EXHAUSTION = "CWVAP momentum exhaustion"
     SUPPRESSED_EXIT = "Suppressed exit triggered (price barrier)"
+    ST_CROSS = "CTS crossed ST down"
     
     # Universal / Generic
     END_OF_DATA = "End of Data (Open Trade)"

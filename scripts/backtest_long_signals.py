@@ -134,6 +134,9 @@ def simulate_trades(
             if reason:
                 # EOD lag: schedule exit at next bar's open
                 pending_exit_reason = reason
+                # Capture exit signal context (today's close vs CWVAP)
+                cw = row.get("cwvap", np.nan)
+                trade.exit_cwvap_bullish = (close > cw) if not np.isnan(cw) else False
 
         elif pending_signal is not None:
             # Day after signal — execute entry at today's close
@@ -158,6 +161,7 @@ def simulate_trades(
                 entry_tag=sig.get("details", {}).get("entry_tag", ""),
                 psz_at_entry=psz_now if not np.isnan(psz_now) else 0.0,
                 psz_peak=psz_now if not np.isnan(psz_now) else 0.0,
+                entry_cwvap_bullish=sig.get("cwvap_bullish", False),
             )
             peak_close = close
             delivery_bad_count = 0
@@ -167,7 +171,13 @@ def simulate_trades(
             # Check for new signal (will enter next bar)
             qualifies, soft_count, fdetails = signal.check_entry(row, prev, entry_cfg, records, i)
             if qualifies:
-                pending_signal = {"soft_count": soft_count, "details": fdetails}
+                cw = row.get("cwvap", np.nan)
+                cwvap_bullish = (close > cw) if not np.isnan(cw) else False
+                pending_signal = {
+                    "soft_count": soft_count, 
+                    "details": fdetails,
+                    "cwvap_bullish": cwvap_bullish
+                }
 
     if in_trade and trade:
         last = records[-1]
@@ -222,6 +232,8 @@ def print_results(all_trades: list[Trade]):
             "cwc_pass": t.cwc_pass,
             "grad_pass": t.grad_pass,
             "regime": t.regime_at_entry,
+            "entry_cwvap": "Bullish" if t.entry_cwvap_bullish else "Bearish",
+            "exit_cwvap": "Bullish" if t.exit_cwvap_bullish else "Bearish",
         })
     df = pd.DataFrame(data)
 
@@ -299,23 +311,46 @@ def print_results(all_trades: list[Trade]):
         tablefmt="simple", floatfmt=".2f", showindex=False,
     ))
 
-    # ── Table 4: Filter quality ──────────────────────────────────────────
-    filter_agg = (
-        df.groupby("filters")
+
+    # ── Table 5: Entry CWVAP Context ─────────────────────────────────────
+    entry_cv_agg = (
+        df.groupby("entry_cwvap")
         .agg(
             count=("pnl", "size"),
             win_rate=("pnl", lambda x: round((x > 0).mean() * 100, 1)),
             avg_pnl=("pnl", "mean"),
             avg_mfe=("mfe", "mean"),
+            avg_mae=("mae", "mean"),
         )
         .reset_index()
         .round(2)
     )
     print("\n" + "=" * 100)
-    print("ENTRY FILTER QUALITY (by soft filters passed)")
+    print("ENTRY CWVAP CONTEXT BREAKDOWN (Close vs CWVAP on Signal Day)")
     print("=" * 100)
     print(tabulate(
-        filter_agg, headers=["Filters Passed", "Trades", "Win%", "Avg PnL%", "Avg MFE%"],
+        entry_cv_agg, headers=["CWVAP State", "Trades", "Win%", "Avg PnL%", "Avg MFE%", "Avg MAE%"],
+        tablefmt="simple", floatfmt=".2f", showindex=False,
+    ))
+
+    # ── Table 6: Exit CWVAP Context ──────────────────────────────────────
+    exit_cv_agg = (
+        df.groupby("exit_cwvap")
+        .agg(
+            count=("pnl", "size"),
+            win_rate=("pnl", lambda x: round((x > 0).mean() * 100, 1)),
+            avg_pnl=("pnl", "mean"),
+            avg_mfe=("mfe", "mean"),
+            avg_mae=("mae", "mean"),
+        )
+        .reset_index()
+        .round(2)
+    )
+    print("\n" + "=" * 100)
+    print("EXIT CWVAP CONTEXT BREAKDOWN (Close vs CWVAP on Signal Day)")
+    print("=" * 100)
+    print(tabulate(
+        exit_cv_agg, headers=["CWVAP State", "Trades", "Win%", "Avg PnL%", "Avg MFE%", "Avg MAE%"],
         tablefmt="simple", floatfmt=".2f", showindex=False,
     ))
 
