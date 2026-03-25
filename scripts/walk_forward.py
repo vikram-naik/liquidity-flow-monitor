@@ -205,6 +205,7 @@ def summarize(trades: list[Trade], label: str) -> dict:
         "pnl": t.pnl_pct, "mfe": t.mfe_pct, "mae": t.mae_pct,
         "bars": t.duration,
         "reason": t.exit_reason.value if hasattr(t.exit_reason, "value") else str(t.exit_reason),
+        "entry_tag": t.entry_tag.value if hasattr(t.entry_tag, "value") else str(t.entry_tag),
     } for t in trades])
 
     total = len(df)
@@ -239,6 +240,36 @@ def summarize(trades: list[Trade], label: str) -> dict:
     )
     print(f"\n  Exit Breakdown:")
     print(tabulate(reason_agg, headers=["Reason", "Count", "Avg P&L%", "Win%"],
+                   tablefmt="simple", floatfmt=".2f", showindex=False))
+
+    # Entry type breakdown
+    entry_agg = (
+        df.groupby("entry_tag")
+        .agg(count=("pnl", "size"), avg_pnl=("pnl", "mean"),
+             win_rate=("pnl", lambda x: round((x > 0).mean() * 100, 1)),
+             avg_mfe=("mfe", "mean"), avg_mae=("mae", "mean"),
+             avg_bars=("bars", "mean"))
+        .reset_index()
+        .sort_values("count", ascending=False)
+        .round(2)
+    )
+    print(f"\n  Entry Type Breakdown:")
+    print(tabulate(entry_agg,
+                   headers=["Entry Type", "Count", "Avg P&L%", "Win%", "Avg MFE%", "Avg MAE%", "Avg Bars"],
+                   tablefmt="simple", floatfmt=".2f", showindex=False))
+
+    # Entry Type × Exit Reason cross-tabulation
+    cross = (
+        df.groupby(["entry_tag", "reason"])
+        .agg(count=("pnl", "size"), avg_pnl=("pnl", "mean"),
+             win_rate=("pnl", lambda x: round((x > 0).mean() * 100, 1)))
+        .reset_index()
+        .sort_values(["entry_tag", "count"], ascending=[True, False])
+        .round(2)
+    )
+    print(f"\n  Entry Type × Exit Reason:")
+    print(tabulate(cross,
+                   headers=["Entry Type", "Exit Reason", "Count", "Avg P&L%", "Win%"],
                    tablefmt="simple", floatfmt=".2f", showindex=False))
 
     return {

@@ -27,6 +27,11 @@ check_entry(row, prev_row, cfg, records, idx)
   |     |     psz_raw >= 0 OR psz_raw >= psz_min_threshold (-0.25)
   |     |     FAIL --> REJECT "PSZ late entry"
   |     |
+  |     |-- [Guard] CWVAP distance gate (New)
+  |     |     close < CWVAP * (1 + floor_leave_cwvap_max_dist / 100)
+  |     |     (default -5.0%)
+  |     |     FAIL --> REJECT "CWVAP distance"
+  |     |
   |     |-- CONDITION A: CTS was at floor last bar
   |     |     prev_cts <= cts_floor + floor_touch_tolerance (-0.98)
   |     |     FAIL --> REJECT  (CTS was not pinned at floor)
@@ -361,8 +366,9 @@ like BAJAJ-AUTO 2026-01-28 where CWVAP fired with no underlying indicator signal
 | `psz_bend_mean_v_max` | 0.010 | Max mean psz_v over lookback (rejects slow drifters) |
 | `bt_cross_enabled` | True | Enable BT crossover path |
 | `bt_cross_oversold_threshold` | -0.50 | CTS must be below this for BT-cross |
-| `psz_min_threshold` | -0.25 | PSZ must be below this for floor-leave and BT-cross |
-| `pszv_flat_enabled` | True | Enable PSZv flat path |
+| `psz_min_threshold` | -0.25 | PSZ floor for late-entry rejection |
+| `floor_leave_cwvap_max_dist` | -5.0 | Max % below CWVAP for floor-leave entries |
+| `pszv_flat_enabled` | True | Enable PSZv reversal entries |
 | `pszv_flat_v_min` | 0.0 | PSZv lower bound for flat range |
 | `pszv_flat_v_max` | 0.04 | PSZv upper bound for flat range |
 | `pszv_flat_psz_max` | -0.3 | PSZ must be at/below this for PSZv flat |
@@ -506,6 +512,11 @@ trade's `entry_price` and `entry_idx` correspond to the next bar's close.
 - Solution: Reject BT-cross signal if `|psz_v| < 0.02` for the last 3 bars before the signal.
 - Result: Highly effective filter for the most vulnerable mean-reversion entries.
 
+### [ENTRY] CWVAP Distance Guard (Floor Leave) — ADOPTED (2026-03-25)
+- Study `scripts/study_floor_hit_conditions.py` showed 50-68% floor-hit rate for `CTS-Floor-Leave` when price is >5% below CWVAP.
+- Guard added to `SavgolCTSEntryConfig`: `floor_leave_cwvap_max_dist = -5.0`.
+- Impact: Filters high-frequency, high-loss "falling knife" trades while preserving mean-reversion upside.
+
 ---
 
 ## Backlog
@@ -522,3 +533,25 @@ trade's `entry_price` and `entry_idx` correspond to the next bar's close.
 
 ### [ENTRY] PSZ_V gate on floor and BT-cross entries — REJECTED
 - 71.2% of floor entries have psz_v <= 0 at signal. Gate counterproductive.
+
+### [ENTRY] PSZv-Flat structural floor-hit rate — INVESTIGATION NEEDED
+- Study: `scripts/study_floor_hit_conditions.py` (NIFTY 500).
+- PSZv-Flat has ~38–42% floor-hit rate in test **regardless of CWVAP distance**.
+- Even entries above CWVAP fail at 28–30%. CWVAP guard ineffective.
+- Regime-independent: 30–39% floor-hit rate across all regimes.
+- Generates most trades (2109 train / 1238 test) but 472 test floor-hits.
+- Consider: tighter PSZ/PSZv thresholds, regime gate, or disabling path.
+
+### [ENTRY] PSZ Bend structural floor-hit rate — INVESTIGATION NEEDED
+- Study: `scripts/study_floor_hit_conditions.py` (NIFTY 500).
+- PSZ Bend has 41–47% floor-hit rate in test for `cwvap_dist < 0%`.
+- Only drops to 15% when `cwvap_dist > 0%` — most entries are below CWVAP.
+- Regime-independent: 36–47% floor-hit rate across all regimes (worst in uptrend: 46.7%).
+- Smallest volume (574 train / 364 test) but highest concentration of failures.
+
+### [ENTRY] CTS-Floor-Leave CWVAP distance guard — PENDING
+- Study: `scripts/study_floor_hit_conditions.py` (NIFTY 500).
+- CTS-Floor-Leave at `cwvap_dist < −10%` has 67.6% floor-hit rate in test;
+  50.3% at −10% to −5%. Clear monotonic gradient.
+- Proposed guard: reject CTS-Floor-Leave when `cwvap_dist < −5%`.
+- BT-Cross unaffected by CWVAP distance (previously studied).

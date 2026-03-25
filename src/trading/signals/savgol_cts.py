@@ -55,8 +55,8 @@ class SavgolCTSEntryConfig(BaseEntryConfig):
     bt_cross_flat_gate_enabled: bool = True
     bt_cross_flat_gate_threshold: float = 0.02
     bt_cross_flat_gate_lookback: int = 3
-    # PSZ min threshold: reject BT-cross when PSZ is too shallow (not deeply oversold).
     psz_min_threshold: float = -0.25
+    floor_leave_cwvap_max_dist: float = -5.0
     # Path 4 (PSZv flat): PSZv in (0, 0.04) and PSZ <= -0.3 for last 3 bars.
     pszv_flat_enabled: bool = True
     pszv_flat_v_min: float = 0.0
@@ -308,6 +308,15 @@ class SavgolCTSSignal(SignalInterface):
         floor = cfg.cts_floor + cfg.floor_touch_tolerance
         if not (prev_cts <= floor and cts > floor):
             return False, 0, {"reason": "CTS not leaving floor"}
+
+        # CWVAP distance guard: reject if price is too far below CWVAP
+        if cfg.floor_leave_cwvap_max_dist < 0.0:
+            cwvap = row.get("cwvap", np.nan)
+            close = row.get("close", np.nan)
+            if not np.isnan(cwvap) and not np.isnan(close) and cwvap > 0:
+                cwvap_dist_pct = (close - cwvap) / cwvap * 100.0
+                if cwvap_dist_pct < cfg.floor_leave_cwvap_max_dist:
+                    return False, 0, {"reason": f"CWVAP dist {cwvap_dist_pct:.1f}% < {cfg.floor_leave_cwvap_max_dist:.1f}%"}
 
         coh    = row.get("coherence", np.nan)
         pdd    = row.get("pdd_120", np.nan)

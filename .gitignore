@@ -67,3 +67,5 @@ PSZV_BASE_BREAK_STUDY.md
 scripts/study_pszv_flat_lookback_post_guard.txt
 scripts/study_pszv_flat_lookback_results.txt
 scripts/verify_st_exit_v2.py
+floor_hit_study_all_trades.csv
+floor_hit_trades.csv
