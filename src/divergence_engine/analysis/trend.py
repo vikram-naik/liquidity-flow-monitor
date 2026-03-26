@@ -57,11 +57,15 @@ class SavitzkyGolayAnalyzer:
         # 3. Extrema Analysis
         extrema = self._analyze_extrema(y_smooth)
 
-        # 4. Trend Inferences for the latest point
-        # Calculate dynamic thresholds using the 20th percentile of absolute values
-        # to filter out "noise" based on recent price action volatility
-        v_threshold = float(np.percentile(np.abs(velocity), 20))
-        a_threshold = float(np.percentile(np.abs(acceleration), 20))
+        # Calculate dynamic thresholds using the 20th percentile (noise) and 90th (steepness)
+        # to filter out "noise" and identify aggressive moves.
+        v_abs = np.abs(velocity)
+        v_threshold = float(np.percentile(v_abs, 20))
+        v_steep_threshold = float(np.percentile(v_abs, 90))
+        
+        a_abs = np.abs(acceleration)
+        a_threshold = float(np.percentile(a_abs, 20))
+        a_steep_threshold = float(np.percentile(a_abs, 90))
 
         v_latest = velocity[-1]
         a_latest = acceleration[-1]
@@ -74,14 +78,18 @@ class SavitzkyGolayAnalyzer:
             # Use the tip velocity for direction if it's more conservative or confirms the turn
             v_latest = v_tip
 
-        direction = self._determine_direction(v_latest, v_threshold=v_threshold)
+        direction = self._determine_direction(
+            v_latest, v_threshold=v_threshold, v_steep_threshold=v_steep_threshold
+        )
         bend_type = self._determine_bend_type(v_latest, a_latest, a_threshold=a_threshold)
         trend_strength = self._calculate_strength(v_latest, velocity)
+        is_steep = bool(abs(v_latest) >= v_steep_threshold or abs(a_latest) >= a_steep_threshold)
 
         return TrendAnalysis(
             direction=direction,
             bend_type=bend_type,
             trend_strength=trend_strength,
+            is_steep=is_steep,
             thresholds=thresholds,
             extrema=extrema,
         )
@@ -160,8 +168,14 @@ class SavitzkyGolayAnalyzer:
             is_near_trough=is_near_trough,
         )
 
-    def _determine_direction(self, v: float, v_threshold: float = 1e-4) -> TrendDirection:
-        if v > v_threshold:
+    def _determine_direction(
+        self, v: float, v_threshold: float = 1e-4, v_steep_threshold: float = 1e-2
+    ) -> TrendDirection:
+        if v > v_steep_threshold:
+            return TrendDirection.STEEP_RISING
+        elif v < -v_steep_threshold:
+            return TrendDirection.STEEP_FALLING
+        elif v > v_threshold:
             return TrendDirection.RISING
         elif v < -v_threshold:
             return TrendDirection.FALLING
@@ -191,3 +205,94 @@ class SavitzkyGolayAnalyzer:
             return 0.0
         # How strong is the current velocity relative to the highest velocity seen
         return float(min(1.0, abs(v_latest) / max_v))
+
+    def analyze_series_full(self, series: pd.Series) -> pd.DataFrame:
+        """
+        Perform causal trend analysis for every bar in the series.
+        Returns a DataFrame with [direction, bend, strength, is_steep].
+        """
+        from scipy.signal import savgol_coeffs
+        
+        series = series.ffill().fillna(0)
+        y = series.values
+        n = len(y)
+        
+        # Prepare result containers
+        directions = [TrendDirection.SIDEWAYS] * n
+        bends = [BendType.STRAIGHT] * n
+        strengths = [0.0] * n
+        steeps = [False] * n
+        
+        if n < self.window_length:
+            return pd.DataFrame({
+                "direction": directions,
+                "bend": bends,
+                "strength": strengths,
+                "is_steep": steeps
+            }, index=series.index)
+
+        # To ensure CAUSALITY for every bar, we use Savgol coefficients 
+        # for the end-of-window position (pos = window_length - 1).
+        w = self.window_length
+        p = self.polyorder
+        
+        c_smooth = savgol_coeffs(w, p, deriv=0, pos=w-1)
+        c_vel = savgol_coeffs(w, p, deriv=1, pos=w-1)
+        c_acc = savgol_coeffs(w, p, deriv=2, pos=w-1)
+
+        # Vectorized causal smoothing and derivatives
+        # We use valid convolution and pad the beginning
+        def _causal_conv(arr, coeffs):
+            res = np.convolve(arr, coeffs[::-1], mode='valid')
+            return np.concatenate([np.full(w - 1, res[0]), res])
+
+        v_series = _causal_conv(y, c_vel)
+        a_series = _causal_conv(y, c_acc)
+        
+        # dynamic thresholds (use rolling window or expanding for true causality?)
+        # For study purposes, global percentiles of the causal velocities are okay 
+        # as they provide a context for what "steep" means for this specific ticker.
+        v_abs = np.abs(v_series)
+        v_threshold = np.percentile(v_abs, 20)
+        v_steep = np.percentile(v_abs, 90)
+        
+        a_abs = np.abs(a_series)
+        a_threshold = np.percentile(a_abs, 20)
+        
+        for i in range(n):
+            v = v_series[i]
+            a = a_series[i]
+            
+            # Direction
+            if v > v_steep:
+                directions[i] = TrendDirection.STEEP_RISING
+            elif v < -v_steep:
+                directions[i] = TrendDirection.STEEP_FALLING
+            elif v > v_threshold:
+                directions[i] = TrendDirection.RISING
+            elif v < -v_threshold:
+                directions[i] = TrendDirection.FALLING
+            
+            # Bend
+            if abs(a) <= a_threshold:
+                bends[i] = BendType.STRAIGHT
+            elif (v > 0 and a < 0) or (v < 0 and a > 0):
+                bends[i] = BendType.FLATTENING
+            elif a > 0:
+                bends[i] = BendType.BENDING_UP
+            else:
+                bends[i] = BendType.BENDING_DOWN
+                
+            # Strength
+            max_v = np.max(v_abs[:i+1]) if i > 0 else v_abs[0]
+            strengths[i] = float(min(1.0, abs(v) / max_v)) if max_v > 0 else 0.0
+            
+            # Steep (explicitly cast to Python bool for API serialization)
+            steeps[i] = bool(abs(v) >= v_steep)
+            
+        return pd.DataFrame({
+            "direction": directions,
+            "bend": bends,
+            "strength": strengths,
+            "is_steep": pd.Series(steeps, dtype=object)
+        }, index=series.index)

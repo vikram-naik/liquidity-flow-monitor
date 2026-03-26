@@ -259,6 +259,14 @@ class DivergenceEngine:
         analyzer = SavitzkyGolayAnalyzer()
         trend_analysis = None
         if "cts" in df.columns:
+            # 7a. Comprehensive analysis for the entire ledger (causal)
+            trend_df = analyzer.analyze_series_full(df["cts"])
+            df["cts_direction"] = trend_df["direction"]
+            df["cts_bend"] = trend_df["bend"]
+            df["cts_strength"] = trend_df["strength"]
+            df["cts_is_steep"] = trend_df["is_steep"]
+
+            # 7b. Detailed summary for the latest bar
             trend_analysis = analyzer.analyze(df["cts"])
 
         # --- Drop intermediate columns ---

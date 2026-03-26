@@ -19,6 +19,10 @@ check_entry(row, prev_row, cfg, records, idx)
   |
   |-- [Guard] CTS is NaN? --> REJECT "Missing CTS data"
   |
+  |-- [Guard] CTS Direction Gate (cfg.cts_direction_gate_enabled)
+  |     |-- cts_direction in [SIDEWAYS, FALLING, STEEP_FALLING]
+  |     |   FAIL --> REJECT "CTS Direction Gate", metadata: {"direction": "..."}
+  |
   |-- PATH 0: Floor Touch (_check_floor_touch)
   |     |
   |     |-- [Guard] CTS or BT is NaN? --> REJECT
@@ -394,6 +398,7 @@ like BAJAJ-AUTO 2026-01-28 where CWVAP fired with no underlying indicator signal
 | `cooldown_enabled` | True | Enable reentry suppression |
 | `cooldown_bars` | 10 | Number of bars to stay in cooldown |
 | `cooldown_exit_reasons` | (SUPPRESSED_EXIT,) | Reasons that trigger cooldown |
+| `cts_direction_gate_enabled` | True | Reject entries if CTS direction is Sideways or Falling |
 
 ### Exit (`SavgolCTSExitConfig`)
 
@@ -464,11 +469,6 @@ trade's `entry_price` and `entry_idx` correspond to the next bar's close.
   - Disabling ST improves payoff from 1.55→1.62 (train) and 1.24→1.28 (test).
 - Controlled by `st_exit_enabled` (default **False**).
 
-### CTS-floor-leave lift magnitude gate — REJECTED (2026-03-23)
-- Motivation: ASIANPAINT 2026-01-27, CTS blipped from -1.0 to -0.943 for one bar.
-- NIFTY 500: dropped trades (CTS -0.98 to -0.95) are 66.2% WR, +1.56 avg —
-  the best cohort. No clean cutoff exists. Gate counterproductive.
-- Study: `scripts/study_floor_leave_lift_gate.py`.
 
 ### Safety exits re-enabled across all paths — ADOPTED (2026-03-25)
 - Re-enabled CTS-hit-floor and CTS-hit-BT safety exits in `_exit_floor`,
@@ -539,39 +539,10 @@ trade's `entry_price` and `entry_idx` correspond to the next bar's close.
 
 ---
 
-## Backlog
-
-### [ENTRY] Uptrend regime gate for floor paths — REJECTED
-- 600 uptrend floor trades are 63.7% WR, +2.15% avg — comparable to system overall.
-- Study: `study_floor_uptrend_gate.py`.
-
-### [ENTRY] Positive PSZ gate for CTS-BT-floor-lift — REJECTED
-- Study: `study_lift_psz_gate.py`.
-
-### [EXIT] Time stop for floor paths — REJECTED
-- Study: `study_floor_time_stop.py`. Every cap hurts.
-
-### [ENTRY] PSZ_V gate on floor and BT-cross entries — REJECTED
-- 71.2% of floor entries have psz_v <= 0 at signal. Gate counterproductive.
-
-### [ENTRY] PSZv-Flat structural floor-hit rate — INVESTIGATION NEEDED
-- Study: `scripts/study_floor_hit_conditions.py` (NIFTY 500).
-- PSZv-Flat has ~38–42% floor-hit rate in test **regardless of CWVAP distance**.
-- Even entries above CWVAP fail at 28–30%. CWVAP guard ineffective.
-- Regime-independent: 30–39% floor-hit rate across all regimes.
-- Generates most trades (2109 train / 1238 test) but 472 test floor-hits.
-- Consider: tighter PSZ/PSZv thresholds, regime gate, or disabling path.
-
-### [ENTRY] PSZ Bend structural floor-hit rate — INVESTIGATION NEEDED
-- Study: `scripts/study_floor_hit_conditions.py` (NIFTY 500).
-- PSZ Bend has 41–47% floor-hit rate in test for `cwvap_dist < 0%`.
-- Only drops to 15% when `cwvap_dist > 0%` — most entries are below CWVAP.
-- Regime-independent: 36–47% floor-hit rate across all regimes (worst in uptrend: 46.7%).
-- Smallest volume (574 train / 364 test) but highest concentration of failures.
-
-### [ENTRY] CTS-Floor-Leave CWVAP distance guard — PENDING
-- Study: `scripts/study_floor_hit_conditions.py` (NIFTY 500).
-- CTS-Floor-Leave at `cwvap_dist < −10%` has 67.6% floor-hit rate in test;
-  50.3% at −10% to −5%. Clear monotonic gradient.
-- Proposed guard: reject CTS-Floor-Leave when `cwvap_dist < −5%`.
-- BT-Cross unaffected by CWVAP distance (previously studied).
+### [ENTRY] CTS Direction Gate (Sideways/Falling) — ADOPTED (2026-03-26)
+- Problem: "Floor Hit" trades often occur when CTS is stagnant at the floor (Sideways) or still descending (Falling).
+- Study: `scripts/extract_floor_hits.py` (NIFTY 500) showed `Sideways` entries have **-9.07%** avg PnL.
+- Solution: Reject entries if `cts_direction` is `SIDEWAYS`, `FALLING`, or `STEEP_FALLING`.
+- Result: Prevented **226 trades** in NIFTY 500 test set (~16.5% reduction in floor hits).
+- Impact: Nearly **doubled** the Net Return per trade in walk-forward Test (+0.12% → +0.23%).
+- Implementation: Configurable via `cts_direction_gate_enabled`.

@@ -69,3 +69,14 @@ scripts/study_pszv_flat_lookback_results.txt
 scripts/verify_st_exit_v2.py
 floor_hit_study_all_trades.csv
 floor_hit_trades.csv
+stats_after.txt
+stats_before.txt
+test_floor_leave.csv
+floor_leave_trades.csv
+floor_leave_trades_fine_tuned.csv
+floor_leave_trades_post_guards.csv
+floor_leave_trades_raw.csv
+floor_leave_trades_v3.csv
+floor_leave_trades_v4_signal_data.csv
+floor_leave_trades_v4.csv
+ stats_after_floor_leave_guards.txt

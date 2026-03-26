@@ -15,10 +15,7 @@ from src.trading.signals.enums import ExitReason, EntryTag
 
 DB_PATH = Path(__file__).resolve().parent.parent / "liquidity_monitor.db"
 
-TRAIN_START = "2019-01-01"
-TRAIN_END = "2023-12-31"
-TEST_START = "2024-01-01"
-TEST_END = "2026-03-15"
+TEST_END = "2026-03-26"
 
 def get_watchlist_symbols(name: str) -> list[str]:
     db = sqlite3.connect(str(DB_PATH))
@@ -65,20 +62,23 @@ def simulate_trades(
             open_price = row.get("open", np.nan)
             exit_price = open_price if not np.isnan(open_price) else close
             
-            # Filter for CTS hit floor
-            if pending_exit_reason == ExitReason.FLOOR_HIT or str(pending_exit_reason) == "CTS hit floor":
+            # Filter for CTS-Floor-Leave entries
+            if trade.entry_tag == EntryTag.CTS_FLOOR_LEAVE.value:
                 extracted_trades.append({
                     "symbol": ticker,
                     "entry_type": trade.entry_tag,
+                    "signal_date": getattr(trade, "signal_date", ""),
                     "entry_date": trade.entry_date,
                     "exit_date": str(row.get("date", ""))[:10],
                     "pnl": round((exit_price / trade.entry_price - 1) * 100, 2),
-                    "cwvap_dist": round(trade.entry_cwvap_dist, 4),
+                    "signal_cwvap_dist": round(getattr(trade, "signal_cwvap_dist", np.nan), 4),
+                    "entry_cwvap_dist": round(trade.entry_cwvap_dist, 4),
                     "cts_direction": getattr(trade, "entry_cts_direction", ""),
                     "cts_is_steep": getattr(trade, "entry_cts_is_steep", False),
-                    "cts_at_entry": round(getattr(trade, "entry_cts", np.nan), 4),
-                    "psz_at_entry": round(getattr(trade, "entry_psz", np.nan), 4),
-                    "pszv_at_entry": round(getattr(trade, "entry_pszv", np.nan), 6)
+                    "signal_cts": round(getattr(trade, "signal_cts", np.nan), 4),
+                    "signal_psz": round(getattr(trade, "signal_psz", np.nan), 4),
+                    "signal_pszv": round(getattr(trade, "signal_pszv", np.nan), 6),
+                    "exit_reason": str(pending_exit_reason)
                 })
             
             in_trade = False
@@ -102,7 +102,7 @@ def simulate_trades(
             sig = pending_signal
             pending_signal = None
             cwvap_at_entry = row.get("cwvap", np.nan)
-            cwvap_dist = ((close - cwvap_at_entry) / cwvap_at_entry * 100.0) if not np.isnan(cwvap_at_entry) else np.nan
+            entry_cwvap_dist = ((close - cwvap_at_entry) / cwvap_at_entry * 100.0) if not np.isnan(cwvap_at_entry) else np.nan
             
             # Create a minimal Trade object for the signal logic
             trade = Trade(
@@ -112,15 +112,17 @@ def simulate_trades(
                 entry_idx=i,
                 atr_at_entry=row.get("atr_20", 1.0),
                 soft_filters_passed=sig.get("soft_count", 0),
-                entry_tag=sig.get("details", {}).get("entry_tag", ""),
+                entry_tag=sig.get("details", {}).get("entry_tag", EntryTag.PSZ).value,
             )
-            # Add custom attribute for extraction
-            trade.entry_cwvap_dist = cwvap_dist
+            # Add custom attributes for extraction
+            trade.signal_date = sig.get("date", "")
+            trade.signal_cwvap_dist = sig.get("dist", np.nan)
+            trade.entry_cwvap_dist = entry_cwvap_dist
             trade.entry_cts_direction = sig.get("cts_direction", "")
             trade.entry_cts_is_steep = sig.get("cts_is_steep", False)
-            trade.entry_cts = sig.get("cts", np.nan)
-            trade.entry_psz = sig.get("psz", np.nan)
-            trade.entry_pszv = sig.get("psz_v", np.nan)
+            trade.signal_cts = sig.get("cts", np.nan)
+            trade.signal_psz = sig.get("psz", np.nan)
+            trade.signal_pszv = sig.get("psz_v", np.nan)
             
             peak_close = close
             delivery_bad_count = 0
@@ -129,7 +131,14 @@ def simulate_trades(
         else:
             qualifies, soft_count, fdetails = signal.check_entry(row, prev, entry_cfg, records, i)
             if qualifies:
+                # Capture Signal Bar Distance correctly
+                s_cwvap = row.get("cwvap", np.nan)
+                s_close = row.get("close", np.nan)
+                s_dist = (s_close - s_cwvap) / s_cwvap * 100.0 if not np.isnan(s_cwvap) and s_cwvap > 0 else np.nan
+
                 pending_signal = {
+                    "date": str(row.get("date", ""))[:10],
+                    "dist": s_dist,
                     "soft_count": soft_count, 
                     "details": fdetails,
                     "cts_direction": row.get("cts_direction", ""),
@@ -142,12 +151,13 @@ def simulate_trades(
     return extracted_trades
 
 def main():
-    parser = argparse.ArgumentParser(description="Extract 'CTS hit floor' trades")
+    parser = argparse.ArgumentParser(description="Extract 'CTS-Floor-Leave' trades")
     parser.add_argument("--watchlist", default="NIFTY 500")
+    parser.add_argument("--output", default="floor_leave_trades.csv")
     args = parser.parse_args()
 
     symbols = get_watchlist_symbols(args.watchlist)
-    print(f"Extracting 'CTS hit floor' trades for {args.watchlist} ({len(symbols)} symbols)")
+    print(f"Extracting 'CTS-Floor-Leave' trades for {args.watchlist} ({len(symbols)} symbols)")
     
     entry_cfg = SavgolCTSEntryConfig()
     exit_cfg = SavgolCTSExitConfig()
@@ -155,20 +165,13 @@ def main():
 
     all_extracted_trades = []
 
-    # Process all symbols (combining Train and Test periods for a full extract)
-    # The user request mentioned Train (2019-2023) and Test (2024-2026).
-    # I'll just run from 2018-01-01 to ensure enough lookback for start of 2019.
-    
     for i, sym in enumerate(symbols, 1):
         print(f"  [{i}/{len(symbols)}] {sym}...", end=" ", flush=True)
         try:
-            # We run from TRAIN_START but load some extra history
             engine = DivergenceEngine(sym, start_date="2018-06-01", end_date=TEST_END)
             result = engine.run()
             trades = simulate_trades(sym, result.ledger, entry_cfg, exit_cfg, signal)
             
-            # Filter for those actually within the requested TRAIN/TEST periods if needed
-            # but usually it's better to just give all found in that range.
             all_extracted_trades.extend(trades)
             print(f"{len(trades)} matches")
         except Exception as e:
@@ -176,15 +179,18 @@ def main():
 
     if all_extracted_trades:
         df_out = pd.DataFrame(all_extracted_trades)
-        output_file = "floor_hit_trades.csv"
-        df_out.to_csv(output_file, index=False)
-        print(f"\nSaved {len(all_extracted_trades)} trades to {output_file}")
+        df_out.to_csv(args.output, index=False)
+        print(f"\nSaved {len(all_extracted_trades)} trades to {args.output}")
         
         # Simple summary
         avg_pnl = df_out["pnl"].mean()
         print(f"Average P&L for these trades: {avg_pnl:.2f}%")
+        
+        # Exit reason breakdown
+        print("\nExit Reason Breakdown:")
+        print(df_out["exit_reason"].value_counts())
     else:
-        print("\nNo 'CTS hit floor' trades found.")
+        print("\nNo 'CTS-Floor-Leave' trades found.")
 
 if __name__ == "__main__":
     main()

@@ -75,6 +75,13 @@ class SavgolCTSEntryConfig(BaseEntryConfig):
         ExitReason.FLOOR_HIT,
         ExitReason.BT_HIT
     )
+    # Vertical Jump Guard: Reject if CTS jumps too far from floor (Cliff is at -0.6).
+    floor_leave_cts_max: float = -0.6
+    # Conviction Gate: Required absolute PSZV for standard entries.
+    floor_leave_pszv_min: float = 0.05
+    # Signal-Day Trap Floor: Hard rejection for anything deeper than this.
+    floor_leave_cwvap_trap_hi: float = -5.0
+    cts_direction_gate_enabled: bool = True
     
 
 @dataclass
@@ -163,6 +170,9 @@ class SavgolCTSSignal(SignalInterface):
         # Cross-trade state for cooldowns
         self._last_exit_idx: int = -1
         self._last_exit_reason: ExitReason | str = ""
+        # Import TrendDirection here to avoid circular imports if any
+        from src.divergence_engine.analysis.models import TrendDirection
+        self._TrendDirection = TrendDirection
 
     def _compute_intensity(
         self, cts: float, coh: float, pdd: float, regime: str, tag: EntryTag,
@@ -322,14 +332,27 @@ class SavgolCTSSignal(SignalInterface):
         if not (prev_cts <= floor and cts > floor):
             return False, 0, {"reason": "CTS not leaving floor"}
 
-        # CWVAP distance guard: reject if price is too far below CWVAP
-        if cfg.floor_leave_cwvap_max_dist < 0.0:
-            cwvap = row.get("cwvap", np.nan)
-            close = row.get("close", np.nan)
-            if not np.isnan(cwvap) and not np.isnan(close) and cwvap > 0:
-                cwvap_dist_pct = (close - cwvap) / cwvap * 100.0
-                if cwvap_dist_pct < cfg.floor_leave_cwvap_max_dist:
-                    return False, 0, {"reason": f"CWVAP dist {cwvap_dist_pct:.1f}% < {cfg.floor_leave_cwvap_max_dist:.1f}%"}
+        # 1. Data Validation Gate
+        cwvap = row.get("cwvap", np.nan)
+        close = row.get("close", np.nan)
+        psz_v = row.get("psz_v", np.nan)
+        if np.isnan(cwvap) or np.isnan(close) or np.isnan(psz_v) or cwvap <= 0:
+            return False, 0, {"reason": "Insufficient data"}
+
+        # 2. Signal-Day Trap Floor: Hard rejection for entries deeper than -5% 
+        dist_pct = ((close - cwvap) / cwvap) * 100.0
+        if dist_pct <= cfg.floor_leave_cwvap_trap_hi:
+            return False, 0, {"reason": f"Signal-Day Trap: {dist_pct:.1f}%"}
+
+        # 3. Vertical Jump Ceiling: Reject spikes already in exhaustion cliff
+        if cts > cfg.floor_leave_cts_max:
+            return False, 0, {"reason": f"Vertical Jump Ceiling: CTS {cts:.3f}"}
+
+        # 4. Conviction Gate: Reject "Dead Momentum" signals (ABS(PSZV) < 0.05)
+        if abs(psz_v) < cfg.floor_leave_pszv_min:
+            return False, 0, {"reason": f"Dead Momentum: PSZV {psz_v:.4f}"}
+
+        return True, 0, {"entry_tag": EntryTag.CTS_FLOOR_LEAVE}
 
         coh    = row.get("coherence", np.nan)
         pdd    = row.get("pdd_120", np.nan)
@@ -542,6 +565,12 @@ class SavgolCTSSignal(SignalInterface):
         cts = row.get("cts", np.nan)
         if np.isnan(cts):
             return False, 0, {"reason": "Missing CTS data"}
+
+        # CTS Direction Gate: Filter out Sideways/Falling entries for all paths
+        if cfg.cts_direction_gate_enabled:
+            direction = row.get("cts_direction")
+            if direction in (self._TrendDirection.SIDEWAYS, self._TrendDirection.FALLING, self._TrendDirection.STEEP_FALLING):
+                return False, 0, {"reason": f"CTS Direction Gate: {direction}", "direction": direction}
 
         # Path 0: Floor Touch — enter while CTS+BT pinned at floor
         passed, intensity, meta = self._check_floor_touch(row, prev_row, cfg)

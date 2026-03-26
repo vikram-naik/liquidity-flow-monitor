@@ -10,6 +10,8 @@ class TrendDirection(str, Enum):
     RISING = "Rising"
     FALLING = "Falling"
     SIDEWAYS = "Sideways"
+    STEEP_RISING = "Steep Rising"
+    STEEP_FALLING = "Steep Falling"
 
 
 class BendType(str, Enum):
@@ -62,5 +64,6 @@ class TrendAnalysis:
     direction: TrendDirection
     bend_type: BendType
     trend_strength: float  # [0.0, 1.0]
+    is_steep: bool
     thresholds: EmpiricalThresholds
     extrema: ExtremaAnalysis
