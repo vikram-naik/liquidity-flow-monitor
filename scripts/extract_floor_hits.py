@@ -101,9 +101,7 @@ def simulate_trades(
         elif pending_signal is not None:
             sig = pending_signal
             pending_signal = None
-            cwvap_at_entry = row.get("cwvap", np.nan)
-            cwvap_dist = ((close - cwvap_at_entry) / cwvap_at_entry * 100.0) if not np.isnan(cwvap_at_entry) else np.nan
-            
+
             # Create a minimal Trade object for the signal logic
             trade = Trade(
                 symbol=ticker,
@@ -114,8 +112,8 @@ def simulate_trades(
                 soft_filters_passed=sig.get("soft_count", 0),
                 entry_tag=sig.get("details", {}).get("entry_tag", ""),
             )
-            # Add custom attribute for extraction
-            trade.entry_cwvap_dist = cwvap_dist
+            # Use signal-day (t) CWVAP distance, not entry-day (t+1)
+            trade.entry_cwvap_dist = sig.get("cwvap_dist", np.nan)
             trade.entry_cts_direction = sig.get("cts_direction", "")
             trade.entry_cts_is_steep = sig.get("cts_is_steep", False)
             trade.entry_cts = sig.get("cts", np.nan)
@@ -129,14 +127,23 @@ def simulate_trades(
         else:
             qualifies, soft_count, fdetails = signal.check_entry(row, prev, entry_cfg, records, i)
             if qualifies:
+                # Capture signal-day (t) features — trade opens next bar (t+1)
+                sig_close = row.get("close", np.nan)
+                sig_cwvap = row.get("cwvap", np.nan)
+                sig_cwvap_dist = (
+                    ((sig_close - sig_cwvap) / sig_cwvap * 100.0)
+                    if not np.isnan(sig_cwvap) and not np.isnan(sig_close) and sig_cwvap > 0
+                    else np.nan
+                )
                 pending_signal = {
-                    "soft_count": soft_count, 
+                    "soft_count": soft_count,
                     "details": fdetails,
                     "cts_direction": row.get("cts_direction", ""),
                     "cts_is_steep": row.get("cts_is_steep", False),
                     "cts": row.get("cts", np.nan),
                     "psz": row.get("price_slope_z", np.nan),
-                    "psz_v": row.get("psz_v", np.nan)
+                    "psz_v": row.get("psz_v", np.nan),
+                    "cwvap_dist": sig_cwvap_dist,
                 }
 
     return extracted_trades

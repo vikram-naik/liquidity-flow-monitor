@@ -114,7 +114,7 @@
                     if (el) el.innerHTML = '<div id="leg' + id.slice(1) + '" class="legend"></div>';
                 });
 
-                window.currentTrendAnalysis = data.latest ? data.latest.cts_trend_analysis : null;
+
 
                 chartInstances = buildCharts(data);
                 refreshUI(); // Ensure legends and sidebar are populated immediately
@@ -623,30 +623,7 @@
                 return "<tr><td>Exit Signal</td><td class='val' style='color:#ff1744; font-size:11px'>" + l.exit_reason + "</td></tr>";
             })();
 
-        // Add static trend analysis data if available
-        if (window.currentTrendAnalysis) {
-            var ta = window.currentTrendAnalysis;
-            var taHtml = "<tr><td colspan='2' style='text-align:center; padding-top:10px; border-bottom:1px solid #30363d; font-weight:bold; color:#c9d1d9'>CTS Trend Analysis</td></tr>";
 
-            var dirColor = ta.direction === "TrendDirection.RISING" ? "#3fb950" : (ta.direction === "TrendDirection.FALLING" ? "#ef5350" : "#8b949e");
-            var dirStr = ta.direction ? ta.direction.replace('TrendDirection.', '') : '—';
-            taHtml += "<tr><td>Direction</td><td class='val' style='color:" + dirColor + "'>" + dirStr + "</td></tr>";
-
-            var bendStr = ta.bend_type ? ta.bend_type.replace('BendType.', '') : '—';
-            taHtml += "<tr><td>Bend Type</td><td class='val'>" + bendStr + "</td></tr>";
-            taHtml += "<tr><td>Strength</td><td class='val'>" + fmt(ta.trend_strength, 2) + "</td></tr>";
-
-            if (ta.extrema) {
-                if (ta.extrema.nearest_peak) {
-                    taHtml += "<tr><td>Nearest Peak</td><td class='val'>" + ta.extrema.nearest_peak.distance_to_latest + " bars ago</td></tr>";
-                }
-                if (ta.extrema.nearest_trough) {
-                    taHtml += "<tr><td>Nearest Trough</td><td class='val'>" + ta.extrema.nearest_trough.distance_to_latest + " bars ago</td></tr>";
-                }
-            }
-
-            document.getElementById("state-table").innerHTML += taHtml;
-        }
 
         // Clear any scoring breakdown area
         var diagEl = document.getElementById("gate-diagnostics");

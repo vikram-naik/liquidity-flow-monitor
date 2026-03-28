@@ -30,7 +30,7 @@ from src.divergence_engine.cwc import CrossWindowCoherence
 from src.divergence_engine.cwvap import CompositeVWAP
 from src.divergence_engine.dvl_ledger import DVLLedger
 from src.divergence_engine.mcs import MoneyCompositeScore
-from src.divergence_engine.analysis import compute_trend_participation, SavitzkyGolayAnalyzer, TrendAnalysis
+from src.divergence_engine.analysis import compute_trend_participation
 from src.divergence_engine.regime import classify_market_regime
 from src.divergence_engine.utils import load_symbol_data, validate_dataframe, WINDOWS
 from src.divergence_engine.aggregator import resample_ohlc_delivery, VALID_MODES
@@ -50,7 +50,7 @@ _DROP_COLS = [
     # Base calc intermediates (feed ATR / MCS only)
     "true_high", "true_low", "tr", "tp", "mfm_tp",
     # Per-window VWAP/POC/VA (feed composites only)
-    "dvwap_10", "dvwap_30", "dvwap_60", "dvwap_120",
+    # dvwap_10..120 retained for dvwap_bear_stack gate (savgol_cts.py)
     "poc_10", "poc_30", "poc_60", "poc_120",
     "va_high_10", "va_high_30", "va_high_60", "va_high_120",
     "va_low_10", "va_low_30", "va_low_60", "va_low_120",
@@ -85,7 +85,7 @@ class EngineResult:
     ticker: str
     ledger: pd.DataFrame
     states: pd.DataFrame
-    cts_trend_analysis: Optional[TrendAnalysis] = None
+
     _start_date: str = ""
     _end_date: str = ""
 
@@ -129,10 +129,6 @@ class EngineResult:
             "regime": row.get("regime", "notrend"),
         }
         
-        # Merge trend analysis into latest output
-        if self.cts_trend_analysis:
-            import dataclasses
-            latest_dict["cts_trend_analysis"] = dataclasses.asdict(self.cts_trend_analysis)
         
         return latest_dict
 
@@ -208,13 +204,7 @@ class DivergenceEngine:
             if cached_df is not None:
                 logger.info("Engine cache HIT for %s", cache_key)
                 
-                # Module 7 — CTS Trend Analysis (on cache hit)
-                analyzer = SavitzkyGolayAnalyzer()
-                trend_analysis = None
-                if "cts" in cached_df.columns:
-                    trend_analysis = analyzer.analyze(cached_df["cts"])
-                    
-                return self._build_result(cached_df, trend_analysis)
+                return self._build_result(cached_df)
 
         # --- Full pipeline ---
         if self._df is not None:
@@ -244,6 +234,14 @@ class DivergenceEngine:
         cwvap = CompositeVWAP(va_pct=_VA_PCT, cts_strategy="causal_savgol")
         df = cwvap.compute_all(df)
 
+        # Derived: DVWAP bear stack flag (full bearish alignment across anchors)
+        if all(c in df.columns for c in ("dvwap_10", "dvwap_30", "dvwap_60", "dvwap_120")):
+            df["dvwap_bear_stack"] = (
+                (df["dvwap_10"] < df["dvwap_30"])
+                & (df["dvwap_30"] < df["dvwap_60"])
+                & (df["dvwap_60"] < df["dvwap_120"])
+            )
+
         # Module 4 — Cross-Window Coherence
         cwc = CrossWindowCoherence()
         df = cwc.compute_all(df)
@@ -255,19 +253,6 @@ class DivergenceEngine:
         # Module 6 — Trend Participation Analysis
         df = compute_trend_participation(df)
 
-        # Module 7 — CTS Trend Analysis
-        analyzer = SavitzkyGolayAnalyzer()
-        trend_analysis = None
-        if "cts" in df.columns:
-            # 7a. Comprehensive analysis for the entire ledger (causal)
-            trend_df = analyzer.analyze_series_full(df["cts"])
-            df["cts_direction"] = trend_df["direction"]
-            df["cts_bend"] = trend_df["bend"]
-            df["cts_strength"] = trend_df["strength"]
-            df["cts_is_steep"] = trend_df["is_steep"]
-
-            # 7b. Detailed summary for the latest bar
-            trend_analysis = analyzer.analyze(df["cts"])
 
         # --- Drop intermediate columns ---
         df = df.drop(columns=[c for c in _DROP_COLS if c in df.columns])
@@ -277,13 +262,13 @@ class DivergenceEngine:
             cache.set(cache_key, df, ttl=_RESULT_CACHE_TTL)
             logger.info("Engine cache SET for %s", cache_key)
 
-        return self._build_result(df, trend_analysis)
+        return self._build_result(df)
 
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _build_result(self, df: pd.DataFrame, trend_analysis: Optional[TrendAnalysis] = None) -> EngineResult:
+    def _build_result(self, df: pd.DataFrame) -> EngineResult:
         """Build an EngineResult from a computed ledger DataFrame."""
         state_cols = ["date", "regime"]
         states_df = df[[c for c in state_cols if c in df.columns]].copy()
@@ -292,7 +277,7 @@ class DivergenceEngine:
             ticker=self.ticker,
             ledger=df,
             states=states_df,
-            cts_trend_analysis=trend_analysis,
+
             _start_date=self._start_date or "",
             _end_date=self._end_date or "",
         )

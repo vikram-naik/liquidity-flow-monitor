@@ -3,11 +3,13 @@ from enum import Enum
 class EntryTag(str, Enum):
     """Strongly typed entry tags with presentation-friendly strings."""
     CTS_FLOOR_LEAVE = "SavgolCTS CTS-Floor-Leave"
-    PSZ = "SavgolCTS PSZ Bend"
     BT_CROSS = "SavgolCTS BT-Cross"
-    PSZV_FLAT = "SavgolCTS PSZv-Flat"
     CTS_FLOOR_TOUCH = "SavgolCTS Floor-Touch"
-    CTS_BT_FLOOR = "SavgolCTS CTS-BT-Floor" # Legacy
+    CTS_BT_FLOOR = "SavgolCTS CTS-BT-Floor"  # Legacy
+
+    # Deprecated — retained for historical trade log compatibility.
+    PSZ = "SavgolCTS PSZ Bend"               # Entry path removed (2026-03-28)
+    PSZV_FLAT = "SavgolCTS PSZv-Flat"         # Entry path removed (2026-03-28)
     
     # Generic
     UNKNOWN = "Unknown Entry"
