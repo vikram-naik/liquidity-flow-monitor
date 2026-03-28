@@ -1,7 +1,7 @@
 # SavgolCTS Signal — Entry / Exit Flow
 
 **Package**: `src/trading/signals/savgol_cts/`
-**Last updated**: 2026-03-28
+**Last updated**: 2026-03-29
 
 ## Package Structure
 
@@ -16,9 +16,11 @@ savgol_cts/
     floor_touch.py     # Path 0: CTS+BT pinned at floor, PSZ deeply oversold
     floor_leave.py     # Path 1: CTS rises above floor after being pinned
     bt_cross.py        # Path 2: CTS crosses BT from below in oversold zone
+    cwvap_reclaim.py   # Path 3: cts_slope crosses zero, close > CWVAP, PSZ > 0
   exits/
     floor.py           # Floor/Floor-Leave/Floor-Touch exit path
     bt_cross.py        # BT-Cross exit path + PSZ stall helper
+    cwvap_reclaim.py   # CWVAP Reclaim exit: slope cycle + CWVAP lost
     psz_glide.py       # Shared PSZ glide exit (5-bar mean crossover)
     cwvap_guard.py     # CWVAP suppression / release logic (post-exit)
 ```
@@ -27,7 +29,7 @@ savgol_cts/
 
 ## Entry Flow
 
-Three entry paths evaluated in priority order.  First match wins.
+Four entry paths evaluated in priority order.  First match wins.
 
 ```
 check_entry(row, prev_row, cfg, records, idx)       [signal.py]
@@ -67,6 +69,13 @@ check_entry(row, prev_row, cfg, records, idx)       [signal.py]
   |     |-- [Guard] DVWAP bear stack gate
   |     +-- PASS --> EntryTag.BT_CROSS
   |
+  |-- PATH 3: CWVAP Reclaim                          [entries/cwvap_reclaim.py]
+  |     |-- [Gate]  cfg.cwvap_reclaim.enabled?
+  |     |-- [Guard] cts_slope crosses zero from below (prev <= 0, now > 0)
+  |     |-- [Guard] close > CWVAP (price above institutional average)
+  |     |-- [Guard] PSZ > cfg.cwvap_reclaim.psz_min (0.0)
+  |     +-- PASS --> EntryTag.CWVAP_RECLAIM
+  |
   +-- No path matched --> REJECT (last meta from final path)
 ```
 
@@ -100,9 +109,13 @@ check_exit(row, prev_row, trade, ...)                [signal.py]
   |-- tag == BT_CROSS
   |     --> exit_bt_cross()                          [exits/bt_cross.py]
   |
+  |-- tag == CWVAP_RECLAIM
+  |     --> exit_cwvap_reclaim()                     [exits/cwvap_reclaim.py]
+  |     (bypasses CWVAP guard — exit is CWVAP-based)
+  |
   |-- [Optional] ST exit (cfg.st_exit_enabled, default False)
   |
-  +-- apply_cwvap_guard()                            [exits/cwvap_guard.py]
+  +-- apply_cwvap_guard()  (skipped for CWVAP_RECLAIM)  [exits/cwvap_guard.py]
 ```
 
 ### State Bitfield (`delivery_bad_count` repurposed — `state.py`)
@@ -113,6 +126,7 @@ bit 1 (& 0x02): psz_was_above     — PSZ crossed above glide threshold
 bit 2 (& 0x04): cts_above_bt      — CTS has been above BT during this trade
 bit 3 (& 0x08): exit_suppressed   — An indicator exit was suppressed by CWVAP Rule A
 bit 4 (& 0x10): suppressed_this_bar — Exit was suppressed on this specific bar
+bit 5 (& 0x20): slope_went_negative — CWVAP Reclaim: cts_slope went <= 0 post-entry
 ```
 
 ---
@@ -144,6 +158,28 @@ exit_bt_cross(row, prev_row, trade, ...)
   |-- EXIT: BT hit — bt above floor_zone AND cts <= bt
   +-- None --> HOLD
 ```
+
+### Exit: CWVAP Reclaim path (`exits/cwvap_reclaim.py`)
+
+Tag: `CWVAP_RECLAIM`
+
+Two exit conditions, whichever fires first. Bypasses the CWVAP guard entirely
+(exit logic is itself CWVAP-based).
+
+```
+exit_cwvap_reclaim(row, prev_row, trade, ...)
+  |-- Track slope_went_negative (cts_slope <= 0 post-entry)
+  |-- EXIT: Slope cycle — slope_went_negative AND prev_slope <= 0 AND slope > 0
+  |         (cts_slope turns positive again after going negative = full cycle)
+  |         --> ExitReason.SLOPE_CYCLE
+  |-- EXIT: CWVAP lost — close < CWVAP
+  |         --> ExitReason.CWVAP_LOST
+  +-- None --> HOLD
+```
+
+Empirically (NIFTY 500 walk-forward, study_cwvap_reclaim_velocity.py):
+- Slope fires first: 75.5% WR, +5.45% avg (winners ride the full cycle).
+- CWVAP fires first: 5.8% WR, -4.55% avg (losers cut early).
 
 ### Exit: PSZ Glide (`exits/psz_glide.py`)
 
@@ -216,6 +252,13 @@ apply_cwvap_guard(row, trade, res, state, cwvap_values, cfg, records, idx)
 | `flat_gate_threshold` | 0.02 | |psz_v| below this = flat |
 | `flat_gate_lookback` | 3 | N consecutive flat bars to trigger gate |
 
+**Path 3 — CWVAP Reclaim (`cfg.cwvap_reclaim`):**
+
+| Parameter | Default | Description |
+|---|---|---|
+| `enabled` | True | Enable/disable path |
+| `psz_min` | 0.0 | Minimum PSZ at entry (momentum confirmation) |
+
 ### Exit (`SavgolCTSExitConfig` — `config.py`)
 
 **Shared parameters:**
@@ -236,6 +279,10 @@ apply_cwvap_guard(row, trade, res, state, cwvap_values, cfg, records, idx)
 | `floor_tolerance` | 0.10 | Floor zone protection width |
 | `psz_stall_enabled` | False | Early exit when PSZ stalls |
 | `psz_stall_check_bar` | 2 | Bar to check for stall |
+
+**CWVAP Reclaim exit (`cfg.cwvap_reclaim`):**
+
+No configurable parameters. Exit fires on slope cycle complete or CWVAP lost.
 
 **CWVAP Guard (`cfg.cwvap_guard`):**
 

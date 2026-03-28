@@ -26,6 +26,10 @@ def check_floor_leave(
     - CTS not jumped too far (vertical jump guard).
     - |PSZV| above conviction minimum.
     """
+
+    if not cfg.floor_leave.enabled:
+        return False, 0, {"reason": "Floor Leave disabled"}
+
     cts = row.get("cts", np.nan)
     prev_cts = prev_row.get("cts", np.nan)
     if np.isnan(cts) or np.isnan(prev_cts):
@@ -58,6 +62,10 @@ def check_floor_leave(
     # 4. Conviction Gate: reject "Dead Momentum" signals (|PSZV| too low)
     if abs(psz_v) < cfg.floor_leave.pszv_min:
         return False, 0, {"reason": f"Dead Momentum: PSZV {psz_v:.4f}"}
+
+    # 5. Direction Gate: reject entries where momentum is still falling
+    if cfg.floor_leave.pszv_direction_gate and psz_v <= 0:
+        return False, 0, {"reason": f"Falling Momentum: PSZV {psz_v:.4f}"}
 
     coh = row.get("coherence", np.nan)
     pdd = row.get("pdd_120", np.nan)

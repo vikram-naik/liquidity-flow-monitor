@@ -324,10 +324,12 @@
                     autoScale: false,
                     scaleMargins: { top: 0, bottom: 0 }
                 });
-                try {
-                    pScale.setPriceRange({ min: -1.2, max: 1.2 });
-                } catch (e) {
-                    console.error("Failed to set price range for CTS", e);
+                if (pScale.setPriceRange) {
+                    try {
+                        pScale.setPriceRange({ min: -1.2, max: 1.2 });
+                    } catch (e) {
+                        console.error("Failed to set price range for CTS", e);
+                    }
                 }
 
                 var sCts = c.addSeries(LC.LineSeries, { color: "#4fc3f7", lineWidth: 2, lastValueVisible: false, priceLineVisible: false });
@@ -678,9 +680,14 @@
                 if (addBtn) addBtn.disabled = !self.currentWlId;
                 self.fetchItems();
             });
-            document.getElementById("wl-add").onclick = () => { var name = prompt("Enter Watchlist Name:"); if (name) this.api("/de/api/watchlists", "POST", { name }).then(() => this.fetchLists()).catch(err => alert("Error: " + err.message)); };
-            document.getElementById("wl-rename").onclick = () => { if (!this.currentWlId) return; var name = prompt("Enter New Name:"); if (name) this.api("/de/api/watchlists/" + this.currentWlId, "PATCH", { name }).then(() => { if (this.currentWlId == this.defaultWlId) localStorage.removeItem("de_default_watchlist"); this.fetchLists(); }).catch(err => alert("Error: " + err.message)); };
-            document.getElementById("wl-delete").onclick = () => { if (!this.currentWlId || !confirm("Delete this watchlist?")) return; this.api("/de/api/watchlists/" + this.currentWlId, "DELETE").then(() => { if (this.currentWlId == this.defaultWlId) { this.defaultWlId = null; localStorage.removeItem("de_default_watchlist"); } this.currentWlId = null; this.fetchLists(); }).catch(err => alert("Error deleting watchlist: " + err.message)); };
+            var wlAdd = document.getElementById("wl-add");
+            if (wlAdd) wlAdd.onclick = () => { var name = prompt("Enter Watchlist Name:"); if (name) this.api("/de/api/watchlists", "POST", { name }).then(() => this.fetchLists()).catch(err => alert("Error: " + err.message)); };
+
+            var wlRename = document.getElementById("wl-rename");
+            if (wlRename) wlRename.onclick = () => { if (!this.currentWlId) return; var name = prompt("Enter New Name:"); if (name) this.api("/de/api/watchlists/" + this.currentWlId, "PATCH", { name }).then(() => { if (this.currentWlId == this.defaultWlId) localStorage.removeItem("de_default_watchlist"); this.fetchLists(true); }).catch(err => alert("Error: " + err.message)); };
+
+            var wlDelete = document.getElementById("wl-delete");
+            if (wlDelete) wlDelete.onclick = () => { if (!this.currentWlId || !confirm("Delete this watchlist?")) return; this.api("/de/api/watchlists/" + this.currentWlId, "DELETE").then(() => { if (this.currentWlId == this.defaultWlId) { this.defaultWlId = null; localStorage.removeItem("de_default_watchlist"); } this.currentWlId = null; this.fetchLists(); }).catch(err => alert("Error deleting watchlist: " + err.message)); };
 
             var btnDefault = document.getElementById("wl-set-default");
             if (btnDefault) {
@@ -758,11 +765,11 @@
                     self.api(`/de/api/watchlists/${self.currentWlId}/items`, "POST", { symbol: symbol }).then(res => {
                         if (res.status === "already_exists") alert(symbol + " is already in the watchlist.");
                         else self.fetchItems();
-                    });
+                    }).catch(err => alert("Error adding item: " + err.message));
                 });
             }
 
-            document.getElementById("wl-items").onclick = (e) => { var item = e.target.closest(".wl-item"); if (!item) return; var sym = item.dataset.sym; if (e.target.classList.contains("remove-btn")) { this.api(`/de/api/watchlists/${this.currentWlId}/items/${sym}`, "DELETE").then(() => this.fetchItems()); } else { loadSymbol(sym); } };
+            document.getElementById("wl-items").onclick = (e) => { var item = e.target.closest(".wl-item"); if (!item) return; var sym = item.dataset.sym; if (e.target.classList.contains("remove-btn")) { this.api(`/de/api/watchlists/${this.currentWlId}/items/${sym}`, "DELETE").then(() => this.fetchItems()).catch(err => alert("Error removing item: " + err.message)); } else { loadSymbol(sym); } };
         },
         api: function (url, method, body) {
             return fetch(url, { method, headers: { "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : null })
@@ -840,13 +847,13 @@
             });
         },
         handleAutoImport: function (indexName) {
-            this.api("/de/api/watchlists", "POST", { name: indexName }).then(res => {
-                var wlId = res.id;
-                this.api("/de/api/watchlists/import-index", "POST", { watchlist_id: wlId, index_name: indexName }).then(importRes => {
-                    this.currentWlId = wlId;
-                    this.fetchLists();
-                    document.getElementById("wl-import-dropdown").style.display = "none";
-                });
+            this.api("/de/api/watchlists/import-index", "POST", { watchlist_id: 0, index_name: indexName }).then(res => {
+                this.currentWlId = res.watchlist_id;
+                this.fetchLists(true);
+                document.getElementById("wl-import-dropdown").style.display = "none";
+            }).catch(err => {
+                alert("Import failed: " + err.message);
+                console.error("Import error:", err);
             });
         },
         fetchItems: function () { if (!this.currentWlId) return; fetch(`/de/api/watchlists/${this.currentWlId}/items`).then(r => r.json()).then(items => { this.currentItems = items; this.renderItems(); }); },
@@ -865,10 +872,13 @@
     var settingsOverlay = document.getElementById("settings-overlay");
     var currentPanelsConfig = [];
 
-    document.getElementById("open-settings").onclick = function () {
-        renderPanelsSettings();
-        settingsOverlay.classList.remove("hidden");
-    };
+    var btnOpenSettings = document.getElementById("open-settings");
+    if (btnOpenSettings) {
+        btnOpenSettings.onclick = function () {
+            renderPanelsSettings();
+            settingsOverlay.classList.remove("hidden");
+        };
+    }
 
     document.querySelectorAll(".settings-tab").forEach(function (btn) {
         btn.addEventListener("click", function () {
@@ -880,8 +890,11 @@
     });
 
     function closeSettings() { settingsOverlay.classList.add("hidden"); }
-    document.getElementById("settings-close").onclick = closeSettings;
-    document.getElementById("settings-cancel").onclick = closeSettings;
+    var btnCloseSettings = document.getElementById("settings-close");
+    if (btnCloseSettings) btnCloseSettings.onclick = closeSettings;
+
+    var btnCancelSettings = document.getElementById("settings-cancel");
+    if (btnCancelSettings) btnCancelSettings.onclick = closeSettings;
     settingsOverlay.addEventListener("click", function (e) { if (e.target === settingsOverlay) closeSettings(); });
 
     function renderPanelsSettings() {
@@ -947,26 +960,35 @@
         });
     }
 
-    document.getElementById("add-panel-btn").onclick = function () {
-        var val = document.getElementById("add-panel-select").value;
-        if (val) {
-            currentPanelsConfig.push(val);
-            updatePanelsUI();
-        }
-    };
+    var btnAddPanel = document.getElementById("add-panel-btn");
+    if (btnAddPanel) {
+        btnAddPanel.onclick = function () {
+            var valIdx = document.getElementById("add-panel-select").value;
+            if (valIdx) {
+                currentPanelsConfig.push(valIdx);
+                updatePanelsUI();
+            }
+        };
+    }
 
-    document.getElementById("settings-save").onclick = function () {
-        localStorage.setItem("de_panel_config", JSON.stringify(currentPanelsConfig));
-        closeSettings();
-        loadSymbol(symbol);
-    };
+    var btnSaveSettings = document.getElementById("settings-save");
+    if (btnSaveSettings) {
+        btnSaveSettings.onclick = function () {
+            localStorage.setItem("de_panel_config", JSON.stringify(currentPanelsConfig));
+            closeSettings();
+            loadSymbol(symbol);
+        };
+    }
 
-    document.getElementById("settings-reset").onclick = function () {
-        if (!confirm("Reset panels to defaults?")) return;
-        localStorage.removeItem("de_panel_config");
-        closeSettings();
-        loadSymbol(symbol);
-    };
+    var btnResetSettings = document.getElementById("settings-reset");
+    if (btnResetSettings) {
+        btnResetSettings.onclick = function () {
+            if (!confirm("Reset panels to defaults?")) return;
+            localStorage.removeItem("de_panel_config");
+            closeSettings();
+            loadSymbol(symbol);
+        };
+    }
 
     window.WatchlistManager = WatchlistManager;
 })();

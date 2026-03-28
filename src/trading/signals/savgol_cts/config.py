@@ -26,7 +26,7 @@ class FloorTouchEntryConfig:
     Floor-Leave.
     Empirically (NIFTY 500): 64.8% WR, +2.50% avg, >10% winner rate 30%.
     """
-    enabled: bool = True
+    enabled: bool = False
     psz_max: float = -0.25       # PSZ must be below this (deeply oversold)
 
 
@@ -40,8 +40,9 @@ class FloorLeaveEntryConfig:
     """
     cts_max: float = -0.6        # Vertical Jump Guard ceiling
     pszv_min: float = 0.05       # Conviction Gate: minimum |PSZV|
+    pszv_direction_gate: bool = True  # Require psz_v > 0 (momentum turning up)
     cwvap_trap_hi: float = -5.0  # Signal-Day Trap Floor (% below CWVAP)
-
+    enabled: bool = False
 
 
 @dataclass
@@ -52,12 +53,36 @@ class BtCrossEntryConfig:
     """
     enabled: bool = True
     oversold_threshold: float = -0.50
+    # Dead-cat bounce gate: reject when psz_v is strongly positive (price bouncing)
+    # but price is deep below CWVAP (institutional supply overhead).
+    # Empirically: 39% floor-hit rate, 32.7% WR in this combo.
+    dead_cat_gate_enabled: bool = True
+    dead_cat_pszv_min: float = 0.05    # psz_v above this = price bouncing
+    dead_cat_cwvap_max: float = -3.0   # cwvap_dist below this = deep under supply
     # Flat psz_v gate: reject when psz_v has been quiescent (straight-line
     # fall, no bend).  Study: scripts/study_pszv_flat_lookback.py.
     flat_gate_enabled: bool = True
     flat_gate_threshold: float = 0.02
     flat_gate_lookback: int = 3
 
+
+@dataclass
+class CwvapReclaimEntryConfig:
+    """Path 4: CWVAP Reclaim — cts_slope turns positive while close > CWVAP.
+
+    Entry fires when:
+    - cts_slope crosses zero from below (prev <= 0, now > 0)
+    - close > CWVAP (price has reclaimed institutional average)
+    - PSZ > psz_min (momentum confirmation)
+    """
+    enabled: bool = True
+    psz_min: float = 0.0  # minimum PSZ at entry
+
+
+@dataclass
+class CwvapReclaimExitConfig:
+    """CWVAP Reclaim exit: close drops below CWVAP."""
+    pass
 
 
 # ---------------------------------------------------------------------------
@@ -91,12 +116,14 @@ class SavgolCTSEntryConfig(BaseEntryConfig):
         ExitReason.SUPPRESSED_EXIT,
         ExitReason.FLOOR_HIT,
         ExitReason.BT_HIT,
+        ExitReason.BAR3_STOP,
     )
 
     # --- Per-path configs ---
     floor_touch: FloorTouchEntryConfig = field(default_factory=FloorTouchEntryConfig)
     floor_leave: FloorLeaveEntryConfig = field(default_factory=FloorLeaveEntryConfig)
     bt_cross: BtCrossEntryConfig = field(default_factory=BtCrossEntryConfig)
+    cwvap_reclaim: CwvapReclaimEntryConfig = field(default_factory=CwvapReclaimEntryConfig)
 
 
 # ---------------------------------------------------------------------------
@@ -109,6 +136,11 @@ class BtCrossExitConfig:
     floor_tolerance: float = 0.10    # floor zone protection width
     psz_stall_enabled: bool = False  # early exit when PSZ momentum stalls
     psz_stall_check_bar: int = 2     # bar at which to check for stall
+    # Bar-3 PnL stop: exit if trade PnL < threshold at exactly bar 3.
+    # Empirically (NIFTY 500): 81% save rate, +0.24x payoff improvement.
+    bar3_stop_enabled: bool = True
+    bar3_stop_bar: int = 3           # bar at which to check
+    bar3_stop_threshold: float = -1.0  # exit if PnL% below this
 
 
 @dataclass
@@ -119,8 +151,8 @@ class CwvapGuardConfig:
     suppressed.  When momentum fades or price drops below tolerance,
     the suppressed exit is released.
     """
-    tolerance_pct: float = 1.00  # allowable % dip below CWVAP
-    tolerance_bars: int = 3      # max bars below CWVAP within tolerance
+    tolerance_pct: float = 0.50  # allowable % dip below CWVAP
+    tolerance_bars: int = 1      # max bars below CWVAP within tolerance
 
 
 # ---------------------------------------------------------------------------
@@ -150,4 +182,5 @@ class SavgolCTSExitConfig(BaseExitConfig):
 
     # --- Per-path configs ---
     bt_cross: BtCrossExitConfig = field(default_factory=BtCrossExitConfig)
+    cwvap_reclaim: CwvapReclaimExitConfig = field(default_factory=CwvapReclaimExitConfig)
     cwvap_guard: CwvapGuardConfig = field(default_factory=CwvapGuardConfig)

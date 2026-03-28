@@ -1,7 +1,7 @@
-"""Extract trades that exited via 'CTS hit floor' using the centralized tag_signals() logic.
+"""Extract ALL Floor-Touch trades (winners and losers) with entry/exit features.
 
-Uses the same simulation as the UI (tag_signals in base.py) so results are
-always in sync with what gets visualized on the dashboard.
+Uses the same tag_signals() simulation as the UI / backtest.
+Purpose: analyze what differentiates winning vs losing Floor-Touch entries.
 """
 
 import sqlite3
@@ -38,22 +38,21 @@ def get_watchlist_symbols(name: str) -> list[str]:
     return symbols
 
 
-def extract_floor_hit_trades(
+def extract_floor_touch_trades(
     ticker: str, df: pd.DataFrame,
     signal, entry_cfg, exit_cfg,
 ) -> list[dict]:
-    """Extract floor-hit trades from a ledger using centralized tag_signals().
+    """Extract all Floor-Touch trades from a ledger.
 
     EOD-lag model: signal fires on bar i, trade executes at bar i+1.
-    All reported columns are from the signal day (bar i).
-    P&L is computed from the execution day (bar i+1) prices.
+    All reported entry columns are from the signal day (bar i).
     """
     tagged = signal.tag_signals(df, entry_cfg, exit_cfg)
     records = tagged.to_dict("records")
     n = len(records)
 
     trades = []
-    signal_idx: int | None = None  # index of the entry signal bar
+    signal_idx: int | None = None
 
     for i in range(n):
         row = records[i]
@@ -64,12 +63,13 @@ def extract_floor_hit_trades(
 
         # Detect exit signal bar
         if row.get("exit_signal") and signal_idx is not None:
-            exit_reason_raw = row.get("exit_reason", "")
-
-            # Filter: only keep FLOOR_HIT exits (enum comparison)
-            if exit_reason_raw != ExitReason.FLOOR_HIT:
+            # Filter: only Floor-Touch entries
+            entry_reason = str(records[signal_idx].get("entry_reason", ""))
+            if "Floor-Touch" not in entry_reason:
                 signal_idx = None
                 continue
+
+            exit_reason_raw = row.get("exit_reason", "")
 
             # EOD-lag: execution at signal_day + 1
             entry_exec_idx = signal_idx + 1
@@ -86,9 +86,8 @@ def extract_floor_hit_trades(
                 signal_idx = None
                 continue
 
-            # All reported columns come from signal day
             sig_row = records[signal_idx]
-            exit_sig_row = row  # exit signal day
+            exit_sig_row = row
 
             sig_close = sig_row.get("close", np.nan)
             sig_cwvap = sig_row.get("cwvap", np.nan)
@@ -98,16 +97,34 @@ def extract_floor_hit_trades(
                 else np.nan
             )
 
+            pnl = round((exit_price / entry_price - 1) * 100, 2)
+
+            # Peak MFE: scan from entry_exec to exit_exec
+            mfe = 0.0
+            mae = 0.0
+            for j in range(entry_exec_idx, min(exit_exec_idx + 1, n)):
+                c = records[j].get("close", np.nan)
+                if np.isnan(c):
+                    continue
+                ret = (c / entry_price - 1) * 100
+                if ret > mfe:
+                    mfe = ret
+                if ret < mae:
+                    mae = ret
+
+            bars_held = exit_exec_idx - entry_exec_idx
+
             trades.append({
                 "symbol": ticker,
-                "entry_tag": str(sig_row.get("entry_reason", "")),
-                "exit_reason": str(ExitReason.FLOOR_HIT),
+                "exit_reason": str(exit_reason_raw.value if hasattr(exit_reason_raw, "value") else exit_reason_raw),
                 "signal_date": str(sig_row.get("date", ""))[:10],
                 "entry_date": str(records[entry_exec_idx].get("date", ""))[:10],
-                "exit_signal_date": str(exit_sig_row.get("date", ""))[:10],
                 "exit_date": str(records[exit_exec_idx].get("date", ""))[:10],
-                "pnl": round((exit_price / entry_price - 1) * 100, 2),
-                # Signal-day indicators (entry)
+                "pnl": pnl,
+                "mfe": round(mfe, 2),
+                "mae": round(mae, 2),
+                "bars_held": bars_held,
+                # Signal-day entry indicators
                 "cts": round(sig_row.get("cts", np.nan), 4),
                 "bt": round(sig_row.get("cts_buy_threshold", np.nan), 4),
                 "psz": round(sig_row.get("price_slope_z", np.nan), 4),
@@ -117,6 +134,7 @@ def extract_floor_hit_trades(
                 "pdd_120": round(sig_row.get("pdd_120", np.nan), 4),
                 "regime": sig_row.get("regime", ""),
                 "intensity": sig_row.get("entry_signal", 0),
+                "dvwap_bear_stack": sig_row.get("dvwap_bear_stack", False),
                 # Exit signal-day indicators
                 "exit_cts": round(exit_sig_row.get("cts", np.nan), 4),
                 "exit_bt": round(exit_sig_row.get("cts_buy_threshold", np.nan), 4),
@@ -129,12 +147,13 @@ def extract_floor_hit_trades(
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Extract 'CTS hit floor' trades")
+    parser = argparse.ArgumentParser(description="Extract all Floor-Touch trades")
     parser.add_argument("--watchlist", default="NIFTY 500")
+    parser.add_argument("--output", default="floor_touch_all_trades.csv")
     args = parser.parse_args()
 
     symbols = get_watchlist_symbols(args.watchlist)
-    print(f"Extracting floor-hit trades for {args.watchlist} ({len(symbols)} symbols)")
+    print(f"Extracting Floor-Touch trades for {args.watchlist} ({len(symbols)} symbols)")
 
     entry_cfg = SavgolCTSEntryConfig()
     exit_cfg = SavgolCTSExitConfig()
@@ -147,20 +166,27 @@ def main():
         try:
             engine = DivergenceEngine(sym)
             result = engine.run()
-            trades = extract_floor_hit_trades(sym, result.ledger, signal, entry_cfg, exit_cfg)
+            trades = extract_floor_touch_trades(sym, result.ledger, signal, entry_cfg, exit_cfg)
             all_trades.extend(trades)
-            print(f"{len(trades)} matches")
+            wins = sum(1 for t in trades if t["pnl"] > 0)
+            print(f"{len(trades)} trades, {wins} wins")
         except Exception as e:
             print(f"SKIP - {e}")
 
     if all_trades:
         df_out = pd.DataFrame(all_trades)
-        output_file = "floor_hit_trades.csv"
-        df_out.to_csv(output_file, index=False)
-        print(f"\nSaved {len(all_trades)} trades to {output_file}")
-        print(f"Average P&L: {df_out['pnl'].mean():.2f}%")
+        df_out.to_csv(args.output, index=False)
+        total = len(df_out)
+        winners = (df_out["pnl"] > 0).sum()
+        print(f"\nSaved {total} trades to {args.output}")
+        print(f"Win rate: {winners/total*100:.1f}%, Avg PnL: {df_out['pnl'].mean():.2f}%")
+
+        # Quick exit breakdown
+        print("\nExit breakdown:")
+        for reason, grp in df_out.groupby("exit_reason"):
+            print(f"  {reason}: n={len(grp)}, avg_pnl={grp['pnl'].mean():.2f}%, wr={(grp['pnl']>0).mean()*100:.0f}%")
     else:
-        print("\nNo floor-hit trades found.")
+        print("\nNo trades found.")
 
 
 if __name__ == "__main__":

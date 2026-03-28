@@ -20,28 +20,32 @@ from src.trading.signals.savgol_cts.config import SavgolCTSEntryConfig, SavgolCT
 from src.trading.signals.savgol_cts.entries.floor_touch import check_floor_touch
 from src.trading.signals.savgol_cts.entries.floor_leave import check_floor_leave
 from src.trading.signals.savgol_cts.entries.bt_cross import check_bt_crossover
+from src.trading.signals.savgol_cts.entries.cwvap_reclaim import check_cwvap_reclaim
 
 # Exit path checkers
 from src.trading.signals.savgol_cts.exits.floor import exit_floor
 from src.trading.signals.savgol_cts.exits.bt_cross import exit_bt_cross
 from src.trading.signals.savgol_cts.exits.psz_glide import exit_psz_glide
 from src.trading.signals.savgol_cts.exits.cwvap_guard import apply_cwvap_guard
+from src.trading.signals.savgol_cts.exits.cwvap_reclaim import exit_cwvap_reclaim
 
 
 class SavgolCTSSignal(SignalInterface):
-    """CTS -1/+1 mean-reversion signal with three entry paths.
+    """CTS -1/+1 mean-reversion signal with four entry paths.
 
     Entry paths (priority order):
-        0. Floor Touch   — CTS + BT pinned at floor, PSZ deeply oversold.
-        1. Floor Leave   — CTS rises above floor after being pinned.
-        2. BT-Cross      — CTS crosses BT from below in oversold zone.
+        0. Floor Touch    — CTS + BT pinned at floor, PSZ deeply oversold.
+        1. Floor Leave    — CTS rises above floor after being pinned.
+        2. BT-Cross       — CTS crosses BT from below in oversold zone.
+        3. CWVAP Reclaim  — cts_slope crosses zero, close > CWVAP, PSZ > 0.
 
     Exit paths (dispatched by entry tag):
         Floor/Floor-Leave/Floor-Touch → ``exit_floor`` + PSZ glide fallback.
         BT-Cross                      → ``exit_bt_cross``.
+        CWVAP Reclaim                 → ``exit_cwvap_reclaim`` (close < CWVAP).
 
-    The CWVAP guard runs after all exits, suppressing or releasing based
-    on price position and momentum.
+    The CWVAP guard runs after non-CWVAP-Reclaim exits, suppressing or
+    releasing based on price position and momentum.
     """
 
     def __init__(self):
@@ -97,6 +101,11 @@ class SavgolCTSSignal(SignalInterface):
         if passed:
             return True, intensity, meta
 
+        # Path 3: CWVAP Reclaim
+        passed, intensity, meta = check_cwvap_reclaim(row, prev_row, cfg)
+        if passed:
+            return True, intensity, meta
+
         return False, 0, meta
 
     # ------------------------------------------------------------------
@@ -142,6 +151,11 @@ class SavgolCTSSignal(SignalInterface):
                 row, prev_row, trade, peak_close, bars_held,
                 delivery_bad_count, cfg, records, idx,
             )
+        elif tag == EntryTag.CWVAP_RECLAIM.value:
+            exit_status = exit_cwvap_reclaim(
+                row, prev_row, trade, peak_close, bars_held,
+                delivery_bad_count, cfg, records, idx,
+            )
         else:
             # Unknown entry tag — no exit logic, hold
             exit_status = (None, delivery_bad_count)
@@ -167,9 +181,13 @@ class SavgolCTSSignal(SignalInterface):
                         res = ExitReason.ST_CROSS
 
         # --- CWVAP Guard (suppression / release) ---
-        res, final_state = apply_cwvap_guard(
-            row, trade, res, state_returned, cwvap_values, cfg, records, idx,
-        )
+        # Bar-3 stop and CWVAP Reclaim exits are unconditional — bypass suppression.
+        if res == ExitReason.BAR3_STOP or tag == EntryTag.CWVAP_RECLAIM.value:
+            final_state = state_returned
+        else:
+            res, final_state = apply_cwvap_guard(
+                row, trade, res, state_returned, cwvap_values, cfg, records, idx,
+            )
 
         # Update cross-trade cooldown state with the FINAL decision
         if res is not None:

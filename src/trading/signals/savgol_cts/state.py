@@ -18,6 +18,7 @@ class SavgolCTSExitState:
     cts_above_bt: bool = False
     exit_suppressed: bool = False
     suppressed_this_bar: bool = False
+    slope_went_negative: bool = False  # CWVAP Reclaim: cts_slope went <= 0 post-entry
 
     @classmethod
     def from_int(cls, val: int) -> SavgolCTSExitState:
@@ -27,11 +28,13 @@ class SavgolCTSExitState:
             cts_above_bt=bool((val >> 2) & 1),
             exit_suppressed=bool((val >> 3) & 1),
             suppressed_this_bar=bool((val >> 4) & 1),
+            slope_went_negative=bool((val >> 5) & 1),
         )
 
     def to_int(self) -> int:
         return (
-            (int(self.suppressed_this_bar) << 4)
+            (int(self.slope_went_negative) << 5)
+            | (int(self.suppressed_this_bar) << 4)
             | (int(self.exit_suppressed) << 3)
             | (int(self.cts_above_bt) << 2)
             | (int(self.psz_was_above) << 1)

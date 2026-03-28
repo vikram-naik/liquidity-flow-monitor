@@ -77,6 +77,30 @@ def check_bt_crossover(
     if cfg.dvwap_bear_stack_gate_enabled and row.get("dvwap_bear_stack", False):
         return False, 0, {"reason": "DVWAP bear stack gate"}
 
+    # CWVAP distance guard: reject when price is too far below CWVAP
+    cwvap = row.get("cwvap", np.nan)
+    close = row.get("close", np.nan)
+    cwvap_dist_pct = np.nan
+    if not np.isnan(cwvap) and not np.isnan(close) and cwvap > 0:
+        cwvap_dist_pct = (close - cwvap) / cwvap * 100.0
+        if cfg.cwvap_max_dist < 0.0 and cwvap_dist_pct < cfg.cwvap_max_dist:
+            return False, 0, {
+                "reason": f"CWVAP dist {cwvap_dist_pct:.1f}% < {cfg.cwvap_max_dist:.1f}%",
+            }
+
+    # Dead-cat bounce gate: price bouncing (psz_v high) but deep under CWVAP
+    bc = cfg.bt_cross
+    if bc.dead_cat_gate_enabled and not np.isnan(cwvap_dist_pct):
+        psz_v = row.get("psz_v", np.nan)
+        if (
+            not np.isnan(psz_v)
+            and psz_v >= bc.dead_cat_pszv_min
+            and cwvap_dist_pct < bc.dead_cat_cwvap_max
+        ):
+            return False, 0, {
+                "reason": f"Dead-cat bounce: psz_v={psz_v:.3f}, cwvap={cwvap_dist_pct:.1f}%",
+            }
+
     coh = row.get("coherence", np.nan)
     pdd = row.get("pdd_120", np.nan)
     regime = row.get("regime", "")
