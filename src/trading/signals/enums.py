@@ -6,6 +6,7 @@ class EntryTag(str, Enum):
     BT_CROSS = "SavgolCTS BT-Cross"
     CTS_FLOOR_TOUCH = "SavgolCTS Floor-Touch"
     CWVAP_RECLAIM = "SavgolCTS CWVAP-Reclaim"
+    CWVAP_CROSS = "SavgolCTS CWVAP-Cross"
     CTS_BT_FLOOR = "SavgolCTS CTS-BT-Floor"  # Legacy
 
     # Deprecated — retained for historical trade log compatibility.

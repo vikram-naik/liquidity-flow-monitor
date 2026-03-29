@@ -43,8 +43,9 @@ def check_cwvap_reclaim(
     if np.isnan(cts_accel) or np.isnan(pcts_accel) or np.isnan(cts_accel_threshold):
         return False, 0, {"reason": "Missing cts_accel data"}
 
-    if (cts_accel < cts_accel_threshold):
-        return False, 0, {"reason": f"cts accel below threshold {cts_accel:.3f} < {cts_accel_threshold:.3f}"}
+    accel_margin = cts_accel - cts_accel_threshold
+    if accel_margin <= cfg.cwvap_reclaim.accel_margin_min:
+        return False, 0, {"reason": f"accel_margin {accel_margin:.5f} <= min {cfg.cwvap_reclaim.accel_margin_min}"}
 
     # if (pcts_accel > cts_accel):
     #     return False, 0, {"reason": f"cts accel not accelerating {pcts_accel:.3f} > {cts_accel:.3f}"}

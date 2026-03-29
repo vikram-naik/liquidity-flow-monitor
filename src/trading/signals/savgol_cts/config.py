@@ -80,7 +80,23 @@ class CwvapReclaimEntryConfig:
     cts_min: float = 0.0   # reject when CTS still negative (unconfirmed inflection)
     cts_max: float = 0.85  # reject when CTS already near ceiling
     cwvap_dist_max: float = 7.0  # max cwvap_dist% at signal (reject extended entries)
+    accel_margin_min: float = 0.01  # minimum accel above threshold (reject barely-above)
 
+
+
+@dataclass
+class CwvapCrossEntryConfig:
+    """Path 5: CWVAP Cross — price crosses CWVAP from below with cts_slope > 0.
+
+    Minimal guards; fine-tuning will follow after reviewing initial trades.
+    """
+    enabled: bool = True
+    psz_min: float = -0.35  # minimum PSZ at entry
+    cts_min: float = -0.85   # reject when CTS still negative
+    cts_max: float = 0.85  # reject when CTS already near ceiling
+    accel_delta_min: float = 0.005  # minimum accel change (reject flat acceleration)
+    accel_margin_min: float = 0.01  # minimum accel above threshold (reject barely-above)
+    slope_min: float = -0.02 # reject when cts_slope is too negative
 
 
 @dataclass
@@ -133,6 +149,7 @@ class SavgolCTSEntryConfig(BaseEntryConfig):
     floor_leave: FloorLeaveEntryConfig = field(default_factory=FloorLeaveEntryConfig)
     bt_cross: BtCrossEntryConfig = field(default_factory=BtCrossEntryConfig)
     cwvap_reclaim: CwvapReclaimEntryConfig = field(default_factory=CwvapReclaimEntryConfig)
+    cwvap_cross: CwvapCrossEntryConfig = field(default_factory=CwvapCrossEntryConfig)
 
 
 # ---------------------------------------------------------------------------

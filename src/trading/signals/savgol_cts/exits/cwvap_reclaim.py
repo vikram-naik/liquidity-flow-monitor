@@ -37,12 +37,16 @@ def exit_cwvap_reclaim(
                 return ExitReason.BAR3_STOP, st.to_int()
 
     # PnL cap: take profit when trade PnL% >= cap
+    # Suppressed while price is above VA high (breakout territory — let it run)
     if ecfg.pnl_cap_enabled and trade is not None and trade.entry_price > 0:
         close_now = row.get("close", np.nan)
+        va_high = row.get("va_high", np.nan)
         if not np.isnan(close_now):
-            pnl = (close_now / trade.entry_price - 1) * 100
-            if pnl >= ecfg.pnl_cap_pct:
-                return ExitReason.PNL_CAP, st.to_int()
+            above_va = not np.isnan(va_high) and va_high > 0 and close_now > va_high
+            if not above_va:
+                pnl = (close_now / trade.entry_price - 1) * 100
+                if pnl >= ecfg.pnl_cap_pct:
+                    return ExitReason.PNL_CAP, st.to_int()
 
     # Exit 1: CWVAP lost — close < CWVAP minus ATR-based tolerance
     close = row.get("close", np.nan)
