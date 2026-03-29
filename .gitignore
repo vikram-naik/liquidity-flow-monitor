@@ -98,3 +98,7 @@ scripts/extract_bt_hit_trades.py
 scripts/extract_cwvap_slope_cross.py
 scripts/extract_cwvap_slope_trail.py
 scripts/extract_cwvap_slope_vahigh.py
+cwvap_reclaim_cts_at_entry.csv
+cwvap_reclaim_entries.csv
+cwvap_reclaim_gapup_study.csv
+cwvap_reclaim_loser_trace.csv
