@@ -20,7 +20,7 @@ savgol_cts/
   exits/
     floor.py           # Floor/Floor-Leave/Floor-Touch exit path
     bt_cross.py        # BT-Cross exit path + PSZ stall helper
-    cwvap_reclaim.py   # CWVAP Reclaim exit: slope cycle + CWVAP lost
+    cwvap_reclaim.py   # CWVAP Reclaim exit: bar-3 stop, PnL cap, CWVAP lost
     psz_glide.py       # Shared PSZ glide exit (5-bar mean crossover)
     cwvap_guard.py     # CWVAP suppression / release logic (post-exit)
 ```
@@ -72,8 +72,14 @@ check_entry(row, prev_row, cfg, records, idx)       [signal.py]
   |-- PATH 3: CWVAP Reclaim                          [entries/cwvap_reclaim.py]
   |     |-- [Gate]  cfg.cwvap_reclaim.enabled?
   |     |-- [Guard] cts_slope crosses zero from below (prev <= 0, now > 0)
+  |     |-- [Guard] slope diff > 0.005 (minimum impulse)
+  |     |-- [Guard] cts_accel >= cts_accel_threshold (dynamic)
+  |     |-- [Guard] CTS > cfg.cwvap_reclaim.cts_min (0.0)
+  |     |-- [Guard] CTS <= cfg.cwvap_reclaim.cts_max (0.85)
   |     |-- [Guard] close > CWVAP (price above institutional average)
   |     |-- [Guard] PSZ > cfg.cwvap_reclaim.psz_min (0.0)
+  |     |-- [Guard] cwvap_dist% <= cfg.cwvap_reclaim.cwvap_dist_max (7.0%)
+  |     |-- [Guard] close <= VA high (not above value area)
   |     +-- PASS --> EntryTag.CWVAP_RECLAIM
   |
   +-- No path matched --> REJECT (last meta from final path)
@@ -150,6 +156,7 @@ exit_floor(row, prev_row, trade, peak_close, bars_held, state, cfg, records, idx
 exit_bt_cross(row, prev_row, trade, ...)
   |-- Update cts_rose, psz_was_above
   |-- PSZ stall check (cfg.bt_cross.psz_stall_enabled)
+  |-- Bar-3 PnL stop (cfg.bt_cross.bar3_stop_enabled)
   |-- [Gate] cts_rose? (must have risen before any exit fires)
   |-- EXIT: Floor hit — cts <= -1.0 AND bars_held >= floor_hit_min_bars
   |-- SUPPRESS: Floor zone — cts and bt both within floor_tolerance
@@ -163,23 +170,21 @@ exit_bt_cross(row, prev_row, trade, ...)
 
 Tag: `CWVAP_RECLAIM`
 
-Two exit conditions, whichever fires first. Bypasses the CWVAP guard entirely
+Three exit conditions in priority order. Bypasses the CWVAP guard entirely
 (exit logic is itself CWVAP-based).
 
 ```
 exit_cwvap_reclaim(row, prev_row, trade, ...)
-  |-- Track slope_went_negative (cts_slope <= 0 post-entry)
-  |-- EXIT: Slope cycle — slope_went_negative AND prev_slope <= 0 AND slope > 0
-  |         (cts_slope turns positive again after going negative = full cycle)
-  |         --> ExitReason.SLOPE_CYCLE
-  |-- EXIT: CWVAP lost — close < CWVAP
+  |-- EXIT: Bar-3 PnL stop — bars_held == bar3_stop_bar AND PnL% < bar3_stop_threshold
+  |         --> ExitReason.BAR3_STOP
+  |         Empirically (NIFTY 500 TEST): fires ~24%, avg -4.1%, cuts early losers.
+  |-- EXIT: PnL cap — PnL% >= pnl_cap_pct (8.0%)
+  |         --> ExitReason.PNL_CAP
+  |         Empirically (NIFTY 500 TEST): fires ~37%, 100% WR, avg +10.3%.
+  |-- EXIT: CWVAP lost — close < CWVAP - ATR*mult AND high < CWVAP
   |         --> ExitReason.CWVAP_LOST
   +-- None --> HOLD
 ```
-
-Empirically (NIFTY 500 walk-forward, study_cwvap_reclaim_velocity.py):
-- Slope fires first: 75.5% WR, +5.45% avg (winners ride the full cycle).
-- CWVAP fires first: 5.8% WR, -4.55% avg (losers cut early).
 
 ### Exit: PSZ Glide (`exits/psz_glide.py`)
 
@@ -225,19 +230,20 @@ apply_cwvap_guard(row, trade, res, state, cwvap_values, cfg, records, idx)
 | `dvwap_bear_stack_gate_enabled` | True | Floor Touch, BT-Cross |
 | `cooldown_enabled` | True | All paths |
 | `cooldown_bars` | 10 | All paths |
-| `cooldown_exit_reasons` | SUPPRESSED_EXIT, FLOOR_HIT, BT_HIT | All paths |
+| `cooldown_exit_reasons` | SUPPRESSED_EXIT, FLOOR_HIT, BT_HIT, BAR3_STOP | All paths |
 
 **Path 0 — Floor Touch (`cfg.floor_touch`):**
 
 | Parameter | Default | Description |
 |---|---|---|
-| `enabled` | True | Enable/disable path |
+| `enabled` | False | Enable/disable path |
 | `psz_max` | -0.25 | PSZ must be below this |
 
 **Path 1 — Floor Leave (`cfg.floor_leave`):**
 
 | Parameter | Default | Description |
 |---|---|---|
+| `enabled` | False | Enable/disable path |
 | `cts_max` | -0.6 | Vertical jump ceiling |
 | `pszv_min` | 0.05 | Conviction gate: minimum |PSZV| |
 | `cwvap_trap_hi` | -5.0 | Signal-day trap floor (% below CWVAP) |
@@ -246,7 +252,7 @@ apply_cwvap_guard(row, trade, res, state, cwvap_values, cfg, records, idx)
 
 | Parameter | Default | Description |
 |---|---|---|
-| `enabled` | True | Enable/disable path |
+| `enabled` | False | Enable/disable path |
 | `oversold_threshold` | -0.50 | CTS must be below this |
 | `flat_gate_enabled` | True | Reject when psz_v flat for N bars |
 | `flat_gate_threshold` | 0.02 | |psz_v| below this = flat |
@@ -257,7 +263,14 @@ apply_cwvap_guard(row, trade, res, state, cwvap_values, cfg, records, idx)
 | Parameter | Default | Description |
 |---|---|---|
 | `enabled` | True | Enable/disable path |
-| `psz_min` | 0.0 | Minimum PSZ at entry (momentum confirmation) |
+| `psz_min` | 0.0 | Minimum PSZ at entry |
+| `cts_min` | 0.0 | Minimum CTS at entry (reject negative CTS) |
+| `cts_max` | 0.85 | Maximum CTS at entry (reject near-ceiling) |
+| `cwvap_dist_max` | 7.0 | Max cwvap_dist% (reject extended entries) |
+
+Plus hardcoded guards:
+- `cts_accel >= cts_accel_threshold` (dynamic threshold from data)
+- `close <= va_high` (reject when above value area)
 
 ### Exit (`SavgolCTSExitConfig` — `config.py`)
 
@@ -279,17 +292,27 @@ apply_cwvap_guard(row, trade, res, state, cwvap_values, cfg, records, idx)
 | `floor_tolerance` | 0.10 | Floor zone protection width |
 | `psz_stall_enabled` | False | Early exit when PSZ stalls |
 | `psz_stall_check_bar` | 2 | Bar to check for stall |
+| `bar3_stop_enabled` | True | Bar-3 PnL stop |
+| `bar3_stop_bar` | 3 | Bar at which to check |
+| `bar3_stop_threshold` | -1.0 | Exit if PnL% below this |
 
 **CWVAP Reclaim exit (`cfg.cwvap_reclaim`):**
 
-No configurable parameters. Exit fires on slope cycle complete or CWVAP lost.
+| Parameter | Default | Description |
+|---|---|---|
+| `cwvap_lost_atr_mult` | 0.3 | ATR multiplier for CWVAP-lost tolerance |
+| `bar3_stop_enabled` | True | Bar-3 PnL stop |
+| `bar3_stop_bar` | 3 | Bar at which to check |
+| `bar3_stop_threshold` | -2.0 | Exit if PnL% below this |
+| `pnl_cap_enabled` | True | Take-profit PnL cap |
+| `pnl_cap_pct` | 8.0 | Exit when PnL% >= this |
 
 **CWVAP Guard (`cfg.cwvap_guard`):**
 
 | Parameter | Default | Description |
 |---|---|---|
-| `tolerance_pct` | 1.00 | Allowable % dip below CWVAP |
-| `tolerance_bars` | 3 | Max bars below CWVAP within tolerance |
+| `tolerance_pct` | 0.50 | Allowable % dip below CWVAP |
+| `tolerance_bars` | 1 | Max bars below CWVAP within tolerance |
 
 ---
 

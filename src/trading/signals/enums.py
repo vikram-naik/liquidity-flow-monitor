@@ -30,6 +30,7 @@ class ExitReason(str, Enum):
     ST_CROSS = "CTS crossed ST down"
     CWVAP_LOST = "Close below CWVAP"
     SLOPE_CYCLE = "CTS slope cycle complete"
+    PNL_CAP = "PnL cap hit"
     
     # Universal / Generic
     END_OF_DATA = "End of Data (Open Trade)"

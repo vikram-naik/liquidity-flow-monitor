@@ -31,11 +31,35 @@ def check_cwvap_reclaim(
     pcs = prev_row.get("cts_slope", np.nan)
     if np.isnan(cs) or np.isnan(pcs):
         return False, 0, {"reason": "Missing cts_slope data"}
-    if not (pcs <= 0 and cs > 0):
-        return False, 0, {"reason": "No cts_slope zero-cross"}
+    pcs_cs_diff_threshold = 0.005
+    if not (pcs <= 0 and cs > 0 and cs - pcs > pcs_cs_diff_threshold):
+        return False, 0, {"reason": f"No cts_slope zero-cross {pcs:.3f} -> {cs:.3f} and diff {cs - pcs:.3f}, thrs: {pcs_cs_diff_threshold}"}
+
+    # cts_accel vs threshold
+    cts_accel = row.get("cts_accel", np.nan)
+    pcts_accel = prev_row.get("cts_accel", np.nan)
+    cts_accel_threshold = row.get("cts_accel_threshold", np.nan)
+
+    if np.isnan(cts_accel) or np.isnan(pcts_accel) or np.isnan(cts_accel_threshold):
+        return False, 0, {"reason": "Missing cts_accel data"}
+
+    if (cts_accel < cts_accel_threshold):
+        return False, 0, {"reason": f"cts accel below threshold {cts_accel:.3f} < {cts_accel_threshold:.3f}"}
+
+    # if (pcts_accel > cts_accel):
+    #     return False, 0, {"reason": f"cts accel not accelerating {pcts_accel:.3f} > {cts_accel:.3f}"}
+
+    # CTS range guard
+    cts = row.get("cts", np.nan)
+    if not np.isnan(cts):
+        if cts <= cfg.cwvap_reclaim.cts_min:
+            return False, 0, {"reason": f"CTS {cts:.3f} <= cts_min {cfg.cwvap_reclaim.cts_min}"}
+        if cts > cfg.cwvap_reclaim.cts_max:
+            return False, 0, {"reason": f"CTS {cts:.3f} > cts_max {cfg.cwvap_reclaim.cts_max}"}
 
     # Close > CWVAP
     close = row.get("close", np.nan)
+    low = row.get("low", np.nan)
     cwvap = row.get("cwvap", np.nan)
     if np.isnan(close) or np.isnan(cwvap) or cwvap <= 0:
         return False, 0, {"reason": "Missing close/CWVAP data"}
@@ -48,7 +72,16 @@ def check_cwvap_reclaim(
         return False, 0, {"reason": f"PSZ {psz:.3f} <= {cfg.cwvap_reclaim.psz_min}"}
 
     cwvap_dist = (close - cwvap) / cwvap * 100.0
-    cts = row.get("cts", np.nan)
+
+    # CWVAP distance cap: reject when price already extended above CWVAP
+    if cwvap_dist > cfg.cwvap_reclaim.cwvap_dist_max:
+        return False, 0, {"reason": f"cwvap_dist {cwvap_dist:.1f}% > max {cfg.cwvap_reclaim.cwvap_dist_max}%"}
+
+    # VA high guard: reject when close is above the value area high
+    va_high = row.get("va_high", np.nan)
+    if not np.isnan(va_high) and va_high > 0 and close > va_high:
+        return False, 0, {"reason": f"Close {close:.1f} > VA high {va_high:.1f}"}
+
     coh = row.get("coherence", np.nan)
     pdd = row.get("pdd_120", np.nan)
     regime = row.get("regime", "")

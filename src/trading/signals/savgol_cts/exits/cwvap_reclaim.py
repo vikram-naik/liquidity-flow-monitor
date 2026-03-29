@@ -27,23 +27,31 @@ def exit_cwvap_reclaim(
     """Exit on slope cycle completion or CWVAP lost, whichever first."""
     st = SavgolCTSExitState.from_int(state_val)
 
-    cs = row.get("cts_slope", np.nan)
-    pcs = prev_row.get("cts_slope", np.nan)
+    # Bar-3 PnL stop: exit early if trade is underwater at bar N
+    ecfg = cfg.cwvap_reclaim
+    if ecfg.bar3_stop_enabled and trade is not None and bars_held == ecfg.bar3_stop_bar:
+        close_now = row.get("close", np.nan)
+        if not np.isnan(close_now) and trade.entry_price > 0:
+            pnl = (close_now / trade.entry_price - 1) * 100
+            if pnl < ecfg.bar3_stop_threshold:
+                return ExitReason.BAR3_STOP, st.to_int()
 
-    # Track slope going non-positive post-entry
-    if not np.isnan(cs) and cs <= 0:
-        st.slope_went_negative = True
+    # PnL cap: take profit when trade PnL% >= cap
+    if ecfg.pnl_cap_enabled and trade is not None and trade.entry_price > 0:
+        close_now = row.get("close", np.nan)
+        if not np.isnan(close_now):
+            pnl = (close_now / trade.entry_price - 1) * 100
+            if pnl >= ecfg.pnl_cap_pct:
+                return ExitReason.PNL_CAP, st.to_int()
 
-    # Exit 1: slope cycle — slope turns positive again after having been negative
-    if (st.slope_went_negative
-            and not np.isnan(cs) and not np.isnan(pcs)
-            and pcs <= 0 and cs > 0):
-        return ExitReason.SLOPE_CYCLE, st.to_int()
-
-    # Exit 2: CWVAP lost — close < CWVAP
+    # Exit 1: CWVAP lost — close < CWVAP minus ATR-based tolerance
     close = row.get("close", np.nan)
+    high = row.get("high", np.nan)
     cwvap = row.get("cwvap", np.nan)
-    if not np.isnan(close) and not np.isnan(cwvap) and cwvap > 0 and close < cwvap:
-        return ExitReason.CWVAP_LOST, st.to_int()
+    atr = row.get("atr_20", np.nan)
+    if not np.isnan(close) and not np.isnan(cwvap) and cwvap > 0:
+        tol = atr * cfg.cwvap_reclaim.cwvap_lost_atr_mult if not np.isnan(atr) else 0.0
+        if close < cwvap - tol and high < cwvap:
+            return ExitReason.CWVAP_LOST, st.to_int()
 
     return None, st.to_int()

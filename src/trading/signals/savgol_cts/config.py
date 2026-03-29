@@ -51,7 +51,7 @@ class BtCrossEntryConfig:
 
     Catches V-bottoms where CTS hits floor but BT hasn't caught up.
     """
-    enabled: bool = True
+    enabled: bool = False
     oversold_threshold: float = -0.50
     # Dead-cat bounce gate: reject when psz_v is strongly positive (price bouncing)
     # but price is deep below CWVAP (institutional supply overhead).
@@ -77,12 +77,21 @@ class CwvapReclaimEntryConfig:
     """
     enabled: bool = True
     psz_min: float = 0.0  # minimum PSZ at entry
+    cts_min: float = 0.0   # reject when CTS still negative (unconfirmed inflection)
+    cts_max: float = 0.85  # reject when CTS already near ceiling
+    cwvap_dist_max: float = 7.0  # max cwvap_dist% at signal (reject extended entries)
+
 
 
 @dataclass
 class CwvapReclaimExitConfig:
     """CWVAP Reclaim exit: close drops below CWVAP."""
-    pass
+    cwvap_lost_atr_mult: float = 0.3  # exit when close < cwvap - atr * mult
+    bar3_stop_enabled: bool = True
+    bar3_stop_bar: int = 3
+    bar3_stop_threshold: float = -2.0  # exit if PnL% below this at bar N
+    pnl_cap_enabled: bool = True
+    pnl_cap_pct: float = 8.0  # take profit when PnL% >= this
 
 
 # ---------------------------------------------------------------------------

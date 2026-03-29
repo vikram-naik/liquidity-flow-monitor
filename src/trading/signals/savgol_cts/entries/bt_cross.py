@@ -29,6 +29,11 @@ def check_bt_crossover(
     if not cfg.bt_cross.enabled:
         return False, 0, {"reason": "BT cross disabled"}
 
+    # cts_slope positive
+    # cs = row.get("cts_slope", np.nan)
+    # if np.isnan(cs) or cs <= 0:
+    #     return False, 0, {"reason": "cts_slope not positive"}        
+
     cts = row.get("cts", np.nan)
     bt = row.get("cts_buy_threshold", np.nan)
     prev_cts = prev_row.get("cts", np.nan)
