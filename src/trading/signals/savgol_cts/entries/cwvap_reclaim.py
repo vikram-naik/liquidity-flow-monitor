@@ -83,6 +83,12 @@ def check_cwvap_reclaim(
     if not np.isnan(va_high) and va_high > 0 and close > va_high:
         return False, 0, {"reason": f"Close {close:.1f} > VA high {va_high:.1f}"}
 
+    # ST guard: reject when CTS already at/above sell threshold (upside exhausted)
+    if cfg.cwvap_reclaim.st_guard_enabled:
+        st = row.get("cts_sell_threshold", np.nan)
+        if not np.isnan(cts) and not np.isnan(st) and cts >= st - cfg.cwvap_reclaim.st_guard_tolerance:
+            return False, 0, {"reason": f"ST guard: CTS {cts:.3f} >= ST {st:.3f} (tol {cfg.cwvap_reclaim.st_guard_tolerance})"}
+
     coh = row.get("coherence", np.nan)
     pdd = row.get("pdd_120", np.nan)
     regime = row.get("regime", "")

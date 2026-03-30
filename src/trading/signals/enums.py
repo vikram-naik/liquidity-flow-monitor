@@ -7,6 +7,7 @@ class EntryTag(str, Enum):
     CTS_FLOOR_TOUCH = "SavgolCTS Floor-Touch"
     CWVAP_RECLAIM = "SavgolCTS CWVAP-Reclaim"
     CWVAP_CROSS = "SavgolCTS CWVAP-Cross"
+    SLOPE_BOTTOM = "SavgolCTS Slope-Bottom"
     CTS_BT_FLOOR = "SavgolCTS CTS-BT-Floor"  # Legacy
 
     # Deprecated — retained for historical trade log compatibility.
@@ -28,6 +29,8 @@ class ExitReason(str, Enum):
     CWVAP_EXHAUSTION = "CWVAP momentum exhaustion"
     SUPPRESSED_EXIT = "Suppressed exit triggered (price barrier)"
     BAR3_STOP = "Bar-3 PnL stop"
+    BAR5_STOP = "Bar-5 PnL stop"
+    LH_LL_BREAK = "LH+LL trend break"
     ST_CROSS = "CTS crossed ST down"
     CWVAP_LOST = "Close below CWVAP"
     SLOPE_CYCLE = "CTS slope cycle complete"

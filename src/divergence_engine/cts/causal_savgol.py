@@ -12,22 +12,22 @@ class CausalSavgolStrategy(CTSStrategy):
     """
 
     def __init__(self, window_length: int = 15, polyorder: int = 2,
-                 threshold_window: int = 60, threshold_pct: float = 35.0):
+                 threshold_window: int = 60, threshold_pct: float = 35.0,
+                 trough_threshold: float = -0.187):
         """
         :param window_length: The length of the filter window.
         :param polyorder: The order of the polynomial used to fit the samples.
         :param threshold_window: Rolling window for the cts_slope_threshold percentile.
         :param threshold_pct: Percentile (0-100) of |cts_slope| used as the threshold.
+        :param trough_threshold: Level below which to look for troughs in downtrends.
         """
-        # For causal SG, window_length doesn't strictly need to be odd, 
-        # but we follow standard SG conventions if desired.
         self.window_length = window_length
         self.polyorder = polyorder
         self.threshold_window = threshold_window
         self.threshold_pct = threshold_pct
+        self.trough_threshold = trough_threshold
 
         # Precompute causal coefficients for each derivative
-        # pos=window_length-1 means estimate at the right edge of the window (causal)
         self.coeffs_v = savgol_coeffs(window_length, polyorder, deriv=0, pos=window_length - 1)
         self.coeffs_d1 = savgol_coeffs(window_length, polyorder, deriv=1, pos=window_length - 1)
         self.coeffs_d2 = savgol_coeffs(window_length, polyorder, deriv=2, pos=window_length - 1)
@@ -53,13 +53,10 @@ class CausalSavgolStrategy(CTSStrategy):
             df["cts"] = np.nan
             df["cts_slope"] = np.nan
             df["cts_accel"] = np.nan
+            df["cts_slope_trough"] = 0
             return df
 
         # Apply causal filters using lfilter
-        # scipy.signal.lfilter(b, a, x) calculates y[n] = b[0]x[n] + b[1]x[n-1] + ...
-        # savgol_coeffs returns c_k where coeffs[0] is for t=-(N-1) and coeffs[N-1] is for t=0.
-        # So b = coeffs[::-1]
-        
         b_v = self.coeffs_v
         b_d1 = self.coeffs_d1
         b_d2 = self.coeffs_d2
@@ -87,6 +84,17 @@ class CausalSavgolStrategy(CTSStrategy):
         df["cts_slope"] = np.where(atr > 0, raw_slope, 0.0)
         df["cts_accel"] = np.where(atr > 0, raw_accel, 0.0)
 
+        # Causal Trough Detection (No forward-looking bias)
+        # Condition: slope <= threshold AND accel > 0 AND regime == downtrend
+        if "regime" in df.columns:
+            df["cts_slope_trough"] = (
+                (df["cts_slope"] <= self.trough_threshold) & 
+                (df["cts_accel"] > 0) & 
+                (df["regime"] == "downtrend")
+            ).astype(int)
+        else:
+            df["cts_slope_trough"] = 0
+
         # 4. Rolling Empirical Threshold (Regime-Adaptive)
         abs_slope = df["cts_slope"].abs()
         df["cts_slope_threshold"] = abs_slope.rolling(
@@ -98,5 +106,6 @@ class CausalSavgolStrategy(CTSStrategy):
         # For a causal filter of length N, the first N-1 outputs are incomplete
         warmup = self.window_length - 1
         df.iloc[:warmup, df.columns.get_indexer(["smoothed_cwvap", "cts", "cts_slope", "cts_accel", "cts_slope_threshold"])] = np.nan
+        df.iloc[:warmup, df.columns.get_indexer(["cts_slope_trough"])] = 0
 
         return df

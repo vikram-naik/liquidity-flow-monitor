@@ -147,6 +147,7 @@
         var entryMarkers = [];
         var exitMarkers = [];
         var suppressedMarkers = [];
+        var ctsSlopeBottomMarkers = [];
 
         for (var i = 0; i < ledger.length; i++) {
             var r = ledger[i];
@@ -224,6 +225,17 @@
                 suppressedMarkers.push({
                     time: t, position: 'aboveBar', color: '#2979ff',
                     shape: 'square', size: 0.5
+                });
+            }
+
+            // CTS Slope Troughs (Bottoms) — Pre-computed by Engine (Causal)
+            if (r.cts_slope_trough) {
+                ctsSlopeBottomMarkers.push({
+                    time: t,
+                    position: 'inBar',
+                    color: '#ef5350',
+                    shape: 'arrowUp',
+                    text: 'Trough'
                 });
             }
 
@@ -349,11 +361,27 @@
                 legConfig.push({ api: sCtsSell, label: "Sell Thresh (P90)", col: "cts_sell_threshold", color: "#ef5350", dashed: true });
             } else if (panelKey === "cts_slope") {
                 // Bull extra gate: cts_slope >= bull_slope_min
-                var sCtsSlope = c.addSeries(LC.LineSeries, { color: "#80cbc4", lineWidth: 2, lastValueVisible: false, priceLineVisible: false });
+                var sCtsSlope = c.addSeries(LightweightCharts.LineSeries, { color: "#80cbc4", lineWidth: 2, lastValueVisible: false, priceLineVisible: false });
                 sCtsSlope.setData(ctsSlopeArr);
-                var sCtsSZ = c.addSeries(LC.LineSeries, { color: "#424242", lineWidth: 1, lineStyle: 2, lastValueVisible: false, priceLineVisible: false });
+                
+                // Zero line
+                var sCtsSZ = c.addSeries(LightweightCharts.LineSeries, { color: "#424242", lineWidth: 1, lineStyle: 2, lastValueVisible: false, priceLineVisible: false });
                 sCtsSZ.setData(ctsSlopeArr.map(d => ({ time: d.time, value: 0 })));
+                
+                // Bottom Threshold line at -0.187 (based on updated Nifty 500 calibration)
+                sCtsSlope.createPriceLine({
+                    price: -0.187,
+                    color: '#ef5350',
+                    lineWidth: 1,
+                    lineStyle: LightweightCharts.LineStyle.Dashed,
+                    axisLabelVisible: true,
+                    title: '',
+                });
+
                 legConfig.push({ api: sCtsSlope, label: "CTS Slope", col: "cts_slope", color: "#80cbc4" });
+
+                // Apply markers to CTS Slope panel
+                LightweightCharts.createSeriesMarkers(sCtsSlope, ctsSlopeBottomMarkers);
             } else if (panelKey === "cts_accel") {
                 // Gate 1: cts_accel > cts_accel_threshold (discounted in bear)
                 var sCtsAccel = c.addSeries(LC.LineSeries, { color: "#ce93d8", lineWidth: 2, lastValueVisible: false, priceLineVisible: false });

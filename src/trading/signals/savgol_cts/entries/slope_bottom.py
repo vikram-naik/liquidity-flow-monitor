@@ -1,0 +1,82 @@
+"""Path 5 -- Slope Bottom entry.
+
+cts_slope rising from deep negative (P5 threshold) during downtrend regime,
+with price meaningfully below CWVAP. Captures trend exhaustion reversals
+where the slope inflects before price reclaims CWVAP.
+
+Empirically (NIFTY 500, 2024-04 to 2026-03): 218 trades, 48.6% WR,
+1.84x payoff, +2.27% expectancy with pure slope zero-cross exit.
+"""
+
+from __future__ import annotations
+
+import numpy as np
+
+from src.trading.signals.enums import EntryTag
+from src.trading.signals.savgol_cts.config import SavgolCTSEntryConfig
+from src.trading.signals.savgol_cts.scoring import compute_intensity
+
+
+def check_slope_bottom(
+    row: dict, prev_row: dict, cfg: SavgolCTSEntryConfig,
+) -> tuple[bool, int, dict]:
+    """Check Path 5 entry conditions.
+
+    Requires:
+    - cts_slope <= slope_threshold AND rising (inflection from deep negative).
+    - regime == "downtrend".
+    - slope_delta <= slope_delta_max (reject violent dead-cat bounces).
+    - cwvap_dist in [cwvap_dist_min, cwvap_dist_max] (below CWVAP, not too far).
+    """
+    sbcfg = cfg.slope_bottom
+    if not sbcfg.enabled:
+        return False, 0, {"reason": "Slope bottom disabled"}
+
+    # cts_slope data
+    cs = row.get("cts_slope", np.nan)
+    pcs = prev_row.get("cts_slope", np.nan)
+    if np.isnan(cs) or np.isnan(pcs):
+        return False, 0, {"reason": "Missing cts_slope data"}
+
+    # G1: slope must be at or below threshold
+    if cs > sbcfg.slope_threshold:
+        return False, 0, {"reason": f"cts_slope {cs:.4f} > threshold {sbcfg.slope_threshold}"}
+
+    # G2: slope must be rising
+    if cs <= pcs:
+        return False, 0, {"reason": f"cts_slope not rising: {pcs:.4f} -> {cs:.4f}"}
+
+    # G3: regime must be downtrend
+    regime = row.get("regime", "")
+    if regime != "downtrend":
+        return False, 0, {"reason": f"Regime {regime} != downtrend"}
+
+    # G4: slope delta must not be too violent (reject dead-cat bounces)
+    slope_delta = cs - pcs
+    if slope_delta > sbcfg.slope_delta_max:
+        return False, 0, {"reason": f"slope_delta {slope_delta:.4f} > max {sbcfg.slope_delta_max} (violent bounce)"}
+
+    # G5 & G6: CWVAP distance must be in range
+    close = row.get("close", np.nan)
+    cwvap = row.get("cwvap", np.nan)
+    if np.isnan(close) or np.isnan(cwvap) or cwvap <= 0:
+        return False, 0, {"reason": "Missing close/CWVAP data"}
+
+    cwvap_dist = (close - cwvap) / cwvap * 100.0
+
+    if cwvap_dist < sbcfg.cwvap_dist_min:
+        return False, 0, {"reason": f"cwvap_dist {cwvap_dist:.1f}% < min {sbcfg.cwvap_dist_min}% (too far below)"}
+
+    if cwvap_dist > sbcfg.cwvap_dist_max:
+        return False, 0, {"reason": f"cwvap_dist {cwvap_dist:.1f}% > max {sbcfg.cwvap_dist_max}% (too close/above)"}
+
+    # Intensity scoring
+    cts = row.get("cts", np.nan)
+    coh = row.get("coherence", np.nan)
+    pdd = row.get("pdd_120", np.nan)
+
+    intensity_int, meta = compute_intensity(
+        cts, coh, pdd, regime, EntryTag.SLOPE_BOTTOM,
+        [f"slope={cs:.4f}", f"delta={slope_delta:.4f}", f"cwvap_dist={cwvap_dist:.1f}%"],
+    )
+    return True, intensity_int, meta

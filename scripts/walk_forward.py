@@ -262,14 +262,15 @@ def summarize(trades: list[Trade], label: str) -> dict:
     cross = (
         df.groupby(["entry_tag", "reason"])
         .agg(count=("pnl", "size"), avg_pnl=("pnl", "mean"),
-             win_rate=("pnl", lambda x: round((x > 0).mean() * 100, 1)))
+             win_rate=("pnl", lambda x: round((x > 0).mean() * 100, 1)),
+             avg_mfe=("mfe", "mean"), avg_mae=("mae", "mean"))
         .reset_index()
         .sort_values(["entry_tag", "count"], ascending=[True, False])
         .round(2)
     )
     print(f"\n  Entry Type × Exit Reason:")
     print(tabulate(cross,
-                   headers=["Entry Type", "Exit Reason", "Count", "Avg P&L%", "Win%"],
+                   headers=["Entry Type", "Exit Reason", "Count", "Avg P&L%", "Win%", "Avg MFE%", "Avg MAE%"],
                    tablefmt="simple", floatfmt=".2f", showindex=False))
 
     return {
@@ -282,8 +283,7 @@ def summarize(trades: list[Trade], label: str) -> dict:
 def main():
     parser = argparse.ArgumentParser(description="Walk-forward validation")
     parser.add_argument("--watchlist", default="NIFTY 50")
-    parser.add_argument("--signal", choices=["price_divergence", "nextgen", "savgol_cts"],
-                        default="price_divergence",
+    parser.add_argument("--signal", default="savgol_cts", choices=["price_divergence", "nextgen", "savgol_cts"],
                         help="Signal strategy to use (default: price_divergence)")
     args = parser.parse_args()
 

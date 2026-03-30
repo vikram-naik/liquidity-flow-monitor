@@ -22,6 +22,7 @@ from src.trading.signals.savgol_cts.entries.floor_leave import check_floor_leave
 from src.trading.signals.savgol_cts.entries.bt_cross import check_bt_crossover
 from src.trading.signals.savgol_cts.entries.cwvap_reclaim import check_cwvap_reclaim
 from src.trading.signals.savgol_cts.entries.cwvap_cross import check_cwvap_cross
+from src.trading.signals.savgol_cts.entries.slope_bottom import check_slope_bottom
 
 # Exit path checkers
 from src.trading.signals.savgol_cts.exits.floor import exit_floor
@@ -29,6 +30,7 @@ from src.trading.signals.savgol_cts.exits.bt_cross import exit_bt_cross
 from src.trading.signals.savgol_cts.exits.psz_glide import exit_psz_glide
 from src.trading.signals.savgol_cts.exits.cwvap_guard import apply_cwvap_guard
 from src.trading.signals.savgol_cts.exits.cwvap_reclaim import exit_cwvap_reclaim
+from src.trading.signals.savgol_cts.exits.slope_bottom import exit_slope_bottom
 
 
 class SavgolCTSSignal(SignalInterface):
@@ -112,6 +114,11 @@ class SavgolCTSSignal(SignalInterface):
         if passed:
             return True, intensity, meta
 
+        # Path 5: Slope Bottom
+        passed, intensity, meta = check_slope_bottom(row, prev_row, cfg)
+        if passed:
+            return True, intensity, meta
+
         return False, 0, meta
 
     # ------------------------------------------------------------------
@@ -162,6 +169,11 @@ class SavgolCTSSignal(SignalInterface):
                 row, prev_row, trade, peak_close, bars_held,
                 delivery_bad_count, cfg, records, idx,
             )
+        elif tag == EntryTag.SLOPE_BOTTOM.value:
+            exit_status = exit_slope_bottom(
+                row, prev_row, trade, peak_close, bars_held,
+                delivery_bad_count, cfg, records, idx,
+            )
         else:
             # Unknown entry tag — no exit logic, hold
             exit_status = (None, delivery_bad_count)
@@ -188,7 +200,7 @@ class SavgolCTSSignal(SignalInterface):
 
         # --- CWVAP Guard (suppression / release) ---
         # Bar-3 stop and CWVAP Reclaim exits are unconditional — bypass suppression.
-        if res == ExitReason.BAR3_STOP or tag in (EntryTag.CWVAP_RECLAIM.value, EntryTag.CWVAP_CROSS.value):
+        if res == ExitReason.BAR3_STOP or tag in (EntryTag.CWVAP_RECLAIM.value, EntryTag.CWVAP_CROSS.value, EntryTag.SLOPE_BOTTOM.value):
             final_state = state_returned
         else:
             res, final_state = apply_cwvap_guard(

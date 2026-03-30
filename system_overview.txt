@@ -1,0 +1,38 @@
+  System Overview                                                                                                                                                                                                                     
+                                                                                                                                                                                                                                      
+  Data Pipeline: DivergenceEngine.run() produces a ledger DataFrame with ~40+ computed columns (CTS, BT, CWVAP, PSZ, coherence, PDD, regime, etc.) from raw OHLC+delivery data through 6 sequential modules.                          
+                                                                                                                                                                                                                                      
+  Signal Package (savgol_cts/): CTS mean-reversion signal with 5 entry paths and 4 exit paths, orchestrated by SavgolCTSSignal.                                                                                                       
+                                                                                                                                                                                                                                      
+  Entry Paths (priority order, first match wins)                                                                                                                                                                                      
+                                                                                                                                                                                                                                      
+  ┌─────┬───────────────┬──────────────────────────────────────────────────────────────┬───────────────────┐                                                                                                                          
+  │  #  │     Path      │                           Trigger                            │ Currently Enabled │                                                                                                                          
+  ├─────┼───────────────┼──────────────────────────────────────────────────────────────┼───────────────────┤                                                                                                                          
+  │ 0   │ Floor Touch   │ CTS+BT both pinned at -1.0, PSZ deeply oversold              │ No                │
+  ├─────┼───────────────┼──────────────────────────────────────────────────────────────┼───────────────────┤
+  │ 1   │ Floor Leave   │ CTS rises above floor after being pinned                     │ No                │                                                                                                                          
+  ├─────┼───────────────┼──────────────────────────────────────────────────────────────┼───────────────────┤                                                                                                                          
+  │ 2   │ BT-Cross      │ CTS crosses BT from below in oversold zone                   │ No                │                                                                                                                          
+  ├─────┼───────────────┼──────────────────────────────────────────────────────────────┼───────────────────┤                                                                                                                          
+  │ 3   │ CWVAP Reclaim │ cts_slope zero-cross + close > CWVAP + PSZ > 0 + accel guard │ Yes               │
+  ├─────┼───────────────┼──────────────────────────────────────────────────────────────┼───────────────────┤                                                                                                                          
+  │ 4   │ CWVAP Cross   │ price crosses CWVAP from below + accel rising                │ Yes               │
+  └─────┴───────────────┴──────────────────────────────────────────────────────────────┴───────────────────┘                                                                                                                          
+                  
+  Exit Dispatch (by entry tag)                                                                                                                                                                                                        
+                  
+  - Floor/Floor-Leave/Floor-Touch → exit_floor() + PSZ glide fallback → CWVAP guard                                                                                                                                                   
+  - BT-Cross → exit_bt_cross() (bar-3 stop, PSZ stall, floor/BT/ceiling safety nets) → CWVAP guard
+  - CWVAP Reclaim / CWVAP Cross → exit_cwvap_reclaim() (bar-3 stop, PnL cap, CWVAP lost) — bypasses CWVAP guard                                                                                                                       
+                                                                                                                                                                                                                                      
+  Key Mechanics                                                                                                                                                                                                                       
+                                                                                                                                                                                                                                      
+  - EOD-lag: signal on bar i, trade opens bar i+1, exits begin bar i+2                                                                                                                                                                
+  - Cooldown: 10-bar lockout after SUPPRESSED_EXIT, FLOOR_HIT, BT_HIT, BAR3_STOP
+  - State bitfield: 6 bits packed into delivery_bad_count int tracking per-trade exit progression                                                                                                                                     
+  - CWVAP Guard: post-exit suppression/release layer — holds trades above CWVAP with positive momentum, releases when momentum fades or price drops below tolerance                                                                   
+                                                                                                                                                                                                                                      
+  Simulation Entry Point                                                                                                                                                                                                              
+                                                                                                                                                                                                                                      
+  walk_forward.py shows the pattern: load symbols from watchlist DB → DivergenceEngine(sym, start_date, end_date).run() → iterate records bar-by-bar calling check_entry/check_exit with EOD-lag pending mechanism.      

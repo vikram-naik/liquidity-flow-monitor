@@ -1,7 +1,7 @@
 # SavgolCTS Signal — Entry / Exit Flow
 
 **Package**: `src/trading/signals/savgol_cts/`
-**Last updated**: 2026-03-29
+**Last updated**: 2026-03-30
 
 ## Package Structure
 
@@ -17,10 +17,12 @@ savgol_cts/
     floor_leave.py     # Path 1: CTS rises above floor after being pinned
     bt_cross.py        # Path 2: CTS crosses BT from below in oversold zone
     cwvap_reclaim.py   # Path 3: cts_slope crosses zero, close > CWVAP, PSZ > 0
+    slope_bottom.py    # Path 5: cts_slope rising from P5 bottom in downtrend
   exits/
     floor.py           # Floor/Floor-Leave/Floor-Touch exit path
     bt_cross.py        # BT-Cross exit path + PSZ stall helper
     cwvap_reclaim.py   # CWVAP Reclaim exit: bar-3 stop, PnL cap, CWVAP lost
+    slope_bottom.py    # Slope Bottom exit: pure slope zero-cross cycle
     psz_glide.py       # Shared PSZ glide exit (5-bar mean crossover)
     cwvap_guard.py     # CWVAP suppression / release logic (post-exit)
 ```
@@ -29,7 +31,7 @@ savgol_cts/
 
 ## Entry Flow
 
-Four entry paths evaluated in priority order.  First match wins.
+Six entry paths evaluated in priority order.  First match wins.
 
 ```
 check_entry(row, prev_row, cfg, records, idx)       [signal.py]
@@ -80,7 +82,28 @@ check_entry(row, prev_row, cfg, records, idx)       [signal.py]
   |     |-- [Guard] PSZ > cfg.cwvap_reclaim.psz_min (0.0)
   |     |-- [Guard] cwvap_dist% <= cfg.cwvap_reclaim.cwvap_dist_max (7.0%)
   |     |-- [Guard] close <= VA high (not above value area)
+  |     |-- [Guard] ST guard: CTS < ST - st_guard_tolerance (-0.10)
   |     +-- PASS --> EntryTag.CWVAP_RECLAIM
+  |
+  |-- PATH 4: CWVAP Cross                               [entries/cwvap_cross.py]
+  |     |-- [Gate]  cfg.cwvap_cross.enabled?
+  |     |-- [Guard] open < CWVAP AND close > CWVAP (price crosses from below)
+  |     |-- [Guard] cts_accel > cts_accel_threshold + accel_margin_min (0.01)
+  |     |-- [Guard] PSZ > cfg.cwvap_cross.psz_min (-0.35)
+  |     |-- [Guard] CTS > cfg.cwvap_cross.cts_min (0.0)
+  |     |-- [Guard] CTS <= cfg.cwvap_cross.cts_max (0.85)
+  |     |-- [Guard] ST guard: CTS < ST - st_guard_tolerance (-0.10)
+  |     +-- PASS --> EntryTag.CWVAP_CROSS
+  |
+  |-- PATH 5: Slope Bottom                               [entries/slope_bottom.py]
+  |     |-- [Gate]  cfg.slope_bottom.enabled?
+  |     |-- [Guard] cts_slope <= slope_threshold (-0.187, P5 empirical bottom)
+  |     |-- [Guard] cts_slope rising (slope > prev_slope)
+  |     |-- [Guard] regime == "downtrend"
+  |     |-- [Guard] slope_delta <= slope_delta_max (0.02, reject dead-cat bounces)
+  |     |-- [Guard] cwvap_dist% >= cwvap_dist_min (-10.0%, not too far below)
+  |     |-- [Guard] cwvap_dist% <= cwvap_dist_max (-1.0%, must be below CWVAP)
+  |     +-- PASS --> EntryTag.SLOPE_BOTTOM
   |
   +-- No path matched --> REJECT (last meta from final path)
 ```
@@ -115,13 +138,17 @@ check_exit(row, prev_row, trade, ...)                [signal.py]
   |-- tag == BT_CROSS
   |     --> exit_bt_cross()                          [exits/bt_cross.py]
   |
-  |-- tag == CWVAP_RECLAIM
+  |-- tag in (CWVAP_RECLAIM, CWVAP_CROSS)
   |     --> exit_cwvap_reclaim()                     [exits/cwvap_reclaim.py]
   |     (bypasses CWVAP guard — exit is CWVAP-based)
   |
+  |-- tag == SLOPE_BOTTOM
+  |     --> exit_slope_bottom()                      [exits/slope_bottom.py]
+  |     (bypasses CWVAP guard — exit is slope-based)
+  |
   |-- [Optional] ST exit (cfg.st_exit_enabled, default False)
   |
-  +-- apply_cwvap_guard()  (skipped for CWVAP_RECLAIM)  [exits/cwvap_guard.py]
+  +-- apply_cwvap_guard()  (skipped for CWVAP_RECLAIM/CWVAP_CROSS/SLOPE_BOTTOM)  [exits/cwvap_guard.py]
 ```
 
 ### State Bitfield (`delivery_bad_count` repurposed — `state.py`)
@@ -133,6 +160,7 @@ bit 2 (& 0x04): cts_above_bt      — CTS has been above BT during this trade
 bit 3 (& 0x08): exit_suppressed   — An indicator exit was suppressed by CWVAP Rule A
 bit 4 (& 0x10): suppressed_this_bar — Exit was suppressed on this specific bar
 bit 5 (& 0x20): slope_went_negative — CWVAP Reclaim: cts_slope went <= 0 post-entry
+                                      Slope Bottom: repurposed as slope_crossed_zero (slope > 0 reached)
 ```
 
 ---
@@ -168,23 +196,52 @@ exit_bt_cross(row, prev_row, trade, ...)
 
 ### Exit: CWVAP Reclaim path (`exits/cwvap_reclaim.py`)
 
-Tag: `CWVAP_RECLAIM`
+Tags: `CWVAP_RECLAIM`, `CWVAP_CROSS`
 
-Three exit conditions in priority order. Bypasses the CWVAP guard entirely
-(exit logic is itself CWVAP-based).
+Five exit conditions in priority order for CWVAP Reclaim/Cross.
+Bypasses the CWVAP guard entirely (exit logic is itself CWVAP-based).
 
 ```
 exit_cwvap_reclaim(row, prev_row, trade, ...)
   |-- EXIT: Bar-3 PnL stop — bars_held == bar3_stop_bar AND PnL% < bar3_stop_threshold
   |         --> ExitReason.BAR3_STOP
   |         Empirically (NIFTY 500 TEST): fires ~24%, avg -4.1%, cuts early losers.
+  |-- EXIT: Bar-5 breakeven gate — bars_held == bar5_stop_bar AND PnL% < bar5_stop_threshold
+  |         --> ExitReason.BAR5_STOP
+  |         Catches flat-drifter losers (66% save rate, +0.7x payoff lift).
   |-- EXIT: PnL cap — PnL% >= pnl_cap_pct (8.0%)
   |         --> ExitReason.PNL_CAP
   |         Empirically (NIFTY 500 TEST): fires ~37%, 100% WR, avg +10.3%.
+  |-- EXIT: LH+LL trend break — confirmed lower-high + lower-low after peak
+  |         --> ExitReason.LH_LL_BREAK
+  |         Uses 2-bar pivot swing detection. After trade's peak close, if a
+  |         confirmed swing high < previous swing high AND confirmed swing low
+  |         < previous swing low, the uptrend structure is broken.
+  |         Empirically (NIFTY 500 TEST): fires ~12.5%, 74.9% WR, avg +4.40%.
+  |         90.7% save rate on would-be CWVAP Lost trades (+3.45% improvement).
   |-- EXIT: CWVAP lost — close < CWVAP - ATR*mult AND high < CWVAP
   |         --> ExitReason.CWVAP_LOST
   +-- None --> HOLD
 ```
+
+### Exit: Slope Bottom path (`exits/slope_bottom.py`)
+
+Tags: `SLOPE_BOTTOM`
+
+Pure slope-based exit using the zero-cross cycle. Bypasses CWVAP guard entirely.
+
+```
+exit_slope_bottom(row, prev_row, trade, ...)
+  |-- Phase 1: wait for cts_slope to cross above zero
+  |     (99.2% of entries cross zero within 30 bars empirically)
+  |     Track via slope_went_negative bit (repurposed as slope_crossed_zero)
+  |-- Phase 2: slope has been positive, exit when it drops back below zero
+  |     --> ExitReason.SLOPE_CYCLE
+  +-- None --> HOLD
+```
+
+Empirically (NIFTY 500 TEST): 214 trades via SLOPE_CYCLE, 49.5% WR, +2.27% avg.
+Sweet spot is 16-20 bar holds: 57% WR, 3.37x payoff.
 
 ### Exit: PSZ Glide (`exits/psz_glide.py`)
 
@@ -267,10 +324,40 @@ apply_cwvap_guard(row, trade, res, state, cwvap_values, cfg, records, idx)
 | `cts_min` | 0.0 | Minimum CTS at entry (reject negative CTS) |
 | `cts_max` | 0.85 | Maximum CTS at entry (reject near-ceiling) |
 | `cwvap_dist_max` | 7.0 | Max cwvap_dist% (reject extended entries) |
+| `accel_margin_min` | 0.01 | Minimum accel above threshold |
+| `st_guard_enabled` | True | Reject when CTS near/above sell threshold |
+| `st_guard_tolerance` | -0.10 | Block if CTS >= ST - tolerance (negative = stricter) |
 
 Plus hardcoded guards:
 - `cts_accel >= cts_accel_threshold` (dynamic threshold from data)
 - `close <= va_high` (reject when above value area)
+
+**Path 4 — CWVAP Cross (`cfg.cwvap_cross`):**
+
+| Parameter | Default | Description |
+|---|---|---|
+| `enabled` | True | Enable/disable path |
+| `psz_min` | -0.35 | Minimum PSZ at entry |
+| `cts_min` | 0.0 | Minimum CTS at entry |
+| `cts_max` | 0.85 | Maximum CTS at entry (reject near-ceiling) |
+| `accel_margin_min` | 0.01 | Minimum accel above threshold |
+| `slope_min` | -0.02 | Reject when cts_slope too negative |
+| `st_guard_enabled` | True | Reject when CTS near/above sell threshold |
+| `st_guard_tolerance` | -0.10 | Block if CTS >= ST - tolerance (negative = stricter) |
+
+**Path 5 — Slope Bottom (`cfg.slope_bottom`):**
+
+| Parameter | Default | Description |
+|---|---|---|
+| `enabled` | True | Enable/disable path |
+| `slope_threshold` | -0.187 | P5 empirical bottom (cts_slope must be at or below) |
+| `slope_delta_max` | 0.02 | Max slope change per bar (reject violent dead-cat bounces) |
+| `cwvap_dist_min` | -10.0 | Min cwvap_dist% (reject when too far below CWVAP) |
+| `cwvap_dist_max` | -1.0 | Max cwvap_dist% (must be meaningfully below CWVAP) |
+
+Plus hardcoded guards:
+- `cts_slope rising` (current > previous)
+- `regime == "downtrend"`
 
 ### Exit (`SavgolCTSExitConfig` — `config.py`)
 
@@ -304,8 +391,19 @@ Plus hardcoded guards:
 | `bar3_stop_enabled` | True | Bar-3 PnL stop |
 | `bar3_stop_bar` | 3 | Bar at which to check |
 | `bar3_stop_threshold` | -2.0 | Exit if PnL% below this |
+| `bar5_stop_enabled` | True | Bar-5 breakeven gate |
+| `bar5_stop_bar` | 5 | Bar at which to check |
+| `bar5_stop_threshold` | 0.0 | Exit if PnL% below this |
 | `pnl_cap_enabled` | True | Take-profit PnL cap |
 | `pnl_cap_pct` | 8.0 | Exit when PnL% >= this |
+| `lh_ll_enabled` | True | LH+LL price structure trend break exit |
+| `lh_ll_pivot_lookback` | 2 | Bars on each side to confirm a swing pivot |
+
+**Slope Bottom exit (`cfg.slope_bottom`):**
+
+No configurable parameters. Pure slope zero-cross cycle:
+- Phase 1: hold until cts_slope crosses above zero.
+- Phase 2: exit when cts_slope drops back below zero → `SLOPE_CYCLE`.
 
 **CWVAP Guard (`cfg.cwvap_guard`):**
 

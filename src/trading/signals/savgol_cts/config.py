@@ -81,7 +81,9 @@ class CwvapReclaimEntryConfig:
     cts_max: float = 0.85  # reject when CTS already near ceiling
     cwvap_dist_max: float = 7.0  # max cwvap_dist% at signal (reject extended entries)
     accel_margin_min: float = 0.01  # minimum accel above threshold (reject barely-above)
-
+    # ST guard: reject when CTS already at/above sell threshold (upside exhausted)
+    st_guard_enabled: bool = True
+    st_guard_tolerance: float = -0.10
 
 
 @dataclass
@@ -90,13 +92,47 @@ class CwvapCrossEntryConfig:
 
     Minimal guards; fine-tuning will follow after reviewing initial trades.
     """
-    enabled: bool = True
+    enabled: bool = False
     psz_min: float = -0.35  # minimum PSZ at entry
-    cts_min: float = -0.85   # reject when CTS still negative
+    cts_min: float = 0.0  # reject when CTS still negative
     cts_max: float = 0.85  # reject when CTS already near ceiling
-    accel_delta_min: float = 0.005  # minimum accel change (reject flat acceleration)
     accel_margin_min: float = 0.01  # minimum accel above threshold (reject barely-above)
-    slope_min: float = -0.02 # reject when cts_slope is too negative
+    slope_min: float = 0 # reject when cts_slope is too negative
+    # ST guard: reject when CTS already at/above sell threshold (upside exhausted)
+    st_guard_enabled: bool = True
+    st_guard_tolerance: float = -0.10
+
+
+@dataclass
+class SlopeBottomEntryConfig:
+    """Path 5: Slope Bottom — cts_slope rising from deep negative in downtrend.
+
+    Entry fires when:
+    - cts_slope <= slope_threshold (-0.187, P5 empirical bottom)
+    - cts_slope is rising (current > previous)
+    - regime == "downtrend"
+    - slope_delta <= slope_delta_max (reject violent dead-cat bounces)
+    - cwvap_dist in [cwvap_dist_min, cwvap_dist_max] (meaningful distance below CWVAP)
+
+    Empirically (NIFTY 500, 2024-04 to 2026-03): 218 trades, 48.6% WR,
+    1.84x payoff, +2.27% expectancy with pure slope zero-cross exit.
+    """
+    enabled: bool = True
+    slope_threshold: float = -0.1     # P5 bottom threshold
+    slope_delta_max: float = 0.02       # reject violent bounces (dead cats)
+    cwvap_dist_min: float = -10.0       # not too far below CWVAP (%)
+    cwvap_dist_max: float = -1.0        # must be meaningfully below CWVAP (%)
+
+
+@dataclass
+class SlopeBottomExitConfig:
+    """Slope Bottom exit: pure slope zero-cross cycle.
+
+    After entry, wait for cts_slope to cross above zero, then exit when
+    it drops back below zero. The full slope cycle captures the reversal
+    and exits when momentum fades.
+    """
+    pass
 
 
 @dataclass
@@ -106,8 +142,19 @@ class CwvapReclaimExitConfig:
     bar3_stop_enabled: bool = True
     bar3_stop_bar: int = 3
     bar3_stop_threshold: float = -2.0  # exit if PnL% below this at bar N
+    # Bar-5 breakeven gate: exit if PnL still negative at bar N.
+    # Catches flat-drifter losers early (66% save rate, +0.7x payoff lift).
+    bar5_stop_enabled: bool = True
+    bar5_stop_bar: int = 5
+    bar5_stop_threshold: float = 0.0  # exit if PnL% below this at bar N
     pnl_cap_enabled: bool = True
     pnl_cap_pct: float = 8.0  # take profit when PnL% >= this
+    # LH+LL exit: lower-high + lower-low price structure break.
+    # After peak, if a confirmed swing high is below prev swing high AND
+    # a confirmed swing low is below prev swing low, trend is broken.
+    # 90.7% save rate on CWVAP Lost trades, +3.45% avg improvement.
+    lh_ll_enabled: bool = True
+    lh_ll_pivot_lookback: int = 2  # bars on each side to confirm a pivot
 
 
 # ---------------------------------------------------------------------------
@@ -142,6 +189,7 @@ class SavgolCTSEntryConfig(BaseEntryConfig):
         ExitReason.FLOOR_HIT,
         ExitReason.BT_HIT,
         ExitReason.BAR3_STOP,
+        ExitReason.BAR5_STOP,
     )
 
     # --- Per-path configs ---
@@ -150,6 +198,7 @@ class SavgolCTSEntryConfig(BaseEntryConfig):
     bt_cross: BtCrossEntryConfig = field(default_factory=BtCrossEntryConfig)
     cwvap_reclaim: CwvapReclaimEntryConfig = field(default_factory=CwvapReclaimEntryConfig)
     cwvap_cross: CwvapCrossEntryConfig = field(default_factory=CwvapCrossEntryConfig)
+    slope_bottom: SlopeBottomEntryConfig = field(default_factory=SlopeBottomEntryConfig)
 
 
 # ---------------------------------------------------------------------------
@@ -209,4 +258,5 @@ class SavgolCTSExitConfig(BaseExitConfig):
     # --- Per-path configs ---
     bt_cross: BtCrossExitConfig = field(default_factory=BtCrossExitConfig)
     cwvap_reclaim: CwvapReclaimExitConfig = field(default_factory=CwvapReclaimExitConfig)
+    slope_bottom: SlopeBottomExitConfig = field(default_factory=SlopeBottomExitConfig)
     cwvap_guard: CwvapGuardConfig = field(default_factory=CwvapGuardConfig)
