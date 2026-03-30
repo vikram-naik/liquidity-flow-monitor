@@ -31,6 +31,7 @@ def exit_slope_bottom(
     Phase 2: once slope has been above zero, exit when it drops back below.
     """
     st = SavgolCTSExitState.from_int(state_val)
+    ecfg = cfg.slope_bottom
 
     cs = row.get("cts_slope", np.nan)
     if np.isnan(cs):
@@ -44,9 +45,42 @@ def exit_slope_bottom(
         if cs > 0:
             st.slope_went_negative = True  # mark phase 1 complete
         return None, st.to_int()
+    else:
+        # Phase 1.5: slope has been positive, and price is still below CWVAP exit.
+        close = row.get("close", np.nan)
+        cwvap = row.get("cwvap", np.nan)
+        if np.isnan(close) or np.isnan(cwvap):
+            return None, st.to_int()
+        if close < cwvap:
+            return ExitReason.CWVAP_LOST, st.to_int()
+        
 
-    # Phase 2: slope has been positive, exit when it goes negative again
+    # PnL cap: take profit when trade PnL% >= cap
+    # Suppressed while price is above VA high (breakout territory — let it run)
+    if ecfg.pnl_cap_enabled and trade is not None and trade.entry_price > 0:
+        close_now = row.get("close", np.nan)
+        va_high = row.get("va_high", np.nan)
+        if not np.isnan(close_now):
+            above_va = not np.isnan(va_high) and va_high > 0 and close_now > va_high
+            if not above_va:
+                pnl = (close_now / trade.entry_price - 1) * 100
+                if pnl >= ecfg.pnl_cap_pct:
+                    return ExitReason.PNL_CAP, st.to_int()
+
+    # Phase 2: slope has been positive, exit when it goes below threshold
     if cs < 0:
         return ExitReason.SLOPE_CYCLE, st.to_int()
+
+
+    close = row.get("close", np.nan)
+    cwvap = row.get("cwvap", np.nan)
+    
+    if np.isnan(close) or np.isnan(cwvap):
+        return None, st.to_int()
+
+    # Exit if CWVAP is lost AFTER it was reclaimed (managed by orchestrator)
+    if st.price_above_cwvap and close < cwvap:
+        return ExitReason.CWVAP_LOST, st.to_int()
+
 
     return None, st.to_int()

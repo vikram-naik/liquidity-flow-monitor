@@ -66,6 +66,7 @@ def exit_cwvap_reclaim(
     high = row.get("high", np.nan)
     cwvap = row.get("cwvap", np.nan)
     atr = row.get("atr_20", np.nan)
+
     if not np.isnan(close) and not np.isnan(cwvap) and cwvap > 0:
         tol = atr * cfg.cwvap_reclaim.cwvap_lost_atr_mult if not np.isnan(atr) else 0.0
         if close < cwvap - tol and high < cwvap:

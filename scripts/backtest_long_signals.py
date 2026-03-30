@@ -371,11 +371,11 @@ def print_results(all_trades: list[Trade]):
 def main():
     parser = argparse.ArgumentParser(description="Long-only signal backtester")
     group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument("--watchlist", help="Watchlist name to backtest")
+    group.add_argument("--watchlist", default="NIFTY 50", help="Watchlist name to backtest")
     group.add_argument("--symbol", help="Single symbol to backtest")
 
     parser.add_argument("--start-date", help="Start date for entry signals (YYYY-MM-DD)")
-    parser.add_argument("--signal", choices=["price_divergence", "nextgen", "savgol_cts"], default="price_divergence",
+    parser.add_argument("--signal", choices=["price_divergence", "nextgen", "savgol_cts"], default="savgol_cts",
                         help="Signal strategy to use (default: price_divergence)")
 
     args = parser.parse_args()

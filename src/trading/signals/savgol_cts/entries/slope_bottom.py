@@ -48,11 +48,13 @@ def check_slope_bottom(
 
     # G3: regime must be downtrend
     regime = row.get("regime", "")
-    if regime != "downtrend":
-        return False, 0, {"reason": f"Regime {regime} != downtrend"}
+    if regime not in ["downtrend", "notrend"]:
+        return False, 0, {"reason": f"Regime {regime} != downtrend or notrend"}
 
-    # G4: slope delta must not be too violent (reject dead-cat bounces)
+    # G4: slope delta must be between min (conviction) and max (noise-vs-spike)
     slope_delta = cs - pcs
+    if slope_delta < sbcfg.slope_delta_min:
+        return False, 0, {"reason": f"slope_delta {slope_delta:.4f} < min {sbcfg.slope_delta_min} (minor inflection)"}
     if slope_delta > sbcfg.slope_delta_max:
         return False, 0, {"reason": f"slope_delta {slope_delta:.4f} > max {sbcfg.slope_delta_max} (violent bounce)"}
 
@@ -69,6 +71,19 @@ def check_slope_bottom(
 
     if cwvap_dist > sbcfg.cwvap_dist_max:
         return False, 0, {"reason": f"cwvap_dist {cwvap_dist:.1f}% > max {sbcfg.cwvap_dist_max}% (too close/above)"}
+
+
+    # G7: cts_accel vs threshold
+    cts_accel = row.get("cts_accel", np.nan)
+    pcts_accel = prev_row.get("cts_accel", np.nan)
+    cts_accel_threshold = row.get("cts_accel_threshold", np.nan)
+
+    if np.isnan(cts_accel) or np.isnan(pcts_accel) or np.isnan(cts_accel_threshold):
+        return False, 0, {"reason": "Missing cts_accel data"}
+
+    # cts_accel shouldn't be between 0 and cts_accel_threshold (rounded to 4th decimal)
+    if 0.0 < round(cts_accel, 4) <= round(cts_accel_threshold, 4):
+        return False, 0, {"reason": f"cts_accel {cts_accel:.4f} <= threshold {cts_accel_threshold:.4f}"}
 
     # Intensity scoring
     cts = row.get("cts", np.nan)

@@ -77,9 +77,9 @@ class CwvapReclaimEntryConfig:
     """
     enabled: bool = True
     psz_min: float = 0.0  # minimum PSZ at entry
-    cts_min: float = 0.0   # reject when CTS still negative (unconfirmed inflection)
+    cts_min: float = -0.85   # reject when CTS still negative (unconfirmed inflection)
     cts_max: float = 0.85  # reject when CTS already near ceiling
-    cwvap_dist_max: float = 7.0  # max cwvap_dist% at signal (reject extended entries)
+    cwvap_dist_max: float = 3.0  # max cwvap_dist% at signal (reject extended entries)
     accel_margin_min: float = 0.01  # minimum accel above threshold (reject barely-above)
     # ST guard: reject when CTS already at/above sell threshold (upside exhausted)
     st_guard_enabled: bool = True
@@ -119,8 +119,9 @@ class SlopeBottomEntryConfig:
     """
     enabled: bool = True
     slope_threshold: float = -0.1     # P5 bottom threshold
+    slope_delta_min: float = 0.005       # conviction gate (reject noise)
     slope_delta_max: float = 0.02       # reject violent bounces (dead cats)
-    cwvap_dist_min: float = -10.0       # not too far below CWVAP (%)
+    cwvap_dist_min: float = -8.0       # not too far below CWVAP (%)
     cwvap_dist_max: float = -1.0        # must be meaningfully below CWVAP (%)
 
 
@@ -132,19 +133,20 @@ class SlopeBottomExitConfig:
     it drops back below zero. The full slope cycle captures the reversal
     and exits when momentum fades.
     """
-    pass
+    pnl_cap_enabled: bool = True
+    pnl_cap_pct: float = 8.0  # take profit when PnL% >= this
 
 
 @dataclass
 class CwvapReclaimExitConfig:
     """CWVAP Reclaim exit: close drops below CWVAP."""
     cwvap_lost_atr_mult: float = 0.3  # exit when close < cwvap - atr * mult
-    bar3_stop_enabled: bool = True
+    bar3_stop_enabled: bool = False
     bar3_stop_bar: int = 3
     bar3_stop_threshold: float = -2.0  # exit if PnL% below this at bar N
     # Bar-5 breakeven gate: exit if PnL still negative at bar N.
     # Catches flat-drifter losers early (66% save rate, +0.7x payoff lift).
-    bar5_stop_enabled: bool = True
+    bar5_stop_enabled: bool = False
     bar5_stop_bar: int = 5
     bar5_stop_threshold: float = 0.0  # exit if PnL% below this at bar N
     pnl_cap_enabled: bool = True

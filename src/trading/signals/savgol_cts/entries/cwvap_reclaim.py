@@ -43,12 +43,16 @@ def check_cwvap_reclaim(
     if np.isnan(cts_accel) or np.isnan(pcts_accel) or np.isnan(cts_accel_threshold):
         return False, 0, {"reason": "Missing cts_accel data"}
 
-    accel_margin = cts_accel - cts_accel_threshold
-    if accel_margin <= cfg.cwvap_reclaim.accel_margin_min:
-        return False, 0, {"reason": f"accel_margin {accel_margin:.5f} <= min {cfg.cwvap_reclaim.accel_margin_min}"}
+    # cts_accel shouldn't be between 0 and cts_accel_threshold (rounded to 4th decimal)
+    if 0.0 < round(cts_accel, 4) <= round(cts_accel_threshold, 4):
+        return False, 0, {"reason": f"cts_accel {cts_accel:.4f} <= threshold {cts_accel_threshold:.4f}"}
 
-    # if (pcts_accel > cts_accel):
-    #     return False, 0, {"reason": f"cts accel not accelerating {pcts_accel:.3f} > {cts_accel:.3f}"}
+    # accel_margin = cts_accel - cts_accel_threshold
+    # if accel_margin <= cfg.cwvap_reclaim.accel_margin_min:
+    #     return False, 0, {"reason": f"accel_margin {accel_margin:.5f} <= min {cfg.cwvap_reclaim.accel_margin_min}"}
+
+    if (pcts_accel > cts_accel):
+        return False, 0, {"reason": f"cts accel not accelerating {pcts_accel:.3f} > {cts_accel:.3f}"}
 
     # CTS range guard
     cts = row.get("cts", np.nan)
@@ -69,8 +73,8 @@ def check_cwvap_reclaim(
 
     # PSZ gate
     psz = row.get("price_slope_z", np.nan)
-    if np.isnan(psz) or psz <= cfg.cwvap_reclaim.psz_min:
-        return False, 0, {"reason": f"PSZ {psz:.3f} <= {cfg.cwvap_reclaim.psz_min}"}
+    # if np.isnan(psz) or psz <= cfg.cwvap_reclaim.psz_min:
+    #     return False, 0, {"reason": f"PSZ {psz:.3f} <= {cfg.cwvap_reclaim.psz_min}"}
 
     cwvap_dist = (close - cwvap) / cwvap * 100.0
 
@@ -79,9 +83,9 @@ def check_cwvap_reclaim(
         return False, 0, {"reason": f"cwvap_dist {cwvap_dist:.1f}% > max {cfg.cwvap_reclaim.cwvap_dist_max}%"}
 
     # VA high guard: reject when close is above the value area high
-    va_high = row.get("va_high", np.nan)
-    if not np.isnan(va_high) and va_high > 0 and close > va_high:
-        return False, 0, {"reason": f"Close {close:.1f} > VA high {va_high:.1f}"}
+    # va_high = row.get("va_high", np.nan)
+    # if not np.isnan(va_high) and va_high > 0 and close > va_high:
+    #     return False, 0, {"reason": f"Close {close:.1f} > VA high {va_high:.1f}"}
 
     # ST guard: reject when CTS already at/above sell threshold (upside exhausted)
     if cfg.cwvap_reclaim.st_guard_enabled:

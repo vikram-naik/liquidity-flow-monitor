@@ -142,6 +142,16 @@ class SavgolCTSSignal(SignalInterface):
         if not isinstance(cfg, SavgolCTSExitConfig):
             cfg = SavgolCTSExitConfig()
 
+        from src.trading.signals.savgol_cts.state import SavgolCTSExitState
+        st = SavgolCTSExitState.from_int(delivery_bad_count)
+
+        # Update universal states
+        close = row.get("close", np.nan)
+        cwvap = row.get("cwvap", np.nan)
+        if not np.isnan(close) and not np.isnan(cwvap) and close > cwvap:
+            st.price_above_cwvap = True
+
+        updated_state_val = st.to_int()
         tag = trade.entry_tag if trade is not None else ""
 
         # --- Path-specific exit ---
@@ -152,7 +162,7 @@ class SavgolCTSSignal(SignalInterface):
         ):
             exit_status = exit_floor(
                 row, prev_row, trade, peak_close, bars_held,
-                delivery_bad_count, cfg, records, idx,
+                updated_state_val, cfg, records, idx,
             )
             # If floor exit returned None, check PSZ glide as fallback
             if exit_status[0] is None:
@@ -162,21 +172,21 @@ class SavgolCTSSignal(SignalInterface):
         elif tag == EntryTag.BT_CROSS.value:
             exit_status = exit_bt_cross(
                 row, prev_row, trade, peak_close, bars_held,
-                delivery_bad_count, cfg, records, idx,
+                updated_state_val, cfg, records, idx,
             )
         elif tag in (EntryTag.CWVAP_RECLAIM.value, EntryTag.CWVAP_CROSS.value):
             exit_status = exit_cwvap_reclaim(
                 row, prev_row, trade, peak_close, bars_held,
-                delivery_bad_count, cfg, records, idx,
+                updated_state_val, cfg, records, idx,
             )
         elif tag == EntryTag.SLOPE_BOTTOM.value:
             exit_status = exit_slope_bottom(
                 row, prev_row, trade, peak_close, bars_held,
-                delivery_bad_count, cfg, records, idx,
+                updated_state_val, cfg, records, idx,
             )
         else:
             # Unknown entry tag — no exit logic, hold
-            exit_status = (None, delivery_bad_count)
+            exit_status = (None, updated_state_val)
 
         res, state_returned = exit_status
 
@@ -200,7 +210,11 @@ class SavgolCTSSignal(SignalInterface):
 
         # --- CWVAP Guard (suppression / release) ---
         # Bar-3 stop and CWVAP Reclaim exits are unconditional — bypass suppression.
-        if res == ExitReason.BAR3_STOP or tag in (EntryTag.CWVAP_RECLAIM.value, EntryTag.CWVAP_CROSS.value, EntryTag.SLOPE_BOTTOM.value):
+        if res == ExitReason.BAR3_STOP or tag in (
+                # EntryTag.CWVAP_RECLAIM.value, 
+                EntryTag.CWVAP_CROSS.value, 
+                # EntryTag.SLOPE_BOTTOM.value
+            ):
             final_state = state_returned
         else:
             res, final_state = apply_cwvap_guard(
