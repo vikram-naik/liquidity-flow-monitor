@@ -72,6 +72,13 @@ def check_slope_bottom(
     if cwvap_dist > sbcfg.cwvap_dist_max:
         return False, 0, {"reason": f"cwvap_dist {cwvap_dist:.1f}% > max {sbcfg.cwvap_dist_max}% (too close/above)"}
 
+    # Open > CWVAP Guard
+    if getattr(sbcfg, "open_cwvap_guard", False):
+        open_px = row.get("open", np.nan)
+        if not np.isnan(open_px) and not np.isnan(cwvap):
+            if open_px > cwvap:
+                return False, 0, {"reason": f"Open {open_px:.2f} > CWVAP {cwvap:.2f} (gap up above)"}
+
 
     # G7: cts_accel vs threshold
     cts_accel = row.get("cts_accel", np.nan)
@@ -80,13 +87,26 @@ def check_slope_bottom(
 
     if np.isnan(cts_accel) or np.isnan(pcts_accel) or np.isnan(cts_accel_threshold):
         return False, 0, {"reason": "Missing cts_accel data"}
+        
+    # Phase 3: Reject dropping acceleration
+    if getattr(sbcfg, "accel_rising_guard", False):
+        if cts_accel <= pcts_accel:
+            return False, 0, {"reason": f"cts_accel dropping: {pcts_accel:.4f} -> {cts_accel:.4f}"}
 
-    # cts_accel shouldn't be between 0 and cts_accel_threshold (rounded to 4th decimal)
-    if 0.0 < round(cts_accel, 4) <= round(cts_accel_threshold, 4):
+    # Phase 4 & G7: cts_accel must be > threshold
+    # Prevents negative acceleration (knife falling faster) from slipping through
+    if round(cts_accel, 4) <= round(cts_accel_threshold, 4):
         return False, 0, {"reason": f"cts_accel {cts_accel:.4f} <= threshold {cts_accel_threshold:.4f}"}
 
-    # Intensity scoring
+    # Phase 5: Deep Exhaustion Filter
+    # Only allow trades if the rubber band is fully stretched
     cts = row.get("cts", np.nan)
+    if not np.isnan(cts):
+        cts_max_val = getattr(sbcfg, "cts_max", -0.85)
+        if cts > cts_max_val:
+            return False, 0, {"reason": f"cts {cts:.2f} > max {cts_max_val:.2f} (not exhausted)"}
+
+    # Intensity scoring
     coh = row.get("coherence", np.nan)
     pdd = row.get("pdd_120", np.nan)
 

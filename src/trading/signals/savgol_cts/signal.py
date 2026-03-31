@@ -105,7 +105,7 @@ class SavgolCTSSignal(SignalInterface):
             return True, intensity, meta
 
         # Path 3: CWVAP Reclaim
-        passed, intensity, meta = check_cwvap_reclaim(row, prev_row, cfg)
+        passed, intensity, meta = check_cwvap_reclaim(row, prev_row, cfg, records, idx)
         if passed:
             return True, intensity, meta
 

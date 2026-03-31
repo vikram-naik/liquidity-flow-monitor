@@ -37,6 +37,16 @@ def exit_slope_bottom(
     if np.isnan(cs):
         return None, st.to_int()
 
+    # --- PnL Cap (Highest Priority for Mean Reversion) ---
+    # Take profit unconditionally when trade PnL% >= cap.
+    # No VA High suppression for Slope-Bottom (knife catch).
+    if ecfg.pnl_cap_enabled and trade is not None and trade.entry_price > 0:
+        close_now = row.get("close", np.nan)
+        if not np.isnan(close_now):
+            pnl = (close_now / trade.entry_price - 1) * 100
+            if pnl >= ecfg.pnl_cap_pct:
+                return ExitReason.PNL_CAP, st.to_int()
+
     # slope_went_negative bit repurposed: True = slope has crossed above zero
     slope_crossed_zero = st.slope_went_negative
 
@@ -54,18 +64,6 @@ def exit_slope_bottom(
         if close < cwvap:
             return ExitReason.CWVAP_LOST, st.to_int()
         
-
-    # PnL cap: take profit when trade PnL% >= cap
-    # Suppressed while price is above VA high (breakout territory — let it run)
-    if ecfg.pnl_cap_enabled and trade is not None and trade.entry_price > 0:
-        close_now = row.get("close", np.nan)
-        va_high = row.get("va_high", np.nan)
-        if not np.isnan(close_now):
-            above_va = not np.isnan(va_high) and va_high > 0 and close_now > va_high
-            if not above_va:
-                pnl = (close_now / trade.entry_price - 1) * 100
-                if pnl >= ecfg.pnl_cap_pct:
-                    return ExitReason.PNL_CAP, st.to_int()
 
     # Phase 2: slope has been positive, exit when it goes below threshold
     if cs < 0:

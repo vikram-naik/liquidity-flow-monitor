@@ -79,11 +79,20 @@ class CwvapReclaimEntryConfig:
     psz_min: float = 0.0  # minimum PSZ at entry
     cts_min: float = -0.85   # reject when CTS still negative (unconfirmed inflection)
     cts_max: float = 0.85  # reject when CTS already near ceiling
-    cwvap_dist_max: float = 3.0  # max cwvap_dist% at signal (reject extended entries)
+    cwvap_dist_max: float = 1.0  # max cwvap_dist% at signal (reject extended entries)
     accel_margin_min: float = 0.01  # minimum accel above threshold (reject barely-above)
     # ST guard: reject when CTS already at/above sell threshold (upside exhausted)
     st_guard_enabled: bool = True
     st_guard_tolerance: float = -0.10
+    
+    # CWVAP Flat Gate: reject when CWVAP has been flat (low volatility) before signal
+    flat_gate_enabled: bool = True
+    flat_gate_lookback: int = 8
+    flat_gate_range_max: float = 0.40  # max CWVAP percentage range
+    
+    # Geometry Gate: reject high conviction marubozu candles which indicate entering at daily top
+    geom_gate_enabled: bool = True
+    geom_gate_reject_marubozu: bool = True
 
 
 @dataclass
@@ -123,6 +132,9 @@ class SlopeBottomEntryConfig:
     slope_delta_max: float = 0.02       # reject violent bounces (dead cats)
     cwvap_dist_min: float = -3.0       # not too far below CWVAP (%)
     cwvap_dist_max: float = 1.0        # must be meaningfully below CWVAP (%)
+    open_cwvap_guard: bool = True      # reject gap ups above CWVAP
+    accel_rising_guard: bool = True    # reject dropping or negative accel
+    cts_max: float = -0.85             # Require deep exhaustion (not mid-bounce)
 
 
 @dataclass

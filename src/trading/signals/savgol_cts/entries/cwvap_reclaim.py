@@ -15,6 +15,7 @@ from src.trading.signals.savgol_cts.scoring import compute_intensity
 
 def check_cwvap_reclaim(
     row: dict, prev_row: dict, cfg: SavgolCTSEntryConfig,
+    records: list[dict] | None = None, idx: int = 0
 ) -> tuple[bool, int, dict]:
     """Check Path 4 entry conditions.
 
@@ -92,6 +93,39 @@ def check_cwvap_reclaim(
         st = row.get("cts_sell_threshold", np.nan)
         if not np.isnan(cts) and not np.isnan(st) and cts >= st - cfg.cwvap_reclaim.st_guard_tolerance:
             return False, 0, {"reason": f"ST guard: CTS {cts:.3f} >= ST {st:.3f} (tol {cfg.cwvap_reclaim.st_guard_tolerance})"}
+
+    # CWVAP Flat Gate
+    if cfg.cwvap_reclaim.flat_gate_enabled and records is not None:
+        lookback = cfg.cwvap_reclaim.flat_gate_lookback
+        start = idx - lookback + 1
+        if start >= 0:
+            vals = []
+            for j in range(start, idx + 1):
+                v = records[j].get("cwvap", np.nan)
+                if not np.isnan(v) and v > 0:
+                    vals.append(v)
+            if len(vals) == lookback:
+                mean_v = np.mean(vals)
+                if mean_v > 0:
+                    range_pct = (np.max(vals) - np.min(vals)) / mean_v * 100.0
+                    if range_pct < cfg.cwvap_reclaim.flat_gate_range_max:
+                        return False, 0, {"reason": f"CWVAP Flat Gate: range {range_pct:.2f}% < max {cfg.cwvap_reclaim.flat_gate_range_max}% over {lookback} bars"}
+
+    # Geometry Gate
+    if cfg.cwvap_reclaim.geom_gate_enabled:
+        o = row.get("open", np.nan)
+        h = row.get("high", np.nan)
+        l = row.get("low", np.nan)
+        c = row.get("close", np.nan)
+        
+        if not any(np.isnan(v) for v in (o, h, l, c)):
+            rng = h - l
+            if rng > 0:
+                body = abs(c - o)
+                body_pct = (body / rng) * 100.0
+                
+                if cfg.cwvap_reclaim.geom_gate_reject_marubozu and body_pct >= 80.0:
+                    return False, 0, {"reason": f"Geometry Gate: Marubozu rejection (body {body_pct:.1f}% >= 80.0%)"}
 
     coh = row.get("coherence", np.nan)
     pdd = row.get("pdd_120", np.nan)
