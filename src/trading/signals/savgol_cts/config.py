@@ -121,8 +121,8 @@ class SlopeBottomEntryConfig:
     slope_threshold: float = -0.1     # P5 bottom threshold
     slope_delta_min: float = 0.005       # conviction gate (reject noise)
     slope_delta_max: float = 0.02       # reject violent bounces (dead cats)
-    cwvap_dist_min: float = -8.0       # not too far below CWVAP (%)
-    cwvap_dist_max: float = -1.0        # must be meaningfully below CWVAP (%)
+    cwvap_dist_min: float = -3.0       # not too far below CWVAP (%)
+    cwvap_dist_max: float = 1.0        # must be meaningfully below CWVAP (%)
 
 
 @dataclass
@@ -149,13 +149,15 @@ class CwvapReclaimExitConfig:
     bar5_stop_enabled: bool = False
     bar5_stop_bar: int = 5
     bar5_stop_threshold: float = 0.0  # exit if PnL% below this at bar N
+
     pnl_cap_enabled: bool = True
     pnl_cap_pct: float = 8.0  # take profit when PnL% >= this
+
     # LH+LL exit: lower-high + lower-low price structure break.
     # After peak, if a confirmed swing high is below prev swing high AND
     # a confirmed swing low is below prev swing low, trend is broken.
     # 90.7% save rate on CWVAP Lost trades, +3.45% avg improvement.
-    lh_ll_enabled: bool = True
+    lh_ll_enabled: bool = False
     lh_ll_pivot_lookback: int = 2  # bars on each side to confirm a pivot
 
 
