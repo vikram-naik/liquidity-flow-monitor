@@ -8,6 +8,7 @@ class EntryTag(str, Enum):
     CWVAP_RECLAIM = "SavgolCTS CWVAP-Reclaim"
     CWVAP_CROSS = "SavgolCTS CWVAP-Cross"
     SLOPE_BOTTOM = "SavgolCTS Slope-Bottom"
+    PDD_DIVERGENCE = "SavgolCTS PDD-Divergence"
     CTS_BT_FLOOR = "SavgolCTS CTS-BT-Floor"  # Legacy
 
     # Deprecated — retained for historical trade log compatibility.

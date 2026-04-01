@@ -106,11 +106,8 @@ def check_bt_crossover(
                 "reason": f"Dead-cat bounce: psz_v={psz_v:.3f}, cwvap={cwvap_dist_pct:.1f}%",
             }
 
-    coh = row.get("coherence", np.nan)
-    pdd = row.get("pdd_120", np.nan)
-    regime = row.get("regime", "")
     intensity_int, meta = compute_intensity(
-        cts, coh, pdd, regime, EntryTag.BT_CROSS,
+        row, prev_row, EntryTag.BT_CROSS,
         [f"bt={bt:.3f}", f"prev_cts={prev_cts:.3f}"],
     )
     return True, intensity_int, meta

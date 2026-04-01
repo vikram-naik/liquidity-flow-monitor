@@ -37,7 +37,7 @@ DB_PATH = Path(__file__).resolve().parent.parent / "liquidity_monitor.db"
 TRAIN_START = "2019-01-01"
 TRAIN_END = "2023-12-31"
 TEST_START = "2024-01-01"
-TEST_END = "2026-03-15"
+TEST_END = "2026-04-01"
 
 
 def get_watchlist_symbols(name: str) -> list[str]:

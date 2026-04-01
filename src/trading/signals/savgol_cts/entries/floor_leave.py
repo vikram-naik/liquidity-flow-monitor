@@ -67,11 +67,8 @@ def check_floor_leave(
     if cfg.floor_leave.pszv_direction_gate and psz_v <= 0:
         return False, 0, {"reason": f"Falling Momentum: PSZV {psz_v:.4f}"}
 
-    coh = row.get("coherence", np.nan)
-    pdd = row.get("pdd_120", np.nan)
-    regime = row.get("regime", "")
     intensity_int, meta = compute_intensity(
-        cts, coh, pdd, regime, EntryTag.CTS_FLOOR_LEAVE,
+        row, prev_row, EntryTag.CTS_FLOOR_LEAVE,
         [f"prev_cts={prev_cts:.3f}"],
     )
     return True, intensity_int, meta

@@ -40,3 +40,9 @@
   Virtual Env
 
   `venv` is defined at the root of the project.  
+
+  Context:
+
+  Read @SIGNAL_FLOW.md and the @src/trading/signals/savgol_cts/ pkg to build the context. 
+  We backtest the system using @scripts/walk_forward.py script. 
+  The UI is rendered via the @src/web/js/divergence_engine.js and on backend the datastructure for UI is created by @src/divergence_engine/chart.py and the API is served via @src/api/main.py      

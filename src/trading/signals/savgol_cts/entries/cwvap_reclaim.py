@@ -127,12 +127,8 @@ def check_cwvap_reclaim(
                 if cfg.cwvap_reclaim.geom_gate_reject_marubozu and body_pct >= 80.0:
                     return False, 0, {"reason": f"Geometry Gate: Marubozu rejection (body {body_pct:.1f}% >= 80.0%)"}
 
-    coh = row.get("coherence", np.nan)
-    pdd = row.get("pdd_120", np.nan)
-    regime = row.get("regime", "")
-
     intensity_int, meta = compute_intensity(
-        cts, coh, pdd, regime, EntryTag.CWVAP_RECLAIM,
+        row, prev_row, EntryTag.CWVAP_RECLAIM,
         [f"slope={cs:.5f}", f"psz={psz:.3f}", f"cwvap_dist={cwvap_dist:.1f}%"],
     )
     return True, intensity_int, meta

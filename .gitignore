@@ -60,9 +60,7 @@ scripts/cei_crossing_validation_weekly.json
 *analysis.png
 RELIANCE_150_savgol_psz_analysis.png
 output
-scripts/study_*.py
 bt_hit_trades.csv
-.gitignore
 PSZV_BASE_BREAK_STUDY.md
 scripts/study_pszv_flat_lookback_post_guard.txt
 scripts/study_pszv_flat_lookback_results.txt
@@ -83,7 +81,6 @@ floor_leave_trades_v4.csv
 bt_cross_all_trades.csv
 btcross_cwvap_reclaim.csv
 btcross_wait_reclaim.csv
-.gitignore
 cwvap_crossover_entry_study.csv
 cwvap_crossover_study.csv
 cwvap_reclaim_backtest.csv
@@ -103,3 +100,15 @@ cwvap_reclaim_entries.csv
 cwvap_reclaim_gapup_study.csv
 cwvap_reclaim_loser_trace.csv
 TEST RESULTS Trades 1321.txt
+all_trades_nifty_50.csv
+scripts/analyze_features.py
+scripts/analyze_features.py
+scripts/analyze_features.py
+scripts/analyze_intensity.py
+scripts/study_shriramfin.py
+scripts/*.txt
+scripts/study_bel_jan_mar.py
+scripts/study_bel.py
+scripts/study_*.py
+scripts/test*.py
+

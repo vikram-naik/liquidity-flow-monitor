@@ -113,6 +113,27 @@ class CwvapCrossEntryConfig:
 
 
 @dataclass
+class PddDivergenceEntryConfig:
+    """Path 6: PDD Divergence (Shallow Bottom) — shallow CTS bottom coupled with deep PDD exhaustion.
+    
+    Entry fires when:
+    - pdd_120 <= pdd_threshold (deep institutional exhaustion)
+    - cts_slope between slope_threshold_min and slope_threshold_max (shallow bottom)
+    - cts_slope is rising
+    - cts <= cts_max
+    """
+    enabled: bool = True
+    pdd_threshold: float = -2.0
+    slope_threshold_min: float = -0.10
+    slope_threshold_max: float = -0.04
+    slope_delta_min: float = 0.002
+    slope_delta_max: float = 0.025
+    cts_max: float = -0.70
+    cwvap_dist_min: float = -4.5
+    cwvap_dist_max: float = 0.5
+
+
+@dataclass
 class SlopeBottomEntryConfig:
     """Path 5: Slope Bottom — cts_slope rising from deep negative in downtrend.
 
@@ -131,12 +152,30 @@ class SlopeBottomEntryConfig:
     slope_delta_min: float = 0.002       # conviction gate (reject noise)
     slope_delta_max: float = 0.02       # reject violent bounces (dead cats)
     cwvap_dist_min: float = -3.0       # not too far below CWVAP (%)
-    cwvap_dist_max: float = 1.0        # must be meaningfully below CWVAP (%)
+    cwvap_dist_max: float = 0.5        # must be meaningfully below CWVAP (%)
+    slope_exhaustion_min: float = -0.22 # floor for signal-day slope (avoid infinite falls)
     open_cwvap_guard: bool = True      # reject gap ups above CWVAP
     accel_rising_guard: bool = True    # reject dropping or negative accel
     cts_max: float = -0.85             # Require deep exhaustion (not mid-bounce)
     pdd_guard: bool = True             # toggle PDD institutional exhaustion guard
     pdd_max: float = 0.0               # reject when pdd_120 > max (institutions still distributing)
+
+
+@dataclass
+class PddDivergenceExitConfig:
+    """PDD Divergence exit: pure trailing and CWVAP support.
+    
+    Uses CWVAP ride strategy:
+    - -3.0% hard stop loss
+    - Suppressed structural exits when close >= CWVAP * 0.99
+    - Loss of CWVAP support exit (close < CWVAP * 0.99 after reclaim)
+    - Deep MFE trailing stop (15% drop from peak once MFE > 15%)
+    """
+    hard_stop_pct: float = -3.0
+    cwvap_suppress_tolerance: float = 0.99
+    cwvap_lost_tolerance: float = 0.99
+    mfe_trail_activation_pct: float = 15.0
+    mfe_trail_lock_ratio: float = 0.85 # Exit when dropping below 85% of peak
 
 
 @dataclass
@@ -149,6 +188,11 @@ class SlopeBottomExitConfig:
     """
     pnl_cap_enabled: bool = True
     pnl_cap_pct: float = 8.0  # take profit when PnL% >= this
+    # MFE-based trailing stop: locks a fraction of peak PnL once
+    # the running MFE exceeds activation threshold.
+    trail_enabled: bool = False
+    trail_activation_pct: float = 3.0    # activate once running MFE >= 3%
+    trail_lock_ratio: float = 0.50       # lock 50% of peak PnL as floor
 
 
 @dataclass
@@ -217,6 +261,7 @@ class SavgolCTSEntryConfig(BaseEntryConfig):
     cwvap_reclaim: CwvapReclaimEntryConfig = field(default_factory=CwvapReclaimEntryConfig)
     cwvap_cross: CwvapCrossEntryConfig = field(default_factory=CwvapCrossEntryConfig)
     slope_bottom: SlopeBottomEntryConfig = field(default_factory=SlopeBottomEntryConfig)
+    pdd_divergence: PddDivergenceEntryConfig = field(default_factory=PddDivergenceEntryConfig)
 
 
 # ---------------------------------------------------------------------------
@@ -277,4 +322,5 @@ class SavgolCTSExitConfig(BaseExitConfig):
     bt_cross: BtCrossExitConfig = field(default_factory=BtCrossExitConfig)
     cwvap_reclaim: CwvapReclaimExitConfig = field(default_factory=CwvapReclaimExitConfig)
     slope_bottom: SlopeBottomExitConfig = field(default_factory=SlopeBottomExitConfig)
+    pdd_divergence: PddDivergenceExitConfig = field(default_factory=PddDivergenceExitConfig)
     cwvap_guard: CwvapGuardConfig = field(default_factory=CwvapGuardConfig)

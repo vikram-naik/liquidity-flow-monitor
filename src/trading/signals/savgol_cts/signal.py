@@ -23,6 +23,7 @@ from src.trading.signals.savgol_cts.entries.bt_cross import check_bt_crossover
 from src.trading.signals.savgol_cts.entries.cwvap_reclaim import check_cwvap_reclaim
 from src.trading.signals.savgol_cts.entries.cwvap_cross import check_cwvap_cross
 from src.trading.signals.savgol_cts.entries.slope_bottom import check_slope_bottom
+from src.trading.signals.savgol_cts.entries.pdd_divergence import check_pdd_divergence
 
 # Exit path checkers
 from src.trading.signals.savgol_cts.exits.floor import exit_floor
@@ -31,6 +32,7 @@ from src.trading.signals.savgol_cts.exits.psz_glide import exit_psz_glide
 from src.trading.signals.savgol_cts.exits.cwvap_guard import apply_cwvap_guard
 from src.trading.signals.savgol_cts.exits.cwvap_reclaim import exit_cwvap_reclaim
 from src.trading.signals.savgol_cts.exits.slope_bottom import exit_slope_bottom
+from src.trading.signals.savgol_cts.exits.pdd_divergence import exit_pdd_divergence
 
 
 class SavgolCTSSignal(SignalInterface):
@@ -118,6 +120,11 @@ class SavgolCTSSignal(SignalInterface):
         passed, intensity, meta = check_slope_bottom(row, prev_row, cfg)
         if passed:
             return True, intensity, meta
+            
+        # Path 6: PDD Divergence
+        passed, intensity, meta = check_pdd_divergence(row, prev_row, cfg)
+        if passed:
+            return True, intensity, meta
 
         return False, 0, meta
 
@@ -184,6 +191,17 @@ class SavgolCTSSignal(SignalInterface):
                 row, prev_row, trade, peak_close, bars_held,
                 updated_state_val, cfg, records, idx,
             )
+        elif tag == EntryTag.PDD_DIVERGENCE.value:
+            res_str, final_state = exit_pdd_divergence(
+                row, prev_row, trade, peak_close, bars_held, cfg,
+            )
+            # Pdd divergence handles its own state and returns strings directly
+            if res_str:
+                self._last_exit_idx = idx
+                self._last_exit_reason = res_str
+                return res_str, final_state
+            else:
+                return None, final_state
         else:
             # Unknown entry tag — no exit logic, hold
             exit_status = (None, updated_state_val)
@@ -210,7 +228,14 @@ class SavgolCTSSignal(SignalInterface):
 
         # --- CWVAP Guard (suppression / release) ---
         # Bar-3 stop and CWVAP Reclaim exits are unconditional — bypass suppression.
-        if res == ExitReason.BAR3_STOP or tag in (
+        # PnL cap and trailing stop bypass for Slope-Bottom only — these trades
+        # crash through CWVAP too fast for suppression to help. CWVAP-Reclaim
+        # benefits from suppression (CWVAP_EXHAUSTION runs > PNL_CAP).
+        sb_hard_exit = (
+            tag == EntryTag.SLOPE_BOTTOM.value
+            and res in (ExitReason.PNL_CAP, ExitReason.TRAIL_STOP)
+        )
+        if res == ExitReason.BAR3_STOP or sb_hard_exit or tag in (
                 # EntryTag.CWVAP_RECLAIM.value, 
                 EntryTag.CWVAP_CROSS.value, 
                 # EntryTag.SLOPE_BOTTOM.value

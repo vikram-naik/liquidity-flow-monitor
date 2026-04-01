@@ -42,6 +42,10 @@ def check_slope_bottom(
     if cs > sbcfg.slope_threshold:
         return False, 0, {"reason": f"cts_slope {cs:.4f} > threshold {sbcfg.slope_threshold}"}
 
+    # G1.1: slope must not be below the absolute floor (exhaustion limit)
+    if cs < sbcfg.slope_exhaustion_min:
+        return False, 0, {"reason": f"cts_slope {cs:.4f} < floor {sbcfg.slope_exhaustion_min} (extreme fall)"}
+
     # G2: slope must be rising
     if cs <= pcs:
         return False, 0, {"reason": f"cts_slope not rising: {pcs:.4f} -> {cs:.4f}"}
@@ -107,7 +111,6 @@ def check_slope_bottom(
             return False, 0, {"reason": f"cts {cts:.2f} > max {cts_max_val:.2f} (not exhausted)"}
 
     # Intensity scoring
-    coh = row.get("coherence", np.nan)
     pdd = row.get("pdd_120", np.nan)
 
     # G8: PDD institutional exhaustion guard
@@ -116,7 +119,7 @@ def check_slope_bottom(
             return False, 0, {"reason": f"pdd_120 {pdd:.2f} > max {sbcfg.pdd_max} (institutions still distributing)"}
 
     intensity_int, meta = compute_intensity(
-        cts, coh, pdd, regime, EntryTag.SLOPE_BOTTOM,
+        row, prev_row, EntryTag.SLOPE_BOTTOM,
         [f"slope={cs:.4f}", f"delta={slope_delta:.4f}", f"cwvap_dist={cwvap_dist:.1f}%"],
     )
     return True, intensity_int, meta

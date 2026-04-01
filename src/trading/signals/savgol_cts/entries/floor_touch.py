@@ -56,10 +56,7 @@ def check_floor_touch(
     if cfg.dvwap_bear_stack_gate_enabled and row.get("dvwap_bear_stack", False):
         return False, 0, {"reason": "DVWAP bear stack gate"}
 
-    coh = row.get("coherence", np.nan)
-    pdd = row.get("pdd_120", np.nan)
-    regime = row.get("regime", "")
     intensity_int, meta = compute_intensity(
-        cts, coh, pdd, regime, EntryTag.CTS_FLOOR_TOUCH, [f"bt={bt:.3f}"],
+        row, prev_row, EntryTag.CTS_FLOOR_TOUCH, [f"bt={bt:.3f}"],
     )
     return True, intensity_int, meta

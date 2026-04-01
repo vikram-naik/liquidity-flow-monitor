@@ -73,13 +73,10 @@ def check_cwvap_cross(
         if not np.isnan(cts) and not np.isnan(st) and cts >= st - cfg.cwvap_cross.st_guard_tolerance:
             return False, 0, {"reason": f"ST guard: CTS {cts:.3f} >= ST {st:.3f} (tol {cfg.cwvap_cross.st_guard_tolerance})"}
 
-    coh = row.get("coherence", np.nan)
-    pdd = row.get("pdd_120", np.nan)
-    regime = row.get("regime", "")
     cwvap_dist = (close - cwvap) / cwvap * 100.0
 
     intensity_int, meta = compute_intensity(
-        cts, coh, pdd, regime, EntryTag.CWVAP_CROSS,
+        row, prev_row, EntryTag.CWVAP_CROSS,
         [f"accel={cts_accel:.5f}", f"cwvap_dist={cwvap_dist:.1f}%"],
     )
     return True, intensity_int, meta
