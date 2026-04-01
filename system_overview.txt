@@ -35,4 +35,8 @@
                                                                                                                                                                                                                                       
   Simulation Entry Point                                                                                                                                                                                                              
                                                                                                                                                                                                                                       
-  walk_forward.py shows the pattern: load symbols from watchlist DB → DivergenceEngine(sym, start_date, end_date).run() → iterate records bar-by-bar calling check_entry/check_exit with EOD-lag pending mechanism.      
+  walk_forward.py shows the pattern: load symbols from watchlist DB → DivergenceEngine(sym, start_date, end_date).run() → iterate records bar-by-bar calling check_entry/check_exit with EOD-lag pending mechanism.    
+
+  Virtual Env
+
+  `venv` is defined at the root of the project.  

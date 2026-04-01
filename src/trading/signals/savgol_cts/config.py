@@ -128,13 +128,15 @@ class SlopeBottomEntryConfig:
     """
     enabled: bool = True
     slope_threshold: float = -0.1     # P5 bottom threshold
-    slope_delta_min: float = 0.005       # conviction gate (reject noise)
+    slope_delta_min: float = 0.002       # conviction gate (reject noise)
     slope_delta_max: float = 0.02       # reject violent bounces (dead cats)
     cwvap_dist_min: float = -3.0       # not too far below CWVAP (%)
     cwvap_dist_max: float = 1.0        # must be meaningfully below CWVAP (%)
     open_cwvap_guard: bool = True      # reject gap ups above CWVAP
     accel_rising_guard: bool = True    # reject dropping or negative accel
     cts_max: float = -0.85             # Require deep exhaustion (not mid-bounce)
+    pdd_guard: bool = True             # toggle PDD institutional exhaustion guard
+    pdd_max: float = 0.0               # reject when pdd_120 > max (institutions still distributing)
 
 
 @dataclass

@@ -110,6 +110,11 @@ def check_slope_bottom(
     coh = row.get("coherence", np.nan)
     pdd = row.get("pdd_120", np.nan)
 
+    # G8: PDD institutional exhaustion guard
+    if getattr(sbcfg, "pdd_guard", False):
+        if not np.isnan(pdd) and pdd > sbcfg.pdd_max:
+            return False, 0, {"reason": f"pdd_120 {pdd:.2f} > max {sbcfg.pdd_max} (institutions still distributing)"}
+
     intensity_int, meta = compute_intensity(
         cts, coh, pdd, regime, EntryTag.SLOPE_BOTTOM,
         [f"slope={cs:.4f}", f"delta={slope_delta:.4f}", f"cwvap_dist={cwvap_dist:.1f}%"],
