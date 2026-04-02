@@ -18,10 +18,12 @@ from src.trading.signals.savgol_cts.config import SavgolCTSEntryConfig, SavgolCT
 
 # Entry path checkers
 from src.trading.signals.savgol_cts.entries.slope_bottom import check_slope_bottom
+from src.trading.signals.savgol_cts.entries.structural_divergence import check_structural_divergence
 
 # Exit path checkers
 from src.trading.signals.savgol_cts.exits.cwvap_guard import apply_cwvap_guard
 from src.trading.signals.savgol_cts.exits.slope_bottom import exit_slope_bottom
+from src.trading.signals.savgol_cts.exits.structural_divergence import exit_structural_divergence
 
 
 class SavgolCTSSignal(SignalInterface):
@@ -80,6 +82,11 @@ class SavgolCTSSignal(SignalInterface):
         if passed:
             return True, intensity, meta
 
+        # Path 2: Structural Divergence
+        passed, intensity, meta = check_structural_divergence(row, prev_row, cfg)
+        if passed:
+            return True, intensity, meta
+
         return False, 0, meta
 
     # ------------------------------------------------------------------
@@ -118,6 +125,11 @@ class SavgolCTSSignal(SignalInterface):
         # --- Path-specific exit ---
         if tag == EntryTag.SLOPE_BOTTOM.value:
             exit_status = exit_slope_bottom(
+                row, prev_row, trade, peak_close, bars_held,
+                updated_state_val, cfg, records, idx,
+            )
+        elif tag == EntryTag.STRUCTURAL_DIVERGENCE.value:
+            exit_status = exit_structural_divergence(
                 row, prev_row, trade, peak_close, bars_held,
                 updated_state_val, cfg, records, idx,
             )

@@ -52,6 +52,27 @@ class SlopeBottomEntryConfig:
 
 
 @dataclass
+class StructuralDivergenceEntryConfig:
+    """Path 2: Structural Divergence — Volume exhaustion during price drop.
+    
+    Entry fires when:
+    - Exhaustion: price_slope_z <= psz_max AND cts <= cts_max
+    - Divergence: (rdv_slope_z - price_slope_z) >= spread_min OR accum_div > accum_div_min
+    - Inflection: cts_slope < 0 AND cts_accel > accel_min
+    - Anti-capitulation: cwc <= cwc_max (avoid unified institutional dumping)
+    - Below CWVAP: cwvap_dist <= cwvap_dist_max
+    """
+    enabled: bool = True
+    psz_max: float = -0.20
+    cts_max: float = -0.50
+    spread_min: float = 0.35
+    accum_div_min: float = 0.04
+    accel_min: float = 0.0
+    cwc_max: float = 0.50
+    cwvap_dist_max: float = 0.5
+
+
+@dataclass
 class SlopeBottomExitConfig:
     """Slope Bottom exit: pure slope zero-cross cycle.
 
@@ -68,6 +89,22 @@ class SlopeBottomExitConfig:
     trail_lock_ratio: float = 0.50       # lock 50% of peak PnL as floor
 
 
+@dataclass
+class StructuralDivergenceExitConfig:
+    """Structural Divergence exit: Smart path for counter-trend entries.
+    
+    Exits when:
+    - Hard stop is hit (e.g. price falls significantly further).
+    - Time decay: If trade goes nowhere for N bars.
+    - PnL cap: Takes profit early on mean-reversion pops.
+    """
+    pnl_cap_enabled: bool = True
+    pnl_cap_pct: float = 6.0        # slightly tighter cap for counter-trend
+    time_decay_bars: int = 8        # exit if it doesn't bounce in 8 bars
+    time_decay_min_pnl: float = 1.0 # only hold past 8 bars if PnL > 1%
+    hard_stop_pct: float = 5.0      # max acceptable loss
+
+
 # ---------------------------------------------------------------------------
 # Composite entry config
 # ---------------------------------------------------------------------------
@@ -76,9 +113,9 @@ class SlopeBottomExitConfig:
 class SavgolCTSEntryConfig(BaseEntryConfig):
     """Configuration for CTS mean-reversion entry signal.
 
-    One entry path evaluated:
-
+    Entry paths evaluated:
     1. Slope Bottom   — cts_slope inflects from deep negative in a downtrend.
+    2. Structural Div — Volume exhaustion and delivery divergence during sharp drop.
     """
     # Cooldown: prevent entry within N bars after specific exit reasons.
     cooldown_enabled: bool = True
@@ -91,6 +128,7 @@ class SavgolCTSEntryConfig(BaseEntryConfig):
 
     # --- Per-path configs ---
     slope_bottom: SlopeBottomEntryConfig = field(default_factory=SlopeBottomEntryConfig)
+    structural_divergence: StructuralDivergenceEntryConfig = field(default_factory=StructuralDivergenceEntryConfig)
 
 
 # ---------------------------------------------------------------------------
@@ -132,4 +170,5 @@ class SavgolCTSExitConfig(BaseExitConfig):
 
     # --- Per-path configs ---
     slope_bottom: SlopeBottomExitConfig = field(default_factory=SlopeBottomExitConfig)
+    structural_divergence: StructuralDivergenceExitConfig = field(default_factory=StructuralDivergenceExitConfig)
     cwvap_guard: CwvapGuardConfig = field(default_factory=CwvapGuardConfig)
