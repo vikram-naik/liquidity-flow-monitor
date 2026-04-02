@@ -4,7 +4,7 @@ Pure slope-based exit: wait for cts_slope to cross above zero (phase 1),
 then exit when it drops back below zero (phase 2). The full slope cycle
 captures the reversal and exits when momentum fades.
 
-Uses bit 5 (slope_went_negative) from the state bitfield — repurposed here
+Uses bit 5 (slope_crossed_zero) from the state bitfield
 to track whether slope has crossed above zero (phase 1 complete).
 """
 
@@ -26,8 +26,7 @@ def exit_slope_bottom(
     """Exit when cts_slope completes its zero-cross cycle.
 
     Phase 1: slope starts deeply negative at entry. Wait for it to cross
-             above zero. Track this via slope_went_negative bit (repurposed
-             as 'slope_crossed_zero').
+             above zero. Track this via slope_crossed_zero bit.
     Phase 2: once slope has been above zero, exit when it drops back below.
     """
     st = SavgolCTSExitState.from_int(state_val)
@@ -63,13 +62,12 @@ def exit_slope_bottom(
                 if current_pnl < trail_floor:
                     return ExitReason.TRAIL_STOP, st.to_int()
 
-    # slope_went_negative bit repurposed: True = slope has crossed above zero
-    slope_crossed_zero = st.slope_went_negative
+    slope_crossed_zero = st.slope_crossed_zero
 
     if not slope_crossed_zero:
         # Phase 1: waiting for slope to cross above zero
         if cs > 0:
-            st.slope_went_negative = True  # mark phase 1 complete
+            st.slope_crossed_zero = True  # mark phase 1 complete
         return None, st.to_int()
     # else:
         # Phase 1.5: slope has been positive, and price is still below CWVAP exit.

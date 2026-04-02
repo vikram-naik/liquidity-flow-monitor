@@ -2,13 +2,7 @@ from enum import Enum
 
 class EntryTag(str, Enum):
     """Strongly typed entry tags with presentation-friendly strings."""
-    CTS_FLOOR_LEAVE = "SavgolCTS CTS-Floor-Leave"
-    BT_CROSS = "SavgolCTS BT-Cross"
-    CTS_FLOOR_TOUCH = "SavgolCTS Floor-Touch"
-    CWVAP_RECLAIM = "SavgolCTS CWVAP-Reclaim"
-    CWVAP_CROSS = "SavgolCTS CWVAP-Cross"
     SLOPE_BOTTOM = "SavgolCTS Slope-Bottom"
-    PDD_DIVERGENCE = "SavgolCTS PDD-Divergence"
     CTS_BT_FLOOR = "SavgolCTS CTS-BT-Floor"  # Legacy
 
     # Deprecated — retained for historical trade log compatibility.

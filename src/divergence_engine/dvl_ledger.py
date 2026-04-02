@@ -11,7 +11,7 @@ Outputs per window *n*:
 - **Velocity_n_norm**: Normalised slope of DVL_n over n/2 bars.
 - **Price_distance_n**: Price displacement from anchor in ATR units.
 - **ARS_n**: Anchor Relative Strength (DVL vs expectation).
-- **PDD_n**: Price-DVL Divergence.
+- **PDD_n**: Price-DVL Divergence (Result minus Effort). Quantifies the efficiency of a price trend relative to the volume "effort" required to sustain it (Wyckoff). A high positive score indicates an efficient, structurally sound trend marked up by institutions. A negative score flags high volume effort with poor price results (distribution) or weak, sideways price action.
 
 Also classifies the **Gradient Vector** into one of 9 trend shapes.
 """

@@ -118,6 +118,22 @@ def check_slope_bottom(
         if not np.isnan(pdd) and pdd > sbcfg.pdd_max:
             return False, 0, {"reason": f"pdd_120 {pdd:.2f} > max {sbcfg.pdd_max} (institutions still distributing)"}
 
+    # Phase 6: Pure Bearish Day Guard (Falling Knife filter)
+    if getattr(sbcfg, "pure_bear_guard", False):
+        opn = row.get("open", np.nan)
+        close_px = row.get("close", np.nan)
+        prev_close = prev_row.get("close", np.nan)
+        if not np.isnan(opn) and not np.isnan(close_px) and not np.isnan(prev_close):
+            if close_px < opn and close_px < prev_close:
+                return False, 0, {"reason": f"Pure Bear Guard: Red candle ({close_px:.1f} < {opn:.1f}) and Lower Close ({close_px:.1f} < {prev_close:.1f})"}
+
+    # Phase 7: Shallow Inflection Guard
+    if getattr(sbcfg, "shallow_guard_enabled", False):
+        shallow_slope = getattr(sbcfg, "shallow_slope_min", -0.12)
+        shallow_dist = getattr(sbcfg, "shallow_dist_max", -1.0)
+        if cs > shallow_slope and cwvap_dist > shallow_dist:
+            return False, 0, {"reason": f"Shallow Inflection: slope {cs:.4f} > {shallow_slope} AND dist {cwvap_dist:.1f}% > {shallow_dist}%"}
+
     intensity_int, meta = compute_intensity(
         row, prev_row, EntryTag.SLOPE_BOTTOM,
         [f"slope={cs:.4f}", f"delta={slope_delta:.4f}", f"cwvap_dist={cwvap_dist:.1f}%"],

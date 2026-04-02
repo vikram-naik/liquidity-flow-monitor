@@ -17,39 +17,23 @@ from src.trading.signals.enums import EntryTag, ExitReason
 from src.trading.signals.savgol_cts.config import SavgolCTSEntryConfig, SavgolCTSExitConfig
 
 # Entry path checkers
-from src.trading.signals.savgol_cts.entries.floor_touch import check_floor_touch
-from src.trading.signals.savgol_cts.entries.floor_leave import check_floor_leave
-from src.trading.signals.savgol_cts.entries.bt_cross import check_bt_crossover
-from src.trading.signals.savgol_cts.entries.cwvap_reclaim import check_cwvap_reclaim
-from src.trading.signals.savgol_cts.entries.cwvap_cross import check_cwvap_cross
 from src.trading.signals.savgol_cts.entries.slope_bottom import check_slope_bottom
-from src.trading.signals.savgol_cts.entries.pdd_divergence import check_pdd_divergence
 
 # Exit path checkers
-from src.trading.signals.savgol_cts.exits.floor import exit_floor
-from src.trading.signals.savgol_cts.exits.bt_cross import exit_bt_cross
-from src.trading.signals.savgol_cts.exits.psz_glide import exit_psz_glide
 from src.trading.signals.savgol_cts.exits.cwvap_guard import apply_cwvap_guard
-from src.trading.signals.savgol_cts.exits.cwvap_reclaim import exit_cwvap_reclaim
 from src.trading.signals.savgol_cts.exits.slope_bottom import exit_slope_bottom
-from src.trading.signals.savgol_cts.exits.pdd_divergence import exit_pdd_divergence
 
 
 class SavgolCTSSignal(SignalInterface):
-    """CTS -1/+1 mean-reversion signal with four entry paths.
+    """CTS -1/+1 mean-reversion signal with one entry path.
 
-    Entry paths (priority order):
-        0. Floor Touch    — CTS + BT pinned at floor, PSZ deeply oversold.
-        1. Floor Leave    — CTS rises above floor after being pinned.
-        2. BT-Cross       — CTS crosses BT from below in oversold zone.
-        3. CWVAP Reclaim  — cts_slope crosses zero, close > CWVAP, PSZ > 0.
+    Entry paths:
+        1. Slope Bottom   — cts_slope inflects from deep negative in a downtrend.
 
     Exit paths (dispatched by entry tag):
-        Floor/Floor-Leave/Floor-Touch → ``exit_floor`` + PSZ glide fallback.
-        BT-Cross                      → ``exit_bt_cross``.
-        CWVAP Reclaim                 → ``exit_cwvap_reclaim`` (close < CWVAP).
+        Slope Bottom                  → ``exit_slope_bottom``.
 
-    The CWVAP guard runs after non-CWVAP-Reclaim exits, suppressing or
+    The CWVAP guard runs after exits, suppressing or
     releasing based on price position and momentum.
     """
 
@@ -91,38 +75,8 @@ class SavgolCTSSignal(SignalInterface):
         if np.isnan(cts):
             return False, 0, {"reason": "Missing CTS data"}
 
-        # Path 0: Floor Touch
-        passed, intensity, meta = check_floor_touch(row, prev_row, cfg)
-        if passed:
-            return True, intensity, meta
-
-        # Path 1: CTS-Floor-Leave
-        passed, intensity, meta = check_floor_leave(row, prev_row, cfg)
-        if passed:
-            return True, intensity, meta
-
-        # Path 2: BT-Cross
-        passed, intensity, meta = check_bt_crossover(row, prev_row, cfg, records, idx)
-        if passed:
-            return True, intensity, meta
-
-        # Path 3: CWVAP Reclaim
-        passed, intensity, meta = check_cwvap_reclaim(row, prev_row, cfg, records, idx)
-        if passed:
-            return True, intensity, meta
-
-        # Path 4: CWVAP Cross
-        passed, intensity, meta = check_cwvap_cross(row, prev_row, cfg)
-        if passed:
-            return True, intensity, meta
-
         # Path 5: Slope Bottom
         passed, intensity, meta = check_slope_bottom(row, prev_row, cfg)
-        if passed:
-            return True, intensity, meta
-            
-        # Path 6: PDD Divergence
-        passed, intensity, meta = check_pdd_divergence(row, prev_row, cfg)
         if passed:
             return True, intensity, meta
 
@@ -162,46 +116,11 @@ class SavgolCTSSignal(SignalInterface):
         tag = trade.entry_tag if trade is not None else ""
 
         # --- Path-specific exit ---
-        if tag in (
-            EntryTag.CTS_FLOOR_LEAVE.value,
-            EntryTag.CTS_BT_FLOOR.value,
-            EntryTag.CTS_FLOOR_TOUCH.value,
-        ):
-            exit_status = exit_floor(
-                row, prev_row, trade, peak_close, bars_held,
-                updated_state_val, cfg, records, idx,
-            )
-            # If floor exit returned None, check PSZ glide as fallback
-            if exit_status[0] is None:
-                exit_status = exit_psz_glide(
-                    row, prev_row, trade, exit_status[1], cfg, records, idx,
-                )
-        elif tag == EntryTag.BT_CROSS.value:
-            exit_status = exit_bt_cross(
-                row, prev_row, trade, peak_close, bars_held,
-                updated_state_val, cfg, records, idx,
-            )
-        elif tag in (EntryTag.CWVAP_RECLAIM.value, EntryTag.CWVAP_CROSS.value):
-            exit_status = exit_cwvap_reclaim(
-                row, prev_row, trade, peak_close, bars_held,
-                updated_state_val, cfg, records, idx,
-            )
-        elif tag == EntryTag.SLOPE_BOTTOM.value:
+        if tag == EntryTag.SLOPE_BOTTOM.value:
             exit_status = exit_slope_bottom(
                 row, prev_row, trade, peak_close, bars_held,
                 updated_state_val, cfg, records, idx,
             )
-        elif tag == EntryTag.PDD_DIVERGENCE.value:
-            res_str, final_state = exit_pdd_divergence(
-                row, prev_row, trade, peak_close, bars_held, cfg,
-            )
-            # Pdd divergence handles its own state and returns strings directly
-            if res_str:
-                self._last_exit_idx = idx
-                self._last_exit_reason = res_str
-                return res_str, final_state
-            else:
-                return None, final_state
         else:
             # Unknown entry tag — no exit logic, hold
             exit_status = (None, updated_state_val)
@@ -235,12 +154,7 @@ class SavgolCTSSignal(SignalInterface):
             tag == EntryTag.SLOPE_BOTTOM.value
             and res in (ExitReason.PNL_CAP, ExitReason.TRAIL_STOP)
         )
-        if res == ExitReason.BAR3_STOP or sb_hard_exit or tag in (
-                # EntryTag.CWVAP_RECLAIM.value, 
-                EntryTag.CWVAP_CROSS.value, 
-                # EntryTag.SLOPE_BOTTOM.value
-            ):
-            final_state = state_returned
+        if res == ExitReason.BAR3_STOP or sb_hard_exit:            final_state = state_returned
         else:
             res, final_state = apply_cwvap_guard(
                 row, trade, res, state_returned, cwvap_values, cfg, records, idx,

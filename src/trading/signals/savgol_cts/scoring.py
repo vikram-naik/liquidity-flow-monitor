@@ -77,36 +77,6 @@ def compute_intensity(
             slope_delta = cs - pcs
             path_score += _interp(slope_delta, 0.002, 0.02, 0.0, 20.0)
             
-    elif tag in (EntryTag.CWVAP_RECLAIM, EntryTag.CWVAP_CROSS):
-        # For CWVAP Reclaim, PDD is negatively correlated (-0.05)
-        # Closer to -10.0 gets more points
-        if not np.isnan(pdd):
-            path_score += _interp(pdd, 0.0, -10.0, 0.0, 10.0)
-            
-        # 1. Momentum Thrust Distance (CWVAP Dist): Higher distance at signal = better (+0.27 correlation)
-        if not np.isnan(cwvap_dist):
-            path_score += _interp(cwvap_dist, 0.0, 1.5, 0.0, 20.0)
-            
-        # 2. Momentum Thrust (Accel Margin): Higher is better (+0.08 correlation)
-        cts_accel = row.get("cts_accel", np.nan)
-        cts_accel_threshold = row.get("cts_accel_threshold", np.nan)
-        if not np.isnan(cts_accel) and not np.isnan(cts_accel_threshold):
-            accel_margin = cts_accel - cts_accel_threshold
-            path_score += _interp(accel_margin, 0.0, 0.05, 0.0, 20.0)
-            
-        # 3. Price Momentum (PSZ): Higher is better (+0.05 correlation)
-        psz = row.get("price_slope_z", np.nan)
-        if not np.isnan(psz):
-            path_score += _interp(psz, 0.0, 0.4, 0.0, 20.0)
-            
-    else:
-        # Fallback for Floor Touch, Floor Leave, BT Cross
-        if not np.isnan(pdd):
-            path_score += _interp(pdd, -10.0, 0.0, 0.0, 10.0)
-        path_score += _interp(cts, -0.6, -1.0, 0.0, 30.0)
-        if not np.isnan(cwvap_dist):
-            path_score += _interp(cwvap_dist, 0.0, -5.0, 0.0, 30.0)
-            
     intensity += path_score
     intensity = min(100.0, max(0.0, float(np.nan_to_num(intensity))))
     intensity_int = int(round(intensity))

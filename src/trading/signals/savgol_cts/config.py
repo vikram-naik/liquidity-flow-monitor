@@ -18,122 +18,6 @@ from src.trading.signals.enums import ExitReason
 # ---------------------------------------------------------------------------
 
 @dataclass
-class FloorTouchEntryConfig:
-    """Path 0: Floor Touch — enter while CTS and BT are both pinned at floor.
-
-    Fires when both CTS and BT are at or below the floor zone and PSZ is
-    deeply oversold (psz < psz_max).  Captures entries earlier than
-    Floor-Leave.
-    Empirically (NIFTY 500): 64.8% WR, +2.50% avg, >10% winner rate 30%.
-    """
-    enabled: bool = False
-    psz_max: float = -0.25       # PSZ must be below this (deeply oversold)
-
-
-@dataclass
-class FloorLeaveEntryConfig:
-    """Path 1: CTS-floor-leave — CTS rising above floor after being pinned.
-
-    Fires on the first bar CTS clears the floor zone (cts > floor) after
-    having been at or below it (prev_cts <= floor).  No BT constraint.
-    Empirically (NIFTY 500): 63.9% WR, +2.52% avg, 73.1% ceiling exits.
-    """
-    cts_max: float = -0.6        # Vertical Jump Guard ceiling
-    pszv_min: float = 0.05       # Conviction Gate: minimum |PSZV|
-    pszv_direction_gate: bool = True  # Require psz_v > 0 (momentum turning up)
-    cwvap_trap_hi: float = -5.0  # Signal-Day Trap Floor (% below CWVAP)
-    enabled: bool = False
-
-
-@dataclass
-class BtCrossEntryConfig:
-    """Path 3: BT-cross — CTS crosses BT from below in oversold zone.
-
-    Catches V-bottoms where CTS hits floor but BT hasn't caught up.
-    """
-    enabled: bool = False
-    oversold_threshold: float = -0.50
-    # Dead-cat bounce gate: reject when psz_v is strongly positive (price bouncing)
-    # but price is deep below CWVAP (institutional supply overhead).
-    # Empirically: 39% floor-hit rate, 32.7% WR in this combo.
-    dead_cat_gate_enabled: bool = True
-    dead_cat_pszv_min: float = 0.05    # psz_v above this = price bouncing
-    dead_cat_cwvap_max: float = -3.0   # cwvap_dist below this = deep under supply
-    # Flat psz_v gate: reject when psz_v has been quiescent (straight-line
-    # fall, no bend).  Study: scripts/study_pszv_flat_lookback.py.
-    flat_gate_enabled: bool = True
-    flat_gate_threshold: float = 0.02
-    flat_gate_lookback: int = 3
-
-
-@dataclass
-class CwvapReclaimEntryConfig:
-    """Path 4: CWVAP Reclaim — cts_slope turns positive while close > CWVAP.
-
-    Entry fires when:
-    - cts_slope crosses zero from below (prev <= 0, now > 0)
-    - close > CWVAP (price has reclaimed institutional average)
-    - PSZ > psz_min (momentum confirmation)
-    """
-    enabled: bool = True
-    psz_min: float = 0.0  # minimum PSZ at entry
-    cts_min: float = -0.85   # reject when CTS still negative (unconfirmed inflection)
-    cts_max: float = 0.85  # reject when CTS already near ceiling
-    cwvap_dist_max: float = 1.0  # max cwvap_dist% at signal (reject extended entries)
-    accel_margin_min: float = 0.01  # minimum accel above threshold (reject barely-above)
-    # ST guard: reject when CTS already at/above sell threshold (upside exhausted)
-    st_guard_enabled: bool = True
-    st_guard_tolerance: float = -0.10
-    
-    # CWVAP Flat Gate: reject when CWVAP has been flat (low volatility) before signal
-    flat_gate_enabled: bool = True
-    flat_gate_lookback: int = 8
-    flat_gate_range_max: float = 0.40  # max CWVAP percentage range
-    
-    # Geometry Gate: reject high conviction marubozu candles which indicate entering at daily top
-    geom_gate_enabled: bool = True
-    geom_gate_reject_marubozu: bool = True
-
-
-@dataclass
-class CwvapCrossEntryConfig:
-    """Path 5: CWVAP Cross — price crosses CWVAP from below with cts_slope > 0.
-
-    Minimal guards; fine-tuning will follow after reviewing initial trades.
-    """
-    enabled: bool = False
-    psz_min: float = -0.35  # minimum PSZ at entry
-    cts_min: float = 0.0  # reject when CTS still negative
-    cts_max: float = 0.85  # reject when CTS already near ceiling
-    accel_margin_min: float = 0.01  # minimum accel above threshold (reject barely-above)
-    slope_min: float = 0 # reject when cts_slope is too negative
-    # ST guard: reject when CTS already at/above sell threshold (upside exhausted)
-    st_guard_enabled: bool = True
-    st_guard_tolerance: float = -0.10
-
-
-@dataclass
-class PddDivergenceEntryConfig:
-    """Path 6: PDD Divergence (Shallow Bottom) — shallow CTS bottom coupled with deep PDD exhaustion.
-    
-    Entry fires when:
-    - pdd_120 <= pdd_threshold (deep institutional exhaustion)
-    - cts_slope between slope_threshold_min and slope_threshold_max (shallow bottom)
-    - cts_slope is rising
-    - cts <= cts_max
-    """
-    enabled: bool = True
-    pdd_threshold: float = -2.0
-    slope_threshold_min: float = -0.10
-    slope_threshold_max: float = -0.04
-    slope_delta_min: float = 0.002
-    slope_delta_max: float = 0.025
-    cts_max: float = -0.70
-    cwvap_dist_min: float = -4.5
-    cwvap_dist_max: float = 0.5
-
-
-@dataclass
 class SlopeBottomEntryConfig:
     """Path 5: Slope Bottom — cts_slope rising from deep negative in downtrend.
 
@@ -159,23 +43,12 @@ class SlopeBottomEntryConfig:
     cts_max: float = -0.85             # Require deep exhaustion (not mid-bounce)
     pdd_guard: bool = True             # toggle PDD institutional exhaustion guard
     pdd_max: float = 0.0               # reject when pdd_120 > max (institutions still distributing)
-
-
-@dataclass
-class PddDivergenceExitConfig:
-    """PDD Divergence exit: pure trailing and CWVAP support.
+    pure_bear_guard: bool = True       # reject entries on pure red, lower-close days (falling knife guard)
     
-    Uses CWVAP ride strategy:
-    - -3.0% hard stop loss
-    - Suppressed structural exits when close >= CWVAP * 0.99
-    - Loss of CWVAP support exit (close < CWVAP * 0.99 after reclaim)
-    - Deep MFE trailing stop (15% drop from peak once MFE > 15%)
-    """
-    hard_stop_pct: float = -3.0
-    cwvap_suppress_tolerance: float = 0.99
-    cwvap_lost_tolerance: float = 0.99
-    mfe_trail_activation_pct: float = 15.0
-    mfe_trail_lock_ratio: float = 0.85 # Exit when dropping below 85% of peak
+    # Shallow Inflection Guard: if mathematical exhaustion is shallow (cts_slope > min), price must be deeply exhausted (cwvap_dist < max)
+    shallow_guard_enabled: bool = True
+    shallow_slope_min: float = -0.12
+    shallow_dist_max: float = -1.0
 
 
 @dataclass
@@ -195,30 +68,6 @@ class SlopeBottomExitConfig:
     trail_lock_ratio: float = 0.50       # lock 50% of peak PnL as floor
 
 
-@dataclass
-class CwvapReclaimExitConfig:
-    """CWVAP Reclaim exit: close drops below CWVAP."""
-    cwvap_lost_atr_mult: float = 0.3  # exit when close < cwvap - atr * mult
-    bar3_stop_enabled: bool = False
-    bar3_stop_bar: int = 3
-    bar3_stop_threshold: float = -2.0  # exit if PnL% below this at bar N
-    # Bar-5 breakeven gate: exit if PnL still negative at bar N.
-    # Catches flat-drifter losers early (66% save rate, +0.7x payoff lift).
-    bar5_stop_enabled: bool = False
-    bar5_stop_bar: int = 5
-    bar5_stop_threshold: float = 0.0  # exit if PnL% below this at bar N
-
-    pnl_cap_enabled: bool = True
-    pnl_cap_pct: float = 8.0  # take profit when PnL% >= this
-
-    # LH+LL exit: lower-high + lower-low price structure break.
-    # After peak, if a confirmed swing high is below prev swing high AND
-    # a confirmed swing low is below prev swing low, trend is broken.
-    # 90.7% save rate on CWVAP Lost trades, +3.45% avg improvement.
-    lh_ll_enabled: bool = False
-    lh_ll_pivot_lookback: int = 2  # bars on each side to confirm a pivot
-
-
 # ---------------------------------------------------------------------------
 # Composite entry config
 # ---------------------------------------------------------------------------
@@ -227,59 +76,26 @@ class CwvapReclaimExitConfig:
 class SavgolCTSEntryConfig(BaseEntryConfig):
     """Configuration for CTS mean-reversion entry signal.
 
-    Three entry paths evaluated in priority order:
+    One entry path evaluated:
 
-    0. Floor Touch  — CTS + BT both pinned at floor, PSZ deeply oversold.
-    1. Floor Leave  — CTS rises above floor after being pinned.
-    2. BT-Cross     — CTS crosses BT from below while oversold.
-
-    Shared parameters live here; path-specific parameters are nested in the
-    per-path config dataclass.
+    1. Slope Bottom   — cts_slope inflects from deep negative in a downtrend.
     """
-    # --- Shared across multiple entry paths ---
-    cts_floor: float = -1.0
-    floor_zone_tolerance: float = 0.02   # tolerance around cts_floor
-    psz_min_threshold: float = -0.25     # late-entry PSZ gate (floor_leave, bt_cross)
-    cwvap_max_dist: float = -5.0         # CWVAP distance guard (floor_touch)
-    dvwap_bear_stack_gate_enabled: bool = True  # DVWAP bearish alignment gate
-
     # Cooldown: prevent entry within N bars after specific exit reasons.
     cooldown_enabled: bool = True
     cooldown_bars: int = 10
     cooldown_exit_reasons: tuple[ExitReason, ...] = (
         ExitReason.SUPPRESSED_EXIT,
-        ExitReason.FLOOR_HIT,
-        ExitReason.BT_HIT,
         ExitReason.BAR3_STOP,
         ExitReason.BAR5_STOP,
     )
 
     # --- Per-path configs ---
-    floor_touch: FloorTouchEntryConfig = field(default_factory=FloorTouchEntryConfig)
-    floor_leave: FloorLeaveEntryConfig = field(default_factory=FloorLeaveEntryConfig)
-    bt_cross: BtCrossEntryConfig = field(default_factory=BtCrossEntryConfig)
-    cwvap_reclaim: CwvapReclaimEntryConfig = field(default_factory=CwvapReclaimEntryConfig)
-    cwvap_cross: CwvapCrossEntryConfig = field(default_factory=CwvapCrossEntryConfig)
     slope_bottom: SlopeBottomEntryConfig = field(default_factory=SlopeBottomEntryConfig)
-    pdd_divergence: PddDivergenceEntryConfig = field(default_factory=PddDivergenceEntryConfig)
 
 
 # ---------------------------------------------------------------------------
 # Exit path configs
 # ---------------------------------------------------------------------------
-
-@dataclass
-class BtCrossExitConfig:
-    """BT-cross specific exit parameters."""
-    floor_tolerance: float = 0.10    # floor zone protection width
-    psz_stall_enabled: bool = False  # early exit when PSZ momentum stalls
-    psz_stall_check_bar: int = 2     # bar at which to check for stall
-    # Bar-3 PnL stop: exit if trade PnL < threshold at exactly bar 3.
-    # Empirically (NIFTY 500): 81% save rate, +0.24x payoff improvement.
-    bar3_stop_enabled: bool = True
-    bar3_stop_bar: int = 3           # bar at which to check
-    bar3_stop_threshold: float = -1.0  # exit if PnL% below this
-
 
 @dataclass
 class CwvapGuardConfig:
@@ -302,25 +118,18 @@ class SavgolCTSExitConfig(BaseExitConfig):
     """Configuration for CTS mean-reversion exit signal.
 
     Exit triggers:
-    - Ceiling-leave: CTS drops below (1.0 - tolerance) after reaching it.
-    - Floor hit:     CTS returns to -1.0 after having risen (safety net).
-    - BT hit:        CTS drops back to buy threshold (mean-reversion done).
-    - PSZ glide:     PSZ drops below threshold after having been above it.
+    - CWVAP Lost:    Close drops below CWVAP + ATR margin.
+    - Slope Cycle:   CTS slope crosses above and then below zero.
+    - Bar Stops:     Early exit based on PnL at specific bar count.
+    - PnL Cap:       Exit when PnL reaches a specific target.
 
     The CWVAP guard runs *after* all path-specific exits and may suppress
     or release the proposed exit based on price/momentum context.
     """
     # --- Shared exit parameters ---
-    ceiling_leave_tolerance: float = 0.02
-    floor_hit_min_bars: int = 5      # grace period before floor exit
-    bt_hit_min_bars: int = 5         # grace period before BT exit
-    psz_glide_threshold: float = 0.30
     st_exit_enabled: bool = False    # universal Sell Threshold toggle
     st_crossover_tolerance: float = 0.03
 
     # --- Per-path configs ---
-    bt_cross: BtCrossExitConfig = field(default_factory=BtCrossExitConfig)
-    cwvap_reclaim: CwvapReclaimExitConfig = field(default_factory=CwvapReclaimExitConfig)
     slope_bottom: SlopeBottomExitConfig = field(default_factory=SlopeBottomExitConfig)
-    pdd_divergence: PddDivergenceExitConfig = field(default_factory=PddDivergenceExitConfig)
     cwvap_guard: CwvapGuardConfig = field(default_factory=CwvapGuardConfig)
