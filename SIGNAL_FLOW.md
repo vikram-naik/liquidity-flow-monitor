@@ -1,7 +1,7 @@
 # SavgolCTS Signal — Entry / Exit Flow
 
 **Package**: `src/trading/signals/savgol_cts/`
-**Last updated**: 2026-04-02
+**Last updated**: 2026-04-03
 
 ## Package Structure
 
@@ -49,10 +49,14 @@ check_entry(row, prev_row, cfg, records, idx)       [signal.py]
   |-- PATH 2: Structural Divergence                      [entries/structural_divergence.py]
   |     |-- [Gate]  cfg.structural_divergence.enabled?
   |     |-- [Guard] Exhaustion: price_slope_z <= -0.20 AND cts <= -0.50
-  |     |-- [Guard] Divergence: Spread (rsz-psz) >= 0.35 OR accum_div > 0.04
+  |     |-- [Guard] Divergence: Spread (rsz-psz) >= 0.40 OR accum_div > 0.04
   |     |-- [Guard] Inflection: cts_slope < 0 AND cts_accel > 0.0 (flattening)
   |     |-- [Guard] Anti-Capitulation: cwc <= 0.50 (reject unified dumping)
-  |     |-- [Guard] Context: cwvap_dist% <= 0.5%
+  |     |-- [Guard] Context: cwvap_dist% <= 0.0% (must be below CWVAP)
+  |     |-- [Guard] PSZ Rising: psz_delta >= 0.005 (_| bend, reject flat/falling)
+  |     |-- [Guard] CWC Slope: reject when cwc >= 0 AND cwc_slope >= 0.02 (intensifying distribution)
+  |     |-- [Guard] PSZ_v Rising 3-bar: psz_v(t-1) > psz_v(t-2) > psz_v(t-3)
+  |     |-- [Score] Conviction >= 5 (multi-factor soft gate, see below)
   |     +-- PASS --> EntryTag.STRUCTURAL_DIVERGENCE
   |
   +-- No path matched --> REJECT (last meta from final path)
@@ -78,6 +82,22 @@ Path-Specific Scoring (Max 70 points):
 
 Range:      0 .. 100  (clamped)
 Labels:     >= 80 "STRONG", >= 65 "good", else unlabelled
+```
+
+### Conviction Scoring — Structural Divergence (`entries/structural_divergence.py`)
+
+Multi-factor soft gate. No single feature separates winners from losers, but
+the combination does. Minimum score: **5** (max 11).
+
+```
+Dimension          Points  Logic
+─────────────────  ──────  ──────────────────────────────────────
+CTS depth          0/1/2   cts <= cts_buy_threshold → 2, within 0.1 → 1
+Accel confirm      0/2     cts_accel > cts_accel_threshold → 2
+CWVAP stretch      0/1/2   cwvap_dist <= -3.0% → 2, <= -1.5% → 1
+PSZ momentum       0/1/2   psz_delta >= 0.02 → 2, >= 0.01 → 1
+Divergence         0/1/2   spread >= 0.60 → 2, >= 0.45 → 1
+PSZ 3-bar rising   0/1     psz(t) > psz(t-1) > psz(t-2) > psz(t-3) → 1
 ```
 
 ---
@@ -187,10 +207,18 @@ apply_cwvap_guard(row, trade, res, state, cwvap_values, cfg, records, idx)
 | `enabled` | True | Enable/disable path |
 | `psz_max` | -0.20 | Max price_slope_z |
 | `cts_max` | -0.50 | Max CTS depth |
-| `spread_min` | 0.35 | Min spread (rdv_slope_z - psz) |
+| `spread_min` | 0.40 | Min spread (rdv_slope_z - psz) |
 | `accum_div_min` | 0.04 | Min accumulation divergence spike |
 | `accel_min` | 0.0 | Min cts_accel (requires positive flattening) |
 | `cwc_max` | 0.50 | Max Cross-Window Coherence (anti-capitulation) |
+| `cwvap_dist_max` | 0.0 | Must be below CWVAP (%) |
+| `psz_rising_guard` | True | Require PSZ bending up (_| pattern) |
+| `psz_delta_min` | 0.005 | Min bar-over-bar PSZ change |
+| `cwc_slope_guard` | True | Reject intensifying institutional coherence |
+| `cwc_slope_max` | 0.02 | Max cwc_slope when cwc >= 0 |
+| `psz_v_rising_guard` | True | Require psz_v rising over 3 bars |
+| `conviction_enabled` | True | Enable multi-factor conviction scoring |
+| `conviction_min_score` | 5 | Minimum conviction score to enter (max 11) |
 
 ### Exit (`SavgolCTSExitConfig` — `config.py`)
 

@@ -83,7 +83,7 @@ class SavgolCTSSignal(SignalInterface):
             return True, intensity, meta
 
         # Path 2: Structural Divergence
-        passed, intensity, meta = check_structural_divergence(row, prev_row, cfg)
+        passed, intensity, meta = check_structural_divergence(row, prev_row, cfg, records, idx)
         if passed:
             return True, intensity, meta
 

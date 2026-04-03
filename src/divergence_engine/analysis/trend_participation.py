@@ -146,29 +146,47 @@ def compute_trend_participation(
         window=psz_threshold_window, min_periods=min_periods
     ).quantile(psz_sell_pct / 100.0).fillna(0.0).round(4)
 
-    # Causal Savgol-Filtered PSZ (Normalized Acceleration)
-    # Uses one-sided (causal) FIR coefficients so psz_smooth and psz_v
+    # Adaptive RSZ Thresholds
+    rsz_series = df["rdv_slope_z"]
+    df["rsz_buy_threshold"] = rsz_series.rolling(
+        window=psz_threshold_window, min_periods=min_periods
+    ).quantile(psz_buy_pct / 100.0).fillna(0.0).round(4)
+    df["rsz_sell_threshold"] = rsz_series.rolling(
+        window=psz_threshold_window, min_periods=min_periods
+    ).quantile(psz_sell_pct / 100.0).fillna(0.0).round(4)
+
+    # Causal Savitzky-Golay Filtered PSZ & RSZ (Normalized Acceleration)
+    # Uses one-sided (causal) FIR coefficients so psz_smooth, psz_v, rsz_smooth, rsz_v
     # only depend on past data — valid for walk-forward / live execution.
     sg_win = 11
     sg_poly = 2
     if len(psz_series) >= sg_win:
         psz_vals = psz_series.values.astype(float)
+        rsz_vals = df["rdv_slope_z"].values.astype(float)
         coeffs_smooth = savgol_coeffs(sg_win, sg_poly, deriv=0, pos=sg_win - 1)
         coeffs_vel    = savgol_coeffs(sg_win, sg_poly, deriv=1, pos=sg_win - 1)
 
         psz_smooth_raw = lfilter(coeffs_smooth, [1.0], psz_vals)
         psz_v_raw      = lfilter(coeffs_vel,    [1.0], psz_vals)
+        rsz_smooth_raw = lfilter(coeffs_smooth, [1.0], rsz_vals)
+        rsz_v_raw      = lfilter(coeffs_vel,    [1.0], rsz_vals)
 
         # Blank the warm-up period (first sg_win-1 bars are unreliable)
         warmup = sg_win - 1
         psz_smooth_raw[:warmup] = np.nan
         psz_v_raw[:warmup]      = np.nan
+        rsz_smooth_raw[:warmup] = np.nan
+        rsz_v_raw[:warmup]      = np.nan
 
         df["psz_smooth"] = psz_smooth_raw.round(4)
         df["psz_v"]      = psz_v_raw.round(6)
+        df["rsz_smooth"] = rsz_smooth_raw.round(4)
+        df["rsz_v"]      = rsz_v_raw.round(6)
     else:
         df["psz_smooth"] = np.nan
         df["psz_v"]      = np.nan
+        df["rsz_smooth"] = np.nan
+        df["rsz_v"]      = np.nan
 
     # Accumulation/Distribution Divergence features
     # accum_div: positive when price is falling AND delivery is rising

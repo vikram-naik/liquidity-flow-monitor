@@ -54,22 +54,43 @@ class SlopeBottomEntryConfig:
 @dataclass
 class StructuralDivergenceEntryConfig:
     """Path 2: Structural Divergence — Volume exhaustion during price drop.
-    
+
     Entry fires when:
     - Exhaustion: price_slope_z <= psz_max AND cts <= cts_max
     - Divergence: (rdv_slope_z - price_slope_z) >= spread_min OR accum_div > accum_div_min
     - Inflection: cts_slope < 0 AND cts_accel > accel_min
     - Anti-capitulation: cwc <= cwc_max (avoid unified institutional dumping)
     - Below CWVAP: cwvap_dist <= cwvap_dist_max
+    - Below CWVAP: cwvap_dist <= cwvap_dist_max (must be below CWVAP)
+    - PSZ rising: psz_delta >= psz_delta_min (require _| bend, not flat/falling)
+    - CWC slope: reject when cwc >= 0 and cwc_slope >= cwc_slope_max
     """
     enabled: bool = True
     psz_max: float = -0.20
     cts_max: float = -0.50
-    spread_min: float = 0.35
+    spread_min: float = 0.40
     accum_div_min: float = 0.04
     accel_min: float = 0.0
     cwc_max: float = 0.50
-    cwvap_dist_max: float = 0.5
+    cwvap_dist_max: float = 0.0
+    psz_rising_guard: bool = True
+    psz_delta_min: float = 0.005
+    cwc_slope_guard: bool = True
+    cwc_slope_max: float = 0.02
+    psz_v_rising_guard: bool = True   # require psz_v rising over 3 bars before signal
+
+    # Conviction scoring: multi-factor soft score must meet minimum.
+    # Dimensions (max 11): cts_depth(0-2), accel_confirm(0-2),
+    # cwvap_stretch(0-2), psz_momentum(0-2), divergence(0-2), psz_3bar_rising(0-1)
+    conviction_enabled: bool = True
+    conviction_min_score: int = 5
+    # Per-dimension thresholds
+    conv_cwvap_deep: float = -3.0      # 2pts if cwvap_dist <= this
+    conv_cwvap_mid: float = -1.5       # 1pt if cwvap_dist <= this
+    conv_psz_delta_strong: float = 0.02  # 2pts if psz_delta >= this
+    conv_psz_delta_mid: float = 0.01     # 1pt if psz_delta >= this
+    conv_spread_strong: float = 0.60     # 2pts if spread >= this
+    conv_spread_mid: float = 0.45        # 1pt if spread >= this
 
 
 @dataclass

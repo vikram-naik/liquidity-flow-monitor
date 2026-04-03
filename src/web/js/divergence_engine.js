@@ -18,11 +18,11 @@
         "cts": { label: "CTS — Trend Score (Gate 2)" },
         "cts_slope": { label: "CTS Slope (Bull Gate)" },
         "cts_accel": { label: "CTS Acceleration (Gate 1)" },
-        "cdvl": { label: "CDVL — Delivery (Gate 3)" },
-        "velocity": { label: "Velocity 60 Norm (Gate 3)" },
-        "pdd_120": { label: "PDD-120 (Gate 4)" },
+        "cwc": { label: "CWC — Composite Coherence" },
         "psz": { label: "PSZ — Price Slope Z" },
-        "price_slope_z": { label: "Price Slope Z (Raw)" }
+        "price_slope_z": { label: "Price Slope Z (Raw)" },
+        "rsz": { label: "RSZ — RDV Slope Z" },
+        "rdv_slope_z": { label: "RDV Slope Z (Raw)" }
     };
 
     function getActivePanels() {
@@ -30,7 +30,7 @@
             var conf = JSON.parse(localStorage.getItem("de_panel_config"));
             if (Array.isArray(conf) && conf.length > 0) return conf;
         } catch (e) { }
-        return ["cts", "cts_accel", "cdvl", "pdd_120"]; // defaults: one panel per gate
+        return ["cts", "cts_accel", "cwc", "psz"]; // updated defaults
     }
 
     var params = new URLSearchParams(window.location.search);
@@ -144,6 +144,8 @@
         var cdvlArr = [], vel60Arr = [], pdd120Arr = [], pdd120ThreshArr = [];
         // PSZ series
         var pszArr = [], pszSmoothArr = [], pszVArr = [], pszBuyThreshArr = [], pszSellThreshArr = [];
+        // RSZ series
+        var rszArr = [], rszVArr = [];
         var entryMarkers = [];
         var exitMarkers = [];
         var suppressedMarkers = [];
@@ -194,6 +196,10 @@
             if (r.psz_v != null) pszVArr.push({ time: t, value: r.psz_v }); else pszVArr.push({ time: t });
             if (r.psz_buy_threshold != null) pszBuyThreshArr.push({ time: t, value: r.psz_buy_threshold }); else pszBuyThreshArr.push({ time: t });
             if (r.psz_sell_threshold != null) pszSellThreshArr.push({ time: t, value: r.psz_sell_threshold }); else pszSellThreshArr.push({ time: t });
+
+            // RSZ
+            if (r.rdv_slope_z != null) rszArr.push({ time: t, value: r.rdv_slope_z }); else rszArr.push({ time: t });
+            if (r.rsz_v != null) rszVArr.push({ time: t, value: r.rsz_v }); else rszVArr.push({ time: t });
 
             if (r.entry_signal) {
                 entryMarkers.push({
@@ -392,44 +398,20 @@
                 sCtsAZ.setData(ctsAccelArr.map(d => ({ time: d.time, value: 0 })));
                 legConfig.push({ api: sCtsAccel, label: "CTS Accel", col: "cts_accel", color: "#ce93d8" });
                 legConfig.push({ api: sCtsAccelT, label: "Threshold", col: "cts_accel_threshold", color: "#ffd54f", dashed: true });
-            } else if (panelKey === "cdvl") {
-                // Gate 3a: cdvl > 0
-                var sCdvl = c.addSeries(LC.HistogramSeries, {
+            } else if (panelKey === "cwc") {
+                // CWC — Composite Coherence
+                var sCwc = c.addSeries(LC.HistogramSeries, {
                     lastValueVisible: false, priceLineVisible: false,
                     color: "#a5d6a7"
                 });
-                sCdvl.setData(cdvlArr.map(d => ({
+                sCwc.setData(cwcArr.map(d => ({
                     time: d.time,
                     value: d.value != null ? d.value : undefined,
-                    color: (d.value != null && d.value > 0) ? "#a5d6a7" : "#ef9a9a"
+                    color: (d.value != null && d.value >= 0) ? "#a5d6a7" : "#ef9a9a"
                 })));
-                var sCdvlZ = c.addSeries(LC.LineSeries, { color: "#424242", lineWidth: 1, lineStyle: 2, lastValueVisible: false, priceLineVisible: false });
-                sCdvlZ.setData(cdvlArr.map(d => ({ time: d.time, value: 0 })));
-                legConfig.push({ api: sCdvl, label: "CDVL", col: "cdvl", color: "#a5d6a7" });
-            } else if (panelKey === "velocity") {
-                // Gate 3b: velocity_60_norm > 0
-                var sVel = c.addSeries(LC.HistogramSeries, {
-                    lastValueVisible: false, priceLineVisible: false,
-                    color: "#80deea"
-                });
-                sVel.setData(vel60Arr.map(d => ({
-                    time: d.time,
-                    value: d.value != null ? d.value : undefined,
-                    color: (d.value != null && d.value > 0) ? "#80deea" : "#ef9a9a"
-                })));
-                var sVelZ = c.addSeries(LC.LineSeries, { color: "#424242", lineWidth: 1, lineStyle: 2, lastValueVisible: false, priceLineVisible: false });
-                sVelZ.setData(vel60Arr.map(d => ({ time: d.time, value: 0 })));
-                legConfig.push({ api: sVel, label: "Vel 60N", col: "velocity_60_norm", color: "#80deea" });
-            } else if (panelKey === "pdd_120") {
-                // Gate 4: pdd_120 < pdd_120_threshold
-                var sPdd120 = c.addSeries(LC.LineSeries, { color: "#ff7043", lineWidth: 2, lastValueVisible: false, priceLineVisible: false });
-                sPdd120.setData(pdd120Arr);
-                var sPdd120T = c.addSeries(LC.LineSeries, { color: "#ffd54f", lineWidth: 1, lineStyle: 2, lastValueVisible: false, priceLineVisible: false });
-                sPdd120T.setData(pdd120ThreshArr);
-                var sPdd120Z = c.addSeries(LC.LineSeries, { color: "#424242", lineWidth: 1, lineStyle: 2, lastValueVisible: false, priceLineVisible: false });
-                sPdd120Z.setData(pdd120Arr.map(d => ({ time: d.time, value: 0 })));
-                legConfig.push({ api: sPdd120, label: "PDD-120", col: "pdd_120", color: "#ff7043" });
-                legConfig.push({ api: sPdd120T, label: "Threshold", col: "pdd_120_threshold", color: "#ffd54f", dashed: true });
+                var sCwcZ = c.addSeries(LC.LineSeries, { color: "#424242", lineWidth: 1, lineStyle: 2, lastValueVisible: false, priceLineVisible: false });
+                sCwcZ.setData(cwcArr.map(d => ({ time: d.time, value: 0 })));
+                legConfig.push({ api: sCwc, label: "CWC", col: "cwc", color: "#a5d6a7" });
             } else if (panelKey === "psz") {
                 // PSZ: psz_v velocity histogram + zero line
                 var sPszV = c.addSeries(LC.HistogramSeries, {
@@ -463,6 +445,36 @@
                 });
                 sPszRawZ.setData(pszArr.map(d => ({ time: d.time, value: 0 })));
                 legConfig.push({ api: sPszRaw, label: "PSZ Raw", col: "price_slope_z", color: "#64b5f6" });
+            } else if (panelKey === "rsz") {
+                // RSZ: rsz_v velocity histogram + zero line
+                var sRszV = c.addSeries(LC.HistogramSeries, {
+                    color: "rgba(255, 183, 77, 0.6)", // orange
+                    lastValueVisible: false, priceLineVisible: false
+                });
+                sRszV.setData(rszVArr.map(d => ({
+                    time: d.time,
+                    value: d.value != null ? d.value : undefined,
+                    color: (d.value != null && d.value >= 0) ? "rgba(255, 183, 77, 0.6)" : "rgba(239, 83, 80, 0.5)"
+                })));
+                var sRszZ = c.addSeries(LC.LineSeries, {
+                    color: "rgba(139, 148, 158, 0.3)", lineWidth: 1,
+                    lastValueVisible: false, priceLineVisible: false
+                });
+                sRszZ.setData(rszVArr.map(d => ({ time: d.time, value: 0 })));
+                legConfig.push({ api: sRszV, label: "RSZ_v", col: "rsz_v", color: "#ffb74d" });
+            } else if (panelKey === "rdv_slope_z") {
+                // Raw rdv_slope_z line
+                var sRszRaw = c.addSeries(LC.LineSeries, {
+                    color: "#4db6ac", lineWidth: 2, // teal
+                    lastValueVisible: false, priceLineVisible: false
+                });
+                sRszRaw.setData(rszArr);
+                var sRszRawZ = c.addSeries(LC.LineSeries, {
+                    color: "rgba(139, 148, 158, 0.3)", lineWidth: 1,
+                    lastValueVisible: false, priceLineVisible: false
+                });
+                sRszRawZ.setData(rszArr.map(d => ({ time: d.time, value: 0 })));
+                legConfig.push({ api: sRszRaw, label: "RSZ Raw", col: "rdv_slope_z", color: "#4db6ac" });
             }
 
             allLegConfigs.push({ id: "legSub" + i, config: legConfig });
@@ -642,6 +654,7 @@
             "<tr><td>PSZ</td><td class='val'>" + fmt(l.price_slope_z, 4) + "</td></tr>" +
             "<tr><td>PSZ_v</td><td class='val'>" + fmt(l.psz_v, 5) + "</td></tr>" +
             "<tr><td>RSZ</td><td class='val'>" + fmt(l.rdv_slope_z, 4) + "</td></tr>" +
+            "<tr><td>RSZ_v</td><td class='val'>" + fmt(l.rsz_v, 5) + "</td></tr>" +
             (function () {
                 if (!l.entry_reason || l.entry_reason === "Neutral/No Entry" || l.entry_reason === "Hold") return "";
                 var color = l.entry_signal ? "#00e676" : "#ff7043";

@@ -120,6 +120,7 @@ class EngineResult:
             "psz_smooth": _safe(row.get("psz_smooth", 0), decimals=4),
             "psz_v": _safe(row.get("psz_v", 0), decimals=6),
             "rdv_slope_z": _safe(row.get("rdv_slope_z", 0), decimals=4),
+            "rsz_v": _safe(row.get("rsz_v", 0), decimals=6),
             "pdd_120": _safe(row.get("pdd_120", 0), decimals=4),
             "mcs_composite": _safe(row.get("mcs_composite", 0), decimals=4),
             "cts": _safe(row.get("cts", 0), decimals=4),

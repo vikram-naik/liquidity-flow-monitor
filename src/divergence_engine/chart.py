@@ -33,6 +33,8 @@ UI_COLUMNS = [
     "velocity_60_norm", "vel_dp5",
     # PSZ (price slope z) raw + thresholds
     "psz_v", "psz_buy_threshold", "psz_sell_threshold",
+    # RSZ (rdv slope z) raw + thresholds
+    "rsz_v", "rsz_buy_threshold", "rsz_sell_threshold",
     # NextGen gate thresholds (rolling percentiles from trend_participation)
     "cts_buy_threshold", "cts_sell_threshold", "cts_accel_threshold", "pdd_120_threshold",
     # Divergence

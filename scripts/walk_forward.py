@@ -2,7 +2,7 @@
 Walk-Forward Validation — compare train vs test period performance.
 
 Train: 2019-01-01 to 2023-12-31
-Test:  2024-01-01 to 2026-03-15
+Test:  2024-01-01 to today
 
 Usage:
     venv/bin/python3 scripts/walk_forward.py
@@ -12,8 +12,10 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import io
 import sqlite3
 import sys
+from datetime import datetime
 from pathlib import Path
 
 import numpy as np
@@ -33,11 +35,18 @@ from src.trading.signals.base import BaseEntryConfig, BaseExitConfig
 from src.trading.signals.enums import ExitReason
 
 DB_PATH = Path(__file__).resolve().parent.parent / "liquidity_monitor.db"
+OUTPUT_DIR = Path(__file__).resolve().parent.parent / "output"
 
 TRAIN_START = "2019-01-01"
 TRAIN_END = "2023-12-31"
 TEST_START = "2024-01-01"
-TEST_END = "2026-04-01"
+
+SEP = "=" * 72
+THIN_SEP = "-" * 72
+
+
+def today_str() -> str:
+    return datetime.now().strftime("%Y-%m-%d")
 
 
 def get_watchlist_symbols(name: str) -> list[str]:
@@ -72,7 +81,6 @@ def simulate_trades(
     delivery_bad_count = 0
     cwvap_values: list[float] = []
     pending_signal: dict | None = None
-    # EOD lag for exits: signal fires on bar i, execute at open of bar i+1
     pending_exit_reason: ExitReason | str | None = None
 
     for i in range(1, n):
@@ -85,7 +93,7 @@ def simulate_trades(
         cw = row.get("cwvap", np.nan)
         cwvap_values.append(cw)
 
-        # Execute pending exit at today's open (EOD-lag: signal fired previous bar)
+        # Execute pending exit at today's open (EOD-lag)
         if pending_exit_reason is not None:
             open_price = row.get("open", np.nan)
             exit_price = open_price if not np.isnan(open_price) else close
@@ -122,7 +130,6 @@ def simulate_trades(
             )
 
             if reason:
-                # EOD lag: schedule exit at next bar's open
                 pending_exit_reason = reason
 
         elif pending_signal is not None:
@@ -171,63 +178,103 @@ def simulate_trades(
     return trades
 
 
+
+
+def compute_profit_factor(trades: list[Trade]) -> float:
+    """Gross profits / gross losses. Inf if no losses."""
+    gross_win = sum(t.pnl_pct for t in trades if t.pnl_pct > 0)
+    gross_loss = abs(sum(t.pnl_pct for t in trades if t.pnl_pct <= 0))
+    if gross_loss == 0:
+        return float("inf")
+    return gross_win / gross_loss
+
+
+def compute_expectancy(trades: list[Trade]) -> float:
+    """Per-trade expectancy = avg_win * win_rate - avg_loss * loss_rate."""
+    if not trades:
+        return 0.0
+    winners = [t.pnl_pct for t in trades if t.pnl_pct > 0]
+    losers = [t.pnl_pct for t in trades if t.pnl_pct <= 0]
+    n = len(trades)
+    avg_win = np.mean(winners) if winners else 0.0
+    avg_loss = abs(np.mean(losers)) if losers else 0.0
+    wr = len(winners) / n
+    lr = len(losers) / n
+    return avg_win * wr - avg_loss * lr
+
+
 def run_period(symbols: list[str], start: str, end: str,
                entry_cfg: BaseEntryConfig, exit_cfg: BaseExitConfig,
                label: str, signal) -> list[Trade]:
-    print(f"\n{'='*60}")
-    print(f"  {label}: {start} to {end}")
-    print(f"{'='*60}")
-
     all_trades = []
-    for i, sym in enumerate(symbols, 1):
-        print(f"  [{i}/{len(symbols)}] {sym}...", end=" ", flush=True)
+    failed = []
+    for sym in symbols:
         try:
             engine = DivergenceEngine(sym, start_date=start, end_date=end)
             result = engine.run()
             trades = simulate_trades(sym, result.ledger, entry_cfg, exit_cfg, signal)
             all_trades.extend(trades)
-            wins = sum(1 for t in trades if t.pnl_pct > 0)
-            print(f"{len(trades)} trades, {wins} wins" if trades else "no trades")
         except Exception as e:
-            # import traceback
-            # traceback.print_exc()
-            print(f"SKIP — {e}")
+            failed.append((sym, str(e)))
 
+    traded = len(set(t.symbol for t in all_trades))
+    print(f"  {label}: {len(all_trades)} trades across {traded}/{len(symbols)} symbols"
+          f" | {len(failed)} failed")
     return all_trades
 
 
-def summarize(trades: list[Trade], label: str) -> dict:
+def summarize(trades: list[Trade], label: str, period_start: str, period_end: str, out: io.StringIO) -> dict:
+    """Build summary stats and write formatted report to `out`."""
+    def w(line: str = ""):
+        out.write(line + "\n")
+
     if not trades:
-        print(f"\n{label}: No trades.")
+        w(f"\n{label}: No trades.")
         return {}
 
     df = pd.DataFrame([{
+        "symbol": t.symbol,
         "pnl": t.pnl_pct, "mfe": t.mfe_pct, "mae": t.mae_pct,
         "bars": t.duration,
         "reason": t.exit_reason.value if hasattr(t.exit_reason, "value") else str(t.exit_reason),
         "entry_tag": t.entry_tag.value if hasattr(t.entry_tag, "value") else str(t.entry_tag),
+        "entry_date": t.entry_date, "exit_date": t.exit_date,
     } for t in trades])
 
     total = len(df)
     winners = (df["pnl"] > 0).sum()
+    losers = total - winners
     win_rate = winners / total * 100
     avg_pnl = df["pnl"].mean()
     avg_win = df.loc[df["pnl"] > 0, "pnl"].mean() if winners > 0 else 0
-    avg_loss = df.loc[df["pnl"] <= 0, "pnl"].mean() if (total - winners) > 0 else 0
-    payoff = abs(avg_win / avg_loss) if avg_loss != 0 else float('inf')
+    avg_loss = df.loc[df["pnl"] <= 0, "pnl"].mean() if losers > 0 else 0
+    payoff = abs(avg_win / avg_loss) if avg_loss != 0 else float("inf")
+    profit_factor = compute_profit_factor(trades)
+    expectancy = compute_expectancy(trades)
+    median_pnl = df["pnl"].median()
+    symbols_traded = df["symbol"].nunique()
 
-    print(f"\n{'='*60}")
-    print(f"  {label} RESULTS")
-    print(f"{'='*60}")
-    print(f"  Trades:       {total}")
-    print(f"  Win rate:     {win_rate:.1f}%")
-    print(f"  Avg P&L:      {avg_pnl:+.2f}%")
-    print(f"  Avg winner:   {avg_win:+.2f}%")
-    print(f"  Avg loser:    {avg_loss:+.2f}%")
-    print(f"  Payoff ratio: {payoff:.2f}x")
-    print(f"  Avg MFE:      {df['mfe'].mean():.2f}%")
-    print(f"  Avg MAE:      {df['mae'].mean():.2f}%")
-    print(f"  Avg duration: {df['bars'].mean():.1f} bars")
+    w(f"\n{SEP}")
+    w(f"  {label} RESULTS  ({period_start} to {period_end})")
+    w(SEP)
+    w()
+    w(f"  {'Metric':<22} {'Value':>10}")
+    w(f"  {THIN_SEP[:34]}")
+    w(f"  {'Trades':<22} {total:>10}")
+    w(f"  {'Symbols traded':<22} {symbols_traded:>10}")
+    w(f"  {'Winners / Losers':<22} {f'{winners} / {losers}':>10}")
+    w(f"  {'Win rate':<22} {win_rate:>9.1f}%")
+    w(f"  {'Avg P&L':<22} {avg_pnl:>+9.2f}%")
+    w(f"  {'Median P&L':<22} {median_pnl:>+9.2f}%")
+    w(f"  {'Avg winner':<22} {avg_win:>+9.2f}%")
+    w(f"  {'Avg loser':<22} {avg_loss:>+9.2f}%")
+    w(f"  {'Payoff ratio':<22} {payoff:>9.2f}x")
+    w(f"  {'Profit factor':<22} {profit_factor:>9.2f}")
+    w(f"  {'Expectancy / trade':<22} {expectancy:>+9.2f}%")
+    # CAGR and Max Drawdown omitted — overlapping multi-symbol trades make them misleading
+    w(f"  {'Avg MFE':<22} {df['mfe'].mean():>+9.2f}%")
+    w(f"  {'Avg MAE':<22} {df['mae'].mean():>9.2f}%")
+    w(f"  {'Avg duration':<22} {df['bars'].mean():>8.1f} bars")
 
     # Exit breakdown
     reason_agg = (
@@ -238,9 +285,9 @@ def summarize(trades: list[Trade], label: str) -> dict:
         .sort_values("count", ascending=False)
         .round(2)
     )
-    print(f"\n  Exit Breakdown:")
-    print(tabulate(reason_agg, headers=["Reason", "Count", "Avg P&L%", "Win%"],
-                   tablefmt="simple", floatfmt=".2f", showindex=False))
+    w(f"\n  Exit Breakdown:")
+    w(tabulate(reason_agg, headers=["Exit Reason", "Count", "Avg P&L%", "Win%"],
+               tablefmt="simple", floatfmt=".2f", showindex=False))
 
     # Entry type breakdown
     entry_agg = (
@@ -253,12 +300,12 @@ def summarize(trades: list[Trade], label: str) -> dict:
         .sort_values("count", ascending=False)
         .round(2)
     )
-    print(f"\n  Entry Type Breakdown:")
-    print(tabulate(entry_agg,
-                   headers=["Entry Type", "Count", "Avg P&L%", "Win%", "Avg MFE%", "Avg MAE%", "Avg Bars"],
-                   tablefmt="simple", floatfmt=".2f", showindex=False))
+    w(f"\n  Entry Type Breakdown:")
+    w(tabulate(entry_agg,
+               headers=["Entry Type", "Count", "Avg P&L%", "Win%", "Avg MFE%", "Avg MAE%", "Avg Bars"],
+               tablefmt="simple", floatfmt=".2f", showindex=False))
 
-    # Entry Type × Exit Reason cross-tabulation
+    # Entry Type x Exit Reason cross-tabulation
     cross = (
         df.groupby(["entry_tag", "reason"])
         .agg(count=("pnl", "size"), avg_pnl=("pnl", "mean"),
@@ -268,15 +315,35 @@ def summarize(trades: list[Trade], label: str) -> dict:
         .sort_values(["entry_tag", "count"], ascending=[True, False])
         .round(2)
     )
-    print(f"\n  Entry Type × Exit Reason:")
-    print(tabulate(cross,
-                   headers=["Entry Type", "Exit Reason", "Count", "Avg P&L%", "Win%", "Avg MFE%", "Avg MAE%"],
-                   tablefmt="simple", floatfmt=".2f", showindex=False))
+    w(f"\n  Entry Type x Exit Reason:")
+    w(tabulate(cross,
+               headers=["Entry Type", "Exit Reason", "Count", "Avg P&L%", "Win%", "Avg MFE%", "Avg MAE%"],
+               tablefmt="simple", floatfmt=".2f", showindex=False))
+
+    # Top / bottom symbols
+    sym_agg = (
+        df.groupby("symbol")
+        .agg(count=("pnl", "size"), total_pnl=("pnl", "sum"), avg_pnl=("pnl", "mean"),
+             win_rate=("pnl", lambda x: round((x > 0).mean() * 100, 1)))
+        .reset_index()
+        .round(2)
+    )
+    top5 = sym_agg.nlargest(5, "total_pnl")
+    bot5 = sym_agg.nsmallest(5, "total_pnl")
+    w(f"\n  Top 5 Symbols (by total P&L%):")
+    w(tabulate(top5, headers=["Symbol", "Trades", "Total P&L%", "Avg P&L%", "Win%"],
+               tablefmt="simple", floatfmt=".2f", showindex=False))
+    w(f"\n  Bottom 5 Symbols (by total P&L%):")
+    w(tabulate(bot5, headers=["Symbol", "Trades", "Total P&L%", "Avg P&L%", "Win%"],
+               tablefmt="simple", floatfmt=".2f", showindex=False))
 
     return {
         "trades": total, "win_rate": round(win_rate, 1),
         "avg_pnl": round(avg_pnl, 2), "payoff": round(payoff, 2),
+        "profit_factor": round(profit_factor, 2),
+        "expectancy": round(expectancy, 2),
         "avg_mfe": round(df["mfe"].mean(), 2), "avg_mae": round(df["mae"].mean(), 2),
+        "median_pnl": round(median_pnl, 2),
     }
 
 
@@ -284,14 +351,29 @@ def main():
     parser = argparse.ArgumentParser(description="Walk-forward validation")
     parser.add_argument("--watchlist", default="NIFTY 50")
     parser.add_argument("--signal", default="savgol_cts", choices=["price_divergence", "nextgen", "savgol_cts"],
-                        help="Signal strategy to use (default: price_divergence)")
+                        help="Signal strategy to use (default: savgol_cts)")
     args = parser.parse_args()
 
+    test_end = today_str()
+
     symbols = get_watchlist_symbols(args.watchlist)
-    print(f"Walk-Forward Validation: {args.watchlist} ({len(symbols)} symbols)")
-    print(f"Signal: {args.signal}")
-    print(f"Train: {TRAIN_START} — {TRAIN_END}")
-    print(f"Test:  {TEST_START} — {TEST_END}")
+
+    # Build output buffer — everything goes here, then gets printed + saved
+    out = io.StringIO()
+
+    def w(line: str = ""):
+        out.write(line + "\n")
+
+    w(SEP)
+    w(f"  WALK-FORWARD BACKTEST REPORT")
+    w(f"  Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+    w(SEP)
+    w()
+    w(f"  Watchlist:  {args.watchlist} ({len(symbols)} symbols)")
+    w(f"  Signal:     {args.signal}")
+    w(f"  Train:      {TRAIN_START} to {TRAIN_END}")
+    w(f"  Test:       {TEST_START} to {test_end}")
+    w()
 
     if args.signal == "nextgen":
         entry_cfg = NextGenEntryConfig()
@@ -305,22 +387,80 @@ def main():
 
     signal = SignalFactory.get_signal(args.signal)
 
+    # --- Run periods ---
+    print(f"Running TRAIN period ({TRAIN_START} to {TRAIN_END})...", flush=True)
     train_trades = run_period(symbols, TRAIN_START, TRAIN_END, entry_cfg, exit_cfg, "TRAIN", signal)
-    test_trades = run_period(symbols, TEST_START, TEST_END, entry_cfg, exit_cfg, "TEST", signal)
+    print(f"Running TEST period ({TEST_START} to {test_end})...", flush=True)
+    test_trades = run_period(symbols, TEST_START, test_end, entry_cfg, exit_cfg, "TEST", signal)
 
-    train_stats = summarize(train_trades, "TRAIN")
-    test_stats = summarize(test_trades, "TEST")
+    # --- Summarize ---
+    train_stats = summarize(train_trades, "TRAIN", TRAIN_START, TRAIN_END, out)
+    test_stats = summarize(test_trades, "TEST", TEST_START, test_end, out)
 
-    # Stability comparison
+    # --- Stability comparison ---
     if train_stats and test_stats:
-        print(f"\n{'='*60}")
-        print("  PARAMETER STABILITY")
-        print(f"{'='*60}")
-        for key in ["trades", "win_rate", "avg_pnl", "payoff", "avg_mfe", "avg_mae"]:
+        w(f"\n{SEP}")
+        w("  PARAMETER STABILITY  (Test vs Train)")
+        w(SEP)
+        w()
+        w(f"  {'Metric':<22} {'Train':>10} {'Test':>10} {'Delta':>10}")
+        w(f"  {THIN_SEP[:54]}")
+        compare_keys = [
+            ("trades",         "",  0),
+            ("win_rate",       "%", 1),
+            ("avg_pnl",        "%", 2),
+            ("median_pnl",     "%", 2),
+            ("payoff",         "x", 2),
+            ("profit_factor",  "",  2),
+            ("expectancy",     "%", 2),
+            ("avg_mfe",        "%", 2),
+            ("avg_mae",        "%", 2),
+        ]
+        for key, suffix, dec in compare_keys:
             t = train_stats.get(key, 0)
             s = test_stats.get(key, 0)
-            delta = s - t if isinstance(t, (int, float)) else 0
-            print(f"  {key:12s}  Train={t:>8}  Test={s:>8}  Delta={delta:+.2f}")
+            delta = s - t
+            fmt = f".{dec}f"
+            w(f"  {key:<22} {t:>9{fmt}}{suffix} {s:>9{fmt}}{suffix} {delta:>+9{fmt}}{suffix}")
+
+    # --- Config dump for reproducibility ---
+    w(f"\n{SEP}")
+    w("  CONFIG SNAPSHOT")
+    w(SEP)
+    w()
+    w(f"  Entry: {entry_cfg.__class__.__name__}")
+    for field_name in sorted(vars(entry_cfg)):
+        val = getattr(entry_cfg, field_name)
+        if hasattr(val, '__dataclass_fields__'):
+            w(f"    {field_name}:")
+            for sub in sorted(vars(val)):
+                w(f"      {sub}: {getattr(val, sub)}")
+        else:
+            w(f"    {field_name}: {val}")
+    w(f"  Exit: {exit_cfg.__class__.__name__}")
+    for field_name in sorted(vars(exit_cfg)):
+        val = getattr(exit_cfg, field_name)
+        if hasattr(val, '__dataclass_fields__'):
+            w(f"    {field_name}:")
+            for sub in sorted(vars(val)):
+                w(f"      {sub}: {getattr(val, sub)}")
+        else:
+            w(f"    {field_name}: {val}")
+
+    w(f"\n{SEP}")
+
+    # --- Output ---
+    report = out.getvalue()
+    print(report)
+
+    # Write to file
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    ts = datetime.now().strftime("%d-%b-%Y_%H:%M")
+    sanitized_wl = args.watchlist.replace(" ", "_")
+    filename = f"{sanitized_wl}_bt_{ts}.txt"
+    outpath = OUTPUT_DIR / filename
+    outpath.write_text(report)
+    print(f"Report saved to {outpath}")
 
 
 if __name__ == "__main__":
