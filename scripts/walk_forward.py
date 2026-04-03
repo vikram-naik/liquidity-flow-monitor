@@ -210,10 +210,17 @@ def run_period(symbols: list[str], start: str, end: str,
     failed = []
     for sym in symbols:
         try:
-            engine = DivergenceEngine(sym, start_date=start, end_date=end)
+            # Always run the engine with full history to ensure indicators are fully warmed up
+            engine = DivergenceEngine(sym, start_date=None, end_date=None)
             result = engine.run()
+            
+            # The simulator iterates the full history but only returns trades
+            # that were entered within the [start, end] window.
             trades = simulate_trades(sym, result.ledger, entry_cfg, exit_cfg, signal)
-            all_trades.extend(trades)
+            
+            # Filter trades to only those entered in the requested period
+            period_trades = [t for t in trades if start <= str(t.entry_date) <= end]
+            all_trades.extend(period_trades)
         except Exception as e:
             failed.append((sym, str(e)))
 

@@ -92,7 +92,22 @@ def compute_intensity(
             
         # 3. Depth of exhaustion
         path_score += _interp(cts, -0.50, -1.0, 0.0, 20.0)
-            
+
+    elif tag == EntryTag.INSTITUTIONAL_FLOOR:
+        # 1. Depth of Price Exhaustion (PSZ): -0.30 -> 0 pts, -0.60 -> 25 pts
+        psz = row.get("price_slope_z", np.nan)
+        if not np.isnan(psz):
+            path_score += _interp(psz, -0.30, -0.60, 0.0, 25.0)
+
+        # 2. Institutional Alignment (CWC Slope): 0.0 -> 0 pts, 0.05 -> 25 pts
+        cwc_s = row.get("cwc_slope", np.nan)
+        if not np.isnan(cwc_s):
+            path_score += _interp(cwc_s, 0.0, 0.05, 0.0, 25.0)
+
+        # 3. Structural Location (CWVAP Dist): Deeper is better
+        if not np.isnan(cwvap_dist):
+            path_score += _interp(cwvap_dist, 0.0, -5.0, 0.0, 20.0)
+
     intensity += path_score
     intensity = min(100.0, max(0.0, float(np.nan_to_num(intensity))))
     intensity_int = int(round(intensity))

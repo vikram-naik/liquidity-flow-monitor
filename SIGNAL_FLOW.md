@@ -15,9 +15,11 @@ savgol_cts/
   entries/
     slope_bottom.py    # Path 1: cts_slope rising from P5 bottom in downtrend
     structural_divergence.py # Path 2: Volume exhaustion + delivery divergence
+    institutional_floor.py # Path 3: Sustained PSZ recovery + Inst alignment
   exits/
     slope_bottom.py    # Slope Bottom exit: pure slope zero-cross cycle
     structural_divergence.py # Struct-Div exit: Smart path (Time-Decay, PnL-Cap, Hard-Stop)
+    institutional_floor.py # Inst-Floor exit: Max trail via CWVAP Lost Guard
     cwvap_guard.py     # CWVAP suppression / release logic (post-exit)
 ```
 
@@ -25,7 +27,7 @@ savgol_cts/
 
 ## Entry Flow
 
-Two entry paths evaluated in priority order. First match wins.
+Three entry paths evaluated in priority order. First match wins.
 
 ```
 check_entry(row, prev_row, cfg, records, idx)       [signal.py]
@@ -56,8 +58,22 @@ check_entry(row, prev_row, cfg, records, idx)       [signal.py]
   |     |-- [Guard] PSZ Rising: psz_delta >= 0.005 (_| bend, reject flat/falling)
   |     |-- [Guard] CWC Slope: reject when cwc >= 0 AND cwc_slope >= 0.02 (intensifying distribution)
   |     |-- [Guard] PSZ_v Rising 3-bar: psz_v(t-1) > psz_v(t-2) > psz_v(t-3)
-  |     |-- [Score] Conviction >= 5 (multi-factor soft gate, see below)
+  |     |-- [Score] Conviction >= 5 (multi-factor soft gate)
   |     +-- PASS --> EntryTag.STRUCTURAL_DIVERGENCE
+  |
+  |-- PATH 3: Institutional Floor                        [entries/institutional_floor.py]
+  |     |-- [Gate]  cfg.institutional_floor.enabled?
+  |     |-- [Guard] PSZ Sustained: psz <= -0.30 for 3 bars
+  |     |-- [Guard] PSZ Inflection: psz >= -0.29 AND prev_psz <= -0.30
+  |     |-- [Guard] Displacement: close < CWVAP
+  |     |-- [Guard] Acceleration: psz_v strictly increasing 3-bar (delta 0.01)
+  |     |-- [Guard] Inst Dislocation: cts <= cts_buy_threshold
+  |     |-- [Guard] Inst Improvement: cts_slope > prev_cts_slope
+  |     |-- [Guard] Accel Rising: cts_accel > prev_cts_accel (avoid fading pops)
+  |     |-- [Guard] Contrarian: cts_slope < 0
+  |     |-- [Guard] Alignment: cwc_slope > 0
+  |     |-- [Score] Conviction >= 5 (multi-factor soft gate)
+  |     +-- PASS --> EntryTag.INSTITUTIONAL_FLOOR
   |
   +-- No path matched --> REJECT (last meta from final path)
 ```
@@ -80,24 +96,13 @@ Path-Specific Scoring (Max 70 points):
   - Accumulation Spike (accum_div): 0.04 to 0.08 (+0..25)
   - Exhaustion Depth (CTS): -0.50 to -1.0 (+0..20)
 
+- Institutional Floor (PSZ Recovery):
+  - PSZ Depth: -0.30 to -0.60 (+0..25)
+  - Institutional Alignment (CWC Slope): 0.0 to 0.05 (+0..25)
+  - Structural Dislocation (CWVAP Dist): Deeper is better (+0..20)
+
 Range:      0 .. 100  (clamped)
 Labels:     >= 80 "STRONG", >= 65 "good", else unlabelled
-```
-
-### Conviction Scoring — Structural Divergence (`entries/structural_divergence.py`)
-
-Multi-factor soft gate. No single feature separates winners from losers, but
-the combination does. Minimum score: **5** (max 11).
-
-```
-Dimension          Points  Logic
-─────────────────  ──────  ──────────────────────────────────────
-CTS depth          0/1/2   cts <= cts_buy_threshold → 2, within 0.1 → 1
-Accel confirm      0/2     cts_accel > cts_accel_threshold → 2
-CWVAP stretch      0/1/2   cwvap_dist <= -3.0% → 2, <= -1.5% → 1
-PSZ momentum       0/1/2   psz_delta >= 0.02 → 2, >= 0.01 → 1
-Divergence         0/1/2   spread >= 0.60 → 2, >= 0.45 → 1
-PSZ 3-bar rising   0/1     psz(t) > psz(t-1) > psz(t-2) > psz(t-3) → 1
 ```
 
 ---
@@ -116,10 +121,13 @@ check_exit(row, prev_row, trade, ...)                [signal.py]
   |-- tag == STRUCTURAL_DIVERGENCE
   |     --> exit_structural_divergence()             [exits/structural_divergence.py]
   |
+  |-- tag == INSTITUTIONAL_FLOOR
+  |     --> exit_institutional_floor()               [exits/institutional_floor.py]
+  |
   |-- [Optional] ST exit (cfg.st_exit_enabled, default False)
   |
   +-- apply_cwvap_guard()                            [exits/cwvap_guard.py]
-      (skipped for hard exits like PNL_CAP or HARD_STOP)
+      (skipped for hard exits, SLOPE_BOTTOM, and INSTITUTIONAL_FLOOR)
 ```
 
 ### State Bitfield (`delivery_bad_count` repurposed — `state.py`)
@@ -128,6 +136,7 @@ check_exit(row, prev_row, trade, ...)                [signal.py]
 bit 3 (& 0x08): exit_suppressed   — An indicator exit was suppressed by CWVAP Rule A
 bit 4 (& 0x10): suppressed_this_bar — Exit was suppressed on this specific bar
 bit 5 (& 0x20): slope_crossed_zero — Phase 1 complete: cts_slope > 0 reached
+bit 6 (& 0x40): price_above_cwvap — Phase 1 complete: price reclaimed CWVAP
 ```
 
 ---
@@ -161,6 +170,24 @@ exit_structural_divergence(row, prev_row, trade, ...)
   |-- [Cycle] Slope Cycle: Phase 1 (slope > 0) -> Phase 2 (slope < 0)
   +-- None --> HOLD
 ```
+
+### Exit: Institutional Floor path (`exits/institutional_floor.py`)
+
+Tags: `INSTITUTIONAL_FLOOR`
+
+Bespoke exit replicating the NIFTY 50 study with safety bounds.
+
+```
+exit_institutional_floor(row, prev_row, trade, ...)
+  |-- [Guard] Hard Stop: exit if PnL% <= -8.0%
+  |-- [Override] PnL Cap: exit if PnL% >= 8.0%
+  |-- Phase 1: wait for price to reclaim CWVAP (bit 6)
+  |-- Phase 2: wait for PSZ to peak >= 0.25 (bit 1 repurposed)
+  |-- Phase 3: exit when PSZ falls below 0.0 (exhaustion of recovery)
+  |     --> ExitReason.PSZ_GLIDE
+  +-- None --> HOLD
+```
+
 
 ---
 
@@ -220,16 +247,29 @@ apply_cwvap_guard(row, trade, res, state, cwvap_values, cfg, records, idx)
 | `conviction_enabled` | True | Enable multi-factor conviction scoring |
 | `conviction_min_score` | 5 | Minimum conviction score to enter (max 11) |
 
-### Exit (`SavgolCTSExitConfig` — `config.py`)
-
-**Structural Divergence exit (`cfg.structural_divergence`):**
+**Path 3 — Institutional Floor (`cfg.institutional_floor`):**
 
 | Parameter | Default | Description |
 |---|---|---|
-| `pnl_cap_pct` | 6.0 | Take profit cap |
-| `time_decay_bars` | 8 | Exit if trade stalls |
-| `time_decay_min_pnl`| 1.0 | Required PnL to hold past time decay |
-| `hard_stop_pct` | 5.0 | Max acceptable loss |
+| `enabled` | True | Enable/disable path |
+| `psz_threshold` | -0.30 | Base PSZ exhaustion floor |
+| `psz_delta` | 0.01 | Min recovery for signal bar |
+| `psz_lookback` | 3 | Bars PSZ must be <= threshold |
+| `psz_v_lookback`| 3 | Bars psz_v must be rising |
+| `psz_v_delta` | 0.01 | Min velocity acceleration |
+| `cwvap_dist_max`| 0.0 | Must be below CWVAP |
+| `accel_rising_guard`| True | Reject if cts_accel is dropping |
+
+### Exit (`SavgolCTSExitConfig` — `config.py`)
+
+**Institutional Floor exit (`cfg.institutional_floor`):**
+
+| Parameter | Default | Description |
+|---|---|---|
+| `pnl_cap_pct` | 8.0 | Take profit cap |
+| `hard_stop_pct` | 8.0 | Max acceptable loss |
+| `psz_peak_threshold`| 0.25 | PSZ must reach this to activate glide |
+| `psz_exit_threshold`| 0.0 | Exit when PSZ falls below this |
 
 ---
 

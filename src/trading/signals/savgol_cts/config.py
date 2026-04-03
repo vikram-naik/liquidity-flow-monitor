@@ -126,6 +126,63 @@ class StructuralDivergenceExitConfig:
     hard_stop_pct: float = 5.0      # max acceptable loss
 
 
+@dataclass
+class InstitutionalFloorEntryConfig:
+    """Path 3: Institutional Floor — Sustained PSZ recovery with institutional alignment.
+
+    Entry fires when (9-gate process):
+    1. Sustained Exhaustion: Previous 3 bars PSZ <= psz_threshold.
+    2. Inflection: Signal bar PSZ >= psz_threshold + psz_delta.
+    3. Displacement: Close price < CWVAP.
+    4. Momentum Acceleration: psz_v strictly increasing over psz_v_lookback.
+    5. Velocity Delta: Each acceleration step >= psz_v_delta.
+    6. Institutional Dislocation: cts <= cts_buy_threshold.
+    7. Institutional Improvement: cts_slope > prev_cts_slope.
+    8. Contrarian Guard: cts_slope < 0.
+    9. Institutional Alignment: cwc_slope > 0.
+    """
+    enabled: bool = True
+    psz_threshold: float = -0.30
+    psz_delta: float = 0.01
+    psz_lookback: int = 3
+    psz_v_lookback: int = 3
+    psz_v_delta: float = 0.01
+    cwvap_dist_max: float = 0.0
+    cts_buy_guard: bool = True
+    cts_slope_accel_guard: bool = True
+    accel_rising_guard: bool = True
+    cts_slope_neg_guard: bool = True
+    cwc_slope_rising_guard: bool = True
+
+    # Conviction scoring
+    conviction_enabled: bool = True
+    conviction_min_score: int = 5
+    conv_cwvap_deep: float = -3.0
+    conv_cwvap_mid: float = -1.5
+    conv_psz_delta_strong: float = 0.02
+    conv_psz_delta_mid: float = 0.01
+    conv_spread_strong: float = 0.60
+    conv_spread_mid: float = 0.45
+
+
+@dataclass
+class InstitutionalFloorExitConfig:
+    """Institutional Floor exit: Bespoke exit replicating the NIFTY 50 study.
+    
+    Exits when:
+    - Target: Price reclaims CWVAP, PSZ climbs above peak threshold, then falls below exit threshold (glides to zero).
+    - Safety: Hard stop to prevent infinite holding (unlike the study).
+    - PnL cap: Takes profit early if 8% target hit.
+    """
+    enabled: bool = True
+    pnl_cap_enabled: bool = True
+    pnl_cap_pct: float = 8.0
+    hard_stop_enabled: bool = True
+    hard_stop_pct: float = 8.0
+    psz_peak_threshold: float = 0.25
+    psz_exit_threshold: float = 0.0
+
+
 # ---------------------------------------------------------------------------
 # Composite entry config
 # ---------------------------------------------------------------------------
@@ -137,6 +194,7 @@ class SavgolCTSEntryConfig(BaseEntryConfig):
     Entry paths evaluated:
     1. Slope Bottom   — cts_slope inflects from deep negative in a downtrend.
     2. Structural Div — Volume exhaustion and delivery divergence during sharp drop.
+    3. Institutional Floor — Sustained PSZ recovery with institutional alignment.
     """
     # Cooldown: prevent entry within N bars after specific exit reasons.
     cooldown_enabled: bool = True
@@ -150,6 +208,7 @@ class SavgolCTSEntryConfig(BaseEntryConfig):
     # --- Per-path configs ---
     slope_bottom: SlopeBottomEntryConfig = field(default_factory=SlopeBottomEntryConfig)
     structural_divergence: StructuralDivergenceEntryConfig = field(default_factory=StructuralDivergenceEntryConfig)
+    institutional_floor: InstitutionalFloorEntryConfig = field(default_factory=InstitutionalFloorEntryConfig)
 
 
 # ---------------------------------------------------------------------------
@@ -192,4 +251,5 @@ class SavgolCTSExitConfig(BaseExitConfig):
     # --- Per-path configs ---
     slope_bottom: SlopeBottomExitConfig = field(default_factory=SlopeBottomExitConfig)
     structural_divergence: StructuralDivergenceExitConfig = field(default_factory=StructuralDivergenceExitConfig)
+    institutional_floor: InstitutionalFloorExitConfig = field(default_factory=InstitutionalFloorExitConfig)
     cwvap_guard: CwvapGuardConfig = field(default_factory=CwvapGuardConfig)

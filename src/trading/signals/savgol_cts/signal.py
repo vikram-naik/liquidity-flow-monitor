@@ -19,21 +19,27 @@ from src.trading.signals.savgol_cts.config import SavgolCTSEntryConfig, SavgolCT
 # Entry path checkers
 from src.trading.signals.savgol_cts.entries.slope_bottom import check_slope_bottom
 from src.trading.signals.savgol_cts.entries.structural_divergence import check_structural_divergence
+from src.trading.signals.savgol_cts.entries.institutional_floor import check_institutional_floor
 
 # Exit path checkers
 from src.trading.signals.savgol_cts.exits.cwvap_guard import apply_cwvap_guard
 from src.trading.signals.savgol_cts.exits.slope_bottom import exit_slope_bottom
 from src.trading.signals.savgol_cts.exits.structural_divergence import exit_structural_divergence
+from src.trading.signals.savgol_cts.exits.institutional_floor import exit_institutional_floor
 
 
 class SavgolCTSSignal(SignalInterface):
-    """CTS -1/+1 mean-reversion signal with one entry path.
+    """CTS -1/+1 mean-reversion signal with multiple entry paths.
 
     Entry paths:
         1. Slope Bottom   — cts_slope inflects from deep negative in a downtrend.
+        2. Structural Div — Volume exhaustion and delivery divergence during sharp drop.
+        3. Institutional Floor — Sustained PSZ recovery with institutional alignment.
 
     Exit paths (dispatched by entry tag):
-        Slope Bottom                  → ``exit_slope_bottom``.
+        Slope Bottom           → ``exit_slope_bottom``.
+        Structural Divergence  → ``exit_structural_divergence``.
+        Institutional Floor    → ``exit_institutional_floor``.
 
     The CWVAP guard runs after exits, suppressing or
     releasing based on price position and momentum.
@@ -87,6 +93,11 @@ class SavgolCTSSignal(SignalInterface):
         if passed:
             return True, intensity, meta
 
+        # Path 3: Institutional Floor
+        passed, intensity, meta = check_institutional_floor(row, prev_row, cfg, records, idx)
+        if passed:
+            return True, intensity, meta
+
         return False, 0, meta
 
     # ------------------------------------------------------------------
@@ -133,6 +144,11 @@ class SavgolCTSSignal(SignalInterface):
                 row, prev_row, trade, peak_close, bars_held,
                 updated_state_val, cfg, records, idx,
             )
+        elif tag == EntryTag.INSTITUTIONAL_FLOOR.value:
+            exit_status = exit_institutional_floor(
+                row, prev_row, trade, peak_close, bars_held,
+                updated_state_val, cfg, records, idx,
+            )
         else:
             # Unknown entry tag — no exit logic, hold
             exit_status = (None, updated_state_val)
@@ -166,7 +182,10 @@ class SavgolCTSSignal(SignalInterface):
             tag == EntryTag.SLOPE_BOTTOM.value
             and res in (ExitReason.PNL_CAP, ExitReason.TRAIL_STOP)
         )
-        if res == ExitReason.BAR3_STOP or sb_hard_exit:            final_state = state_returned
+        if_bespoke_exit = tag == EntryTag.INSTITUTIONAL_FLOOR.value
+        
+        if res == ExitReason.BAR3_STOP or sb_hard_exit or if_bespoke_exit:
+            final_state = state_returned
         else:
             res, final_state = apply_cwvap_guard(
                 row, trade, res, state_returned, cwvap_values, cfg, records, idx,
