@@ -43,6 +43,9 @@ def check_institutional_floor(
 
     # GATE 1 & 2: PSZ Inflection from Sustained Exhaustion
     # 1. Previous N bars were ALL <= threshold
+    conv_score = 0
+    conv_parts = []
+
     if records is not None and idx >= ifcfg.psz_lookback:
         was_deep = all(
             records[idx - j].get("price_slope_z", 0) <= ifcfg.psz_threshold 
@@ -98,9 +101,6 @@ def check_institutional_floor(
 
     # GATE 10: Conviction score — multi-factor soft gate.
     if getattr(ifcfg, "conviction_enabled", False):
-        conv_score = 0
-        conv_parts = []
-
         # (a) CTS depth vs dynamic buy threshold (0/1/2)
         if not np.isnan(cts_bt):
             if cts <= cts_bt:
@@ -153,4 +153,6 @@ def check_institutional_floor(
         row, prev_row, EntryTag.INSTITUTIONAL_FLOOR,
         [f"psz={psz:.2f}", f"cwvap_dist={cwvap_dist:.1f}%", f"cts={cts:.2f}"],
     )
+    meta["conv_score"] = conv_score
+    meta["conv_parts"] = "+".join(conv_parts)
     return True, intensity_int, meta

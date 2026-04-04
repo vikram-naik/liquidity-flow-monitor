@@ -1,9 +1,9 @@
-"""Institutional Floor exit logic.
+"""Institutional Floor exit logic — CTS Trail Cap (two-phase).
 
-Bespoke exit replicating the NIFTY 50 study:
-Target: Price crosses above CWVAP (reclaim), then exit when 
-PSZ falls below threshold (exhaustion of the recovery move).
-Safety: Hard stop to prevent infinite holding.
+Phase 1 (PSZ trail): Wait for PSZ to cross above zero (become positive),
+    then when PSZ drops back below zero, switch to Phase 2.
+Phase 2 (CTS trail): Hold until CTS crosses sell threshold → ST_CROSS.
+PnL cap and hard stop active throughout both phases.
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ def exit_institutional_floor(
     peak_close: float, bars_held: int, state_val: int,
     cfg: SavgolCTSExitConfig, records: list[dict] | None, idx: int,
 ) -> tuple[str | None, int]:
-    """Exit when target achieved after CWVAP reclaim, or stops hit."""
+    """Two-phase exit: PSZ zero-cross cycle → CTS trail to sell threshold."""
     st = SavgolCTSExitState.from_int(state_val)
     ecfg = cfg.institutional_floor
 
@@ -37,26 +37,37 @@ def exit_institutional_floor(
 
     pnl_pct = (close_now / trade.entry_price - 1) * 100.0
 
-    # 1. Hard Stop (Safety net, study had none)
+    # 1. Hard Stop (safety net)
     if getattr(ecfg, "hard_stop_enabled", False) and pnl_pct <= -ecfg.hard_stop_pct:
         return ExitReason.HARD_STOP, st.to_int()
 
-    # 2. PnL Cap
+    # 2. PnL Cap (active in both phases)
     if ecfg.pnl_cap_enabled and pnl_pct >= ecfg.pnl_cap_pct:
         return ExitReason.PNL_CAP, st.to_int()
 
-    # 3. Study Exit: CWVAP reclaim -> PSZ peak -> PSZ exhaustion
     psz = row.get("price_slope_z", np.nan)
-    
-    # price_above_cwvap is tracked by the orchestrator (SavgolCTSSignal.check_exit)
-    if st.price_above_cwvap and not np.isnan(psz):
-        # Phase 2: Wait for PSZ to climb to a peak
-        if not st.psz_was_above:
-            if psz >= getattr(ecfg, "psz_peak_threshold", 0.25):
-                st.psz_was_above = True
+    cts = row.get("cts", np.nan)
+    cts_st = row.get("cts_sell_threshold", np.nan)
+
+    # Phase 2: CTS trail (psz_was_above repurposed as trailing_cts flag)
+    if st.psz_was_above:
+        if not np.isnan(cts) and not np.isnan(cts_st) and cts >= cts_st:
+            return ExitReason.ST_CROSS, st.to_int()
+        return None, st.to_int()
+
+    # Phase 1: PSZ zero-cross cycle
+    if not np.isnan(psz):
+        # price_above_cwvap repurposed as psz_was_positive flag
+        if not st.price_above_cwvap:
+            if psz > 0:
+                st.price_above_cwvap = True
         else:
-            # Phase 3: Target achieved if PSZ falls below threshold after peaking
-            if psz < ecfg.psz_exit_threshold:
-                return ExitReason.PSZ_GLIDE, st.to_int()
+            if psz < 0:
+                # PSZ cycle done — check CTS before exiting
+                if not np.isnan(cts) and not np.isnan(cts_st) and cts < cts_st:
+                    # CTS still below sell threshold — switch to Phase 2
+                    st.psz_was_above = True
+                else:
+                    return ExitReason.PSZ_GLIDE, st.to_int()
 
     return None, st.to_int()

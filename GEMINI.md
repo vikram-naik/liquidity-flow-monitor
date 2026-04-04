@@ -17,6 +17,6 @@
 ## Signal Mechanics (savgol_cts)
 - **Entry Paths**:
   1. **Slope Bottom**: CTS slope rising from P5 bottom in downtrend/notrend.
-  2. **Structural Divergence**: Volume exhaustion + delivery divergence below CWVAP.
-- **Exit Logic**: Dispatched by entry tag, followed by the **CWVAP Guard** (which can suppress or release indicator-based exits).
+  2. **Institutional Floor**: Sustained PSZ recovery + Institutional alignment below CWVAP.
+- **Exit Logic**: Dispatched by entry tag, followed by the **CWVAP Guard**.
 - **Intensity Scoring**: Computed in `scoring.py` (Range 0-100; >=80 is "STRONG").

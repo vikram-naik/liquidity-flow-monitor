@@ -28,6 +28,9 @@ class Trade:
     entry_idx: int
     atr_at_entry: float
     soft_filters_passed: int
+    conviction_score: int = 0
+    cts_at_signal: float = 0.0
+    cts_bt_at_signal: float = 0.0
     # Individual filter flags
     rdv_pass: bool = False
     mcs_pass: bool = False
@@ -166,6 +169,7 @@ class SignalInterface(ABC):
                     entry_idx=i,
                     atr_at_entry=atr,
                     soft_filters_passed=pending_entry["intensity"],
+                    conviction_score=pending_entry.get("conv_score", 0),
                     regime_at_entry=str(row.get("regime", "")),
                     entry_tag=pending_entry.get("entry_tag", ""),
                     psz_at_entry=row.get("price_slope_z", 0.0) or 0.0,
@@ -181,7 +185,11 @@ class SignalInterface(ABC):
                 cooldown_flags[i] = det.get("cooldown", False)
                 if ok:
                     entry_flags[i] = intensity
-                    pending_entry = {"intensity": intensity, "entry_tag": det.get("entry_tag", "")}
+                    pending_entry = {
+                        "intensity": intensity,
+                        "entry_tag": det.get("entry_tag", ""),
+                        "conv_score": det.get("conv_score", 0),
+                    }
 
         df = df.copy()
         df["entry_signal"] = entry_flags

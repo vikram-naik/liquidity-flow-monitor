@@ -3,7 +3,6 @@ from enum import Enum
 class EntryTag(str, Enum):
     """Strongly typed entry tags with presentation-friendly strings."""
     SLOPE_BOTTOM = "SavgolCTS Slope-Bottom"
-    STRUCTURAL_DIVERGENCE = "SavgolCTS Struct-Div"
     INSTITUTIONAL_FLOOR = "SavgolCTS Institutional-Floor"
     CTS_BT_FLOOR = "SavgolCTS CTS-BT-Floor"  # Legacy
 

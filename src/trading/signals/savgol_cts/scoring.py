@@ -77,22 +77,6 @@ def compute_intensity(
             slope_delta = cs - pcs
             path_score += _interp(slope_delta, 0.002, 0.02, 0.0, 20.0)
             
-    elif tag == EntryTag.STRUCTURAL_DIVERGENCE:
-        # 1. Intensity of Divergence (Spread): 0.35 -> 0 pts, 0.60 -> 25 pts
-        rsz = row.get("rdv_slope_z", np.nan)
-        psz = row.get("price_slope_z", np.nan)
-        if not np.isnan(rsz) and not np.isnan(psz):
-            spread = rsz - psz
-            path_score += _interp(spread, 0.35, 0.60, 0.0, 25.0)
-            
-        # 2. Accumulation Spike: 0.04 -> 0 pts, 0.08 -> 25 pts
-        accum = row.get("accum_div", np.nan)
-        if not np.isnan(accum):
-            path_score += _interp(accum, 0.04, 0.08, 0.0, 25.0)
-            
-        # 3. Depth of exhaustion
-        path_score += _interp(cts, -0.50, -1.0, 0.0, 20.0)
-
     elif tag == EntryTag.INSTITUTIONAL_FLOOR:
         # 1. Depth of Price Exhaustion (PSZ): -0.30 -> 0 pts, -0.60 -> 25 pts
         psz = row.get("price_slope_z", np.nan)

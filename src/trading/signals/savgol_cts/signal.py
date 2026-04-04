@@ -18,13 +18,11 @@ from src.trading.signals.savgol_cts.config import SavgolCTSEntryConfig, SavgolCT
 
 # Entry path checkers
 from src.trading.signals.savgol_cts.entries.slope_bottom import check_slope_bottom
-from src.trading.signals.savgol_cts.entries.structural_divergence import check_structural_divergence
 from src.trading.signals.savgol_cts.entries.institutional_floor import check_institutional_floor
 
 # Exit path checkers
 from src.trading.signals.savgol_cts.exits.cwvap_guard import apply_cwvap_guard
 from src.trading.signals.savgol_cts.exits.slope_bottom import exit_slope_bottom
-from src.trading.signals.savgol_cts.exits.structural_divergence import exit_structural_divergence
 from src.trading.signals.savgol_cts.exits.institutional_floor import exit_institutional_floor
 
 
@@ -33,12 +31,10 @@ class SavgolCTSSignal(SignalInterface):
 
     Entry paths:
         1. Slope Bottom   — cts_slope inflects from deep negative in a downtrend.
-        2. Structural Div — Volume exhaustion and delivery divergence during sharp drop.
-        3. Institutional Floor — Sustained PSZ recovery with institutional alignment.
+        2. Institutional Floor — Sustained PSZ recovery with institutional alignment.
 
     Exit paths (dispatched by entry tag):
         Slope Bottom           → ``exit_slope_bottom``.
-        Structural Divergence  → ``exit_structural_divergence``.
         Institutional Floor    → ``exit_institutional_floor``.
 
     The CWVAP guard runs after exits, suppressing or
@@ -88,11 +84,6 @@ class SavgolCTSSignal(SignalInterface):
         if passed:
             return True, intensity, meta
 
-        # Path 2: Structural Divergence
-        passed, intensity, meta = check_structural_divergence(row, prev_row, cfg, records, idx)
-        if passed:
-            return True, intensity, meta
-
         # Path 3: Institutional Floor
         passed, intensity, meta = check_institutional_floor(row, prev_row, cfg, records, idx)
         if passed:
@@ -124,23 +115,19 @@ class SavgolCTSSignal(SignalInterface):
         from src.trading.signals.savgol_cts.state import SavgolCTSExitState
         st = SavgolCTSExitState.from_int(delivery_bad_count)
 
-        # Update universal states
+        # Update universal states (Inst-Floor manages its own bit semantics)
+        tag = trade.entry_tag if trade is not None else ""
         close = row.get("close", np.nan)
         cwvap = row.get("cwvap", np.nan)
-        if not np.isnan(close) and not np.isnan(cwvap) and close > cwvap:
-            st.price_above_cwvap = True
+        if tag != EntryTag.INSTITUTIONAL_FLOOR.value:
+            if not np.isnan(close) and not np.isnan(cwvap) and close > cwvap:
+                st.price_above_cwvap = True
 
         updated_state_val = st.to_int()
-        tag = trade.entry_tag if trade is not None else ""
 
         # --- Path-specific exit ---
         if tag == EntryTag.SLOPE_BOTTOM.value:
             exit_status = exit_slope_bottom(
-                row, prev_row, trade, peak_close, bars_held,
-                updated_state_val, cfg, records, idx,
-            )
-        elif tag == EntryTag.STRUCTURAL_DIVERGENCE.value:
-            exit_status = exit_structural_divergence(
                 row, prev_row, trade, peak_close, bars_held,
                 updated_state_val, cfg, records, idx,
             )
