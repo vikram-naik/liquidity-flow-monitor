@@ -21,7 +21,7 @@ from src.trading.signals.savgol_cts.state import SavgolCTSExitState
 def apply_cwvap_guard(
     row: dict, trade: Trade,
     res: str | None, state_val: int,
-    cwvap_values: list[float], cfg: SavgolCTSExitConfig,
+    cfg: SavgolCTSExitConfig,
     records: list[dict] | None, idx: int,
 ) -> tuple[str | None, int]:
     """Apply CWVAP suppression / release to a proposed exit result.
@@ -44,14 +44,11 @@ def apply_cwvap_guard(
         st.suppressed_this_bar = True
 
     close = row.get("close", np.nan)
+    cwvap = row.get("cwvap", np.nan)
     psz_raw = row.get("price_slope_z", np.nan)
     cts = row.get("cts", np.nan)
 
-    if not cwvap_values or np.isnan(close):
-        return res, st.to_int()
-
-    cwvap = cwvap_values[-1]
-    if np.isnan(cwvap):
+    if np.isnan(close) or np.isnan(cwvap):
         return res, st.to_int()
 
     # --- Above CWVAP ---

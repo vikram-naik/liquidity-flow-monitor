@@ -197,6 +197,7 @@ def init_db():
         entry_price REAL,
         atr_at_entry REAL,
         quantity INTEGER,
+        -- Signal context
         soft_filters_passed INTEGER,
         rdv_pass INTEGER DEFAULT 0,
         mcs_pass INTEGER DEFAULT 0,
@@ -204,6 +205,9 @@ def init_db():
         grad_pass INTEGER DEFAULT 0,
         regime_at_entry TEXT,
         psz_at_entry REAL,
+        signal_strategy TEXT,
+        entry_tag TEXT,
+        -- Running state
         peak_close REAL,
         psz_peak REAL,
         delivery_bad_count INTEGER DEFAULT 0,
@@ -211,13 +215,79 @@ def init_db():
         current_pnl_pct REAL,
         mfe_pct REAL DEFAULT 0,
         mae_pct REAL DEFAULT 0,
+        -- Exit
         exit_date TEXT,
         exit_price REAL,
         exit_reason TEXT,
         final_pnl_pct REAL,
+        -- Sizing and expenses
+        capital_deployed REAL,
+        sizing_method TEXT,
+        kelly_f REAL,
+        entry_charges REAL DEFAULT 0,
+        exit_charges REAL DEFAULT 0,
+        total_charges REAL DEFAULT 0,
+        net_pnl_pct REAL,
+        net_pnl_abs REAL,
+        -- Meta
         broker_order_id TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    """)
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS trading_orders (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        position_id INTEGER NOT NULL,
+        symbol TEXT NOT NULL,
+        side TEXT NOT NULL,
+        order_type TEXT NOT NULL DEFAULT 'MARKET',
+        quantity INTEGER NOT NULL,
+        price REAL NOT NULL,
+        turnover REAL NOT NULL,
+        -- Expense breakdown
+        brokerage REAL NOT NULL DEFAULT 0,
+        stt REAL NOT NULL DEFAULT 0,
+        exchange_txn REAL NOT NULL DEFAULT 0,
+        gst REAL NOT NULL DEFAULT 0,
+        sebi_fee REAL NOT NULL DEFAULT 0,
+        stamp_duty REAL NOT NULL DEFAULT 0,
+        total_charges REAL NOT NULL DEFAULT 0,
+        net_amount REAL NOT NULL,
+        -- Broker
+        broker_order_id TEXT,
+        mode TEXT NOT NULL DEFAULT 'paper',
+        status TEXT NOT NULL DEFAULT 'COMPLETE',
+        executed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    """)
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS trading_capital_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        date TEXT NOT NULL,
+        event_type TEXT NOT NULL,
+        amount REAL NOT NULL,
+        balance_after REAL NOT NULL,
+        note TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    """)
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS trading_equity_curve (
+        date TEXT PRIMARY KEY,
+        equity REAL NOT NULL,
+        cash REAL NOT NULL,
+        deployed REAL NOT NULL,
+        market_value REAL NOT NULL,
+        peak_equity REAL NOT NULL,
+        drawdown_pct REAL NOT NULL DEFAULT 0,
+        open_positions INTEGER NOT NULL DEFAULT 0,
+        sizing_method TEXT,
+        kelly_f REAL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
     """)
 
@@ -245,11 +315,14 @@ def init_db():
     cursor.executemany(
         "INSERT OR IGNORE INTO trading_config (key, value) VALUES (?, ?)",
         [
+            ('capital', '1000000'),
             ('max_concurrent_positions', '8'),
             ('watchlist', 'NIFTY 50'),
             ('execution_mode', 'paper'),
-            ('position_size_pct', '12.5'),
-            ('capital', '1000000'),
+            ('signal_strategy', 'savgol_cts'),
+            ('sizing_strategy', 'equal_weight'),
+            ('kelly_fraction', '0.25'),
+            ('brokerage_model', 'zerodha'),
         ]
     )
 
@@ -257,6 +330,8 @@ def init_db():
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_trading_positions_status ON trading_positions (status);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_trading_positions_symbol_status ON trading_positions (symbol, status);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_trading_signals_date ON trading_signals (signal_date);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_trading_orders_position ON trading_orders (position_id);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_trading_orders_symbol ON trading_orders (symbol, executed_at);")
 
 
     conn.commit()

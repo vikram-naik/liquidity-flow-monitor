@@ -22,9 +22,11 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
 from src.divergence_engine.engine import DivergenceEngine
-from src.trading.signals import LongDivergenceEntryConfig, LongDivergenceExitConfig, Trade, SignalFactory
+from src.trading.signals import Trade, SignalFactory
+from src.trading.signals.savgol_cts import SavgolCTSEntryConfig, SavgolCTSExitConfig
 from src.trading.repository import TradingRepository
-from src.trading.sizing import calculate_quantity
+from src.trading.sizing import SizingContext, get_sizing_strategy
+from src.trading.charges import get_charges_calculator
 from src.trading.broker import PaperBroker
 
 logger = logging.getLogger(__name__)
@@ -62,6 +64,22 @@ def run_engine(symbol: str):
         return None, None
 
 
+def _resolve_signal_configs(signal_name: str):
+    """Return (entry_cfg, exit_cfg) for the given signal strategy name."""
+    if signal_name == "savgol_cts":
+        return SavgolCTSEntryConfig(), SavgolCTSExitConfig()
+    elif signal_name == "long_divergence":
+        from src.trading.signals import LongDivergenceEntryConfig, LongDivergenceExitConfig
+        return LongDivergenceEntryConfig(min_soft_filters=0), LongDivergenceExitConfig()
+    elif signal_name == "nextgen":
+        from src.trading.signals import NextGenEntryConfig, NextGenExitConfig
+        return NextGenEntryConfig(), NextGenExitConfig()
+    elif signal_name == "price_divergence":
+        from src.trading.signals import PriceDivergenceEntryConfig, PriceDivergenceExitConfig
+        return PriceDivergenceEntryConfig(), PriceDivergenceExitConfig()
+    raise ValueError(f"Unknown signal strategy: {signal_name}")
+
+
 class Scanner:
     def __init__(self, dry_run: bool = False):
         self.repo = TradingRepository()
@@ -75,17 +93,27 @@ class Scanner:
         self.watchlist_name = cfg.get("watchlist", "NIFTY 50")
         self.execution_mode = cfg.get("execution_mode", "paper")
 
-        # Signal configs — quality gate relaxed, layered PSZ crossings provide coverage
-        # No gates for now. (Strict Gates: pdd_120_max=-3.6, rsz_falling=True)
+        # Pluggable signal strategy from config
+        self.signal_name = cfg.get("signal_strategy", "savgol_cts")
+        self.entry_cfg, self.exit_cfg = _resolve_signal_configs(self.signal_name)
+        self.signal = SignalFactory.get_signal(self.signal_name)
 
-        self.entry_cfg = LongDivergenceEntryConfig(min_soft_filters=0)
-        self.exit_cfg = LongDivergenceExitConfig()
-        self.signal = SignalFactory.get_signal("long_divergence")
+        # Pluggable sizing strategy from config
+        sizing_name = cfg.get("sizing_strategy", "equal_weight")
+        self.sizing = get_sizing_strategy(
+            sizing_name,
+            kelly_fraction=float(cfg.get("kelly_fraction", "0.25")),
+        )
+
+        # Expense calculator from config
+        brokerage_model = cfg.get("brokerage_model", "zerodha")
+        self.charges_calc = get_charges_calculator(brokerage_model)
 
     def run(self):
         """Execute all 4 phases of the daily scan."""
         today = datetime.now().strftime("%Y-%m-%d")
         print(f"=== Scanner run: {today} (mode={'DRY-RUN' if self.dry_run else self.execution_mode}) ===")
+        print(f"    Signal: {self.signal_name} | Sizing: {self.sizing.get_info()['sizing_method']}")
 
         self._phase1_execute_pending()
         self._phase2_check_exits()
@@ -103,6 +131,11 @@ class Scanner:
             return
 
         print(f"Phase 1: Executing {len(pending)} pending entries...")
+
+        # Get trade history for Kelly sizing
+        trade_history = self.repo.get_closed_trades(limit=100)
+        open_count = len(self.repo.get_open_positions())
+
         for pos in pending:
             symbol = pos["symbol"]
             result, records = run_engine(symbol)
@@ -117,10 +150,18 @@ class Scanner:
                 print(f"  {symbol}: invalid price/ATR, skipping")
                 continue
 
-            qty = calculate_quantity(
-                self.capital, self.max_positions, close, atr,
-                self.exit_cfg.stop_atr_multiple,
+            # Use pluggable sizing
+            funds = self.repo.get_funds()
+            ctx = SizingContext(
+                equity=funds["net_worth"],
+                cash_available=funds["available_capital"],
+                max_positions=self.max_positions,
+                open_position_count=open_count,
+                entry_price=close,
+                atr=atr,
+                trade_history=trade_history,
             )
+            qty = self.sizing.calculate(ctx)
             if qty <= 0:
                 print(f"  {symbol}: quantity=0, skipping")
                 continue
@@ -129,7 +170,35 @@ class Scanner:
             psz = last.get("price_slope_z", 0)
 
             if not self.dry_run:
-                order_id = self.broker.place_order(symbol, qty, "BUY", close)
+                # Place order via broker
+                order_result = self.broker.place_order(symbol, qty, "BUY", close)
+
+                # Compute charges
+                charges = self.charges_calc.compute("BUY", qty, close)
+
+                # Log order to trading_orders
+                capital_deployed = qty * close
+                self.repo.create_order(
+                    position_id=pos["id"],
+                    symbol=symbol,
+                    side="BUY",
+                    quantity=qty,
+                    price=close,
+                    turnover=round(capital_deployed, 2),
+                    brokerage=charges.brokerage,
+                    stt=charges.stt,
+                    exchange_txn=charges.exchange_txn,
+                    gst=charges.gst,
+                    sebi_fee=charges.sebi_fee,
+                    stamp_duty=charges.stamp_duty,
+                    total_charges=charges.total,
+                    net_amount=round(capital_deployed + charges.total, 2),
+                    broker_order_id=order_result["order_id"],
+                    mode=self.execution_mode,
+                )
+
+                # Update position
+                sizing_info = self.sizing.get_info()
                 self.repo.update_position(
                     pos["id"],
                     status="open",
@@ -137,12 +206,20 @@ class Scanner:
                     entry_price=close,
                     atr_at_entry=atr,
                     quantity=qty,
+                    capital_deployed=round(capital_deployed, 2),
                     peak_close=close,
                     psz_at_entry=psz if not np.isnan(psz) else 0,
                     psz_peak=psz if not np.isnan(psz) else 0,
-                    broker_order_id=order_id,
+                    broker_order_id=order_result["order_id"],
+                    sizing_method=sizing_info["sizing_method"],
+                    kelly_f=sizing_info.get("kelly_f"),
+                    entry_charges=charges.total,
                 )
-            print(f"  {symbol}: ENTRY @ ₹{close:.2f}, qty={qty}, ATR={atr:.2f}")
+                open_count += 1
+
+            print(f"  {symbol}: ENTRY @ ₹{close:.2f}, qty={qty}, ATR={atr:.2f}, "
+                  f"charges=₹{charges.total:.2f}" if not self.dry_run else
+                  f"  {symbol}: ENTRY @ ₹{close:.2f}, qty={qty}, ATR={atr:.2f}")
 
     # ── Phase 2: Check exits on open positions ───────────────────────────
 
@@ -156,11 +233,12 @@ class Scanner:
         for pos in open_positions:
             symbol = pos["symbol"]
             result, records = run_engine(symbol)
-            if not records:
+            if not records or len(records) < 2:
                 print(f"  {symbol}: engine failed, skipping exit check")
                 continue
 
             last = records[-1]
+            prev = records[-2]
             close = last.get("close", 0)
             if close <= 0 or np.isnan(close):
                 continue
@@ -179,17 +257,19 @@ class Scanner:
                 atr_at_entry=pos["atr_at_entry"],
                 soft_filters_passed=pos.get("soft_filters_passed", 0) or 0,
                 psz_peak=pos.get("psz_peak", 0) or 0,
+                entry_tag=pos.get("entry_tag", ""),
             )
 
             # Get CWVAP values from ledger tail
             cwvap_values = []
-            tail_len = min(len(records), self.exit_cfg.cwvap_slope_window + 5)
+            tail_len = min(len(records), 15)
             for r in records[-tail_len:]:
                 cwvap_values.append(r.get("cwvap", np.nan))
 
             reason, delivery_bad_count = self.signal.check_exit(
-                last, trade, peak_close, bars_held,
+                last, prev, trade, peak_close, bars_held,
                 delivery_bad_count, cwvap_values, self.exit_cfg,
+                records, len(records) - 1,
             )
 
             # Calculate running stats
@@ -199,17 +279,60 @@ class Scanner:
             mae = -mae_val if mae_val < 0 else pos.get("mae_pct", 0) or 0
 
             if reason:
-                print(f"  {symbol}: EXIT ({reason}) @ ₹{close:.2f}, P&L={pnl_pct:+.2f}%")
                 if not self.dry_run:
-                    self.broker.place_order(symbol, pos["quantity"], "SELL", close)
+                    qty = pos["quantity"]
+
+                    # Place sell order
+                    order_result = self.broker.place_order(symbol, qty, "SELL", close)
+
+                    # Compute exit charges
+                    exit_charges = self.charges_calc.compute("SELL", qty, close)
+
+                    # Log sell order
+                    turnover = qty * close
+                    self.repo.create_order(
+                        position_id=pos["id"],
+                        symbol=symbol,
+                        side="SELL",
+                        quantity=qty,
+                        price=close,
+                        turnover=round(turnover, 2),
+                        brokerage=exit_charges.brokerage,
+                        stt=exit_charges.stt,
+                        exchange_txn=exit_charges.exchange_txn,
+                        gst=exit_charges.gst,
+                        sebi_fee=exit_charges.sebi_fee,
+                        stamp_duty=exit_charges.stamp_duty,
+                        total_charges=exit_charges.total,
+                        net_amount=round(turnover - exit_charges.total, 2),
+                        broker_order_id=order_result["order_id"],
+                        mode=self.execution_mode,
+                    )
+
+                    # Compute net P&L
+                    entry_charges = pos.get("entry_charges", 0) or 0
+                    total_charges = entry_charges + exit_charges.total
+                    capital_deployed = pos.get("capital_deployed", 0) or (entry_price * qty)
+                    gross_pnl_abs = (close - entry_price) * qty
+                    net_pnl_abs = gross_pnl_abs - total_charges
+                    net_pnl_pct = round((net_pnl_abs / capital_deployed) * 100, 2) if capital_deployed > 0 else 0
+
+                    # Close position with charges
+                    exit_date = str(last.get("date", ""))[:10]
                     self.repo.close_position(
                         pos["id"],
-                        exit_date=str(last.get("date", ""))[:10],
+                        exit_date=exit_date,
                         exit_price=close,
-                        exit_reason=reason,
+                        exit_reason=str(reason.value) if hasattr(reason, "value") else str(reason),
                         final_pnl_pct=pnl_pct,
+                        exit_charges=exit_charges.total,
+                        total_charges=round(total_charges, 2),
+                        net_pnl_pct=net_pnl_pct,
+                        net_pnl_abs=round(net_pnl_abs, 2),
                     )
                     self.repo.update_position(pos["id"], mfe_pct=round(mfe, 2), mae_pct=round(mae, 2))
+
+                print(f"  {symbol}: EXIT ({reason}) @ ₹{close:.2f}, P&L={pnl_pct:+.2f}%")
             else:
                 if not self.dry_run:
                     self.repo.update_position(
@@ -260,6 +383,7 @@ class Scanner:
                 signals_found += 1
                 pdd_120 = last.get("pdd_120", np.nan)
                 regime = details.get("regime", "")
+                entry_tag = details.get("entry_tag", "")
 
                 print(f"  {symbol}: SIGNAL (filters={soft_count}, regime={regime}, "
                       f"PSZ={psz:.3f}, PDD120={pdd_120:.2f})")
@@ -275,10 +399,10 @@ class Scanner:
                         pdd_120=float(pdd_120) if not np.isnan(pdd_120) else None,
                         regime=regime,
                         soft_filters_passed=soft_count,
-                        rdv_pass=int(details["rdv"]),
-                        mcs_pass=int(details["mcs"]),
-                        cwc_pass=int(details["cwc"]),
-                        grad_pass=int(details["grad"]),
+                        rdv_pass=int(details.get("rdv", 0)),
+                        mcs_pass=int(details.get("mcs", 0)),
+                        cwc_pass=int(details.get("cwc", 0)),
+                        grad_pass=int(details.get("grad", 0)),
                         acted_upon=1,
                     )
 
@@ -289,17 +413,19 @@ class Scanner:
                         status="proposed",
                         signal_date=today,
                         soft_filters_passed=soft_count,
-                        rdv_pass=int(details["rdv"]),
-                        mcs_pass=int(details["mcs"]),
-                        cwc_pass=int(details["cwc"]),
-                        grad_pass=int(details["grad"]),
+                        rdv_pass=int(details.get("rdv", 0)),
+                        mcs_pass=int(details.get("mcs", 0)),
+                        cwc_pass=int(details.get("cwc", 0)),
+                        grad_pass=int(details.get("grad", 0)),
                         regime_at_entry=regime,
+                        signal_strategy=self.signal_name,
+                        entry_tag=str(entry_tag.value) if hasattr(entry_tag, "value") else str(entry_tag),
                     )
                     slots_left -= 1
 
         print(f"  Signals found: {signals_found}")
 
-    # ── Phase 4: Daily P&L snapshot ──────────────────────────────────────
+    # ── Phase 4: Daily P&L + equity curve snapshot ──────────────────────
 
     def _phase4_daily_pnl(self, today: str):
         if self.dry_run:
@@ -310,14 +436,19 @@ class Scanner:
         open_count = len(open_positions)
 
         total_invested = sum(
-            (p.get("entry_price", 0) or 0) * (p.get("quantity", 0) or 0)
+            p.get("capital_deployed", 0) or (p.get("entry_price", 0) or 0) * (p.get("quantity", 0) or 0)
             for p in open_positions
         )
 
         unrealized = 0.0
+        market_value = 0.0
         if open_positions:
             pnls = [p.get("current_pnl_pct", 0) or 0 for p in open_positions]
             unrealized = round(sum(pnls) / len(pnls), 2) if pnls else 0
+            for p in open_positions:
+                deployed = p.get("capital_deployed", 0) or 0
+                pnl_pct = p.get("current_pnl_pct", 0) or 0
+                market_value += deployed * (1 + pnl_pct / 100)
 
         # Today's realized
         conn = sqlite3.connect(str(DB_PATH))
@@ -342,6 +473,35 @@ class Scanner:
             realized_pnl_today=realized_today,
             cumulative_realized_pnl=cumulative,
         )
+
+        # Equity curve snapshot
+        funds = self.repo.get_funds()
+        equity = funds["net_worth"]
+        cash = funds["available_capital"]
+
+        # Get peak from previous curve entry
+        prev_curve = self.repo.get_equity_curve(days=9999)
+        if prev_curve:
+            peak_equity = max(equity, max(p["peak_equity"] for p in prev_curve))
+        else:
+            peak_equity = max(equity, self.capital)
+
+        drawdown = round((peak_equity - equity) / peak_equity * 100, 2) if peak_equity > 0 else 0
+        sizing_info = self.sizing.get_info()
+
+        self.repo.upsert_equity_curve(
+            date=today,
+            equity=round(equity, 2),
+            cash=round(cash, 2),
+            deployed=round(total_invested, 2),
+            market_value=round(market_value, 2),
+            peak_equity=round(peak_equity, 2),
+            drawdown_pct=drawdown,
+            open_positions=open_count,
+            sizing_method=sizing_info["sizing_method"],
+            kelly_f=sizing_info.get("kelly_f"),
+        )
+
         print(f"Phase 4: P&L snapshot — open={open_count}, invested=₹{total_invested:,.0f}, "
               f"unrealized={unrealized:+.2f}%, realized_today={realized_today:+.2f}%")
 
@@ -354,6 +514,8 @@ def print_status():
 
     print("=== Trading Status ===")
     print(f"Mode: {cfg.get('execution_mode', 'paper')}")
+    print(f"Signal: {cfg.get('signal_strategy', 'savgol_cts')}")
+    print(f"Sizing: {cfg.get('sizing_strategy', 'equal_weight')}")
     print(f"Capital: ₹{float(cfg.get('capital', 0)):,.0f}")
     print(f"Max positions: {cfg.get('max_concurrent_positions', 8)}")
     print(f"Watchlist: {cfg.get('watchlist', 'N/A')}")
@@ -363,7 +525,8 @@ def print_status():
           f"Proposed: {summary['proposed']}, Closed: {summary['total_closed']}")
     if summary['total_closed'] > 0:
         print(f"Win rate: {summary['win_rate']}%, Avg P&L: {summary['avg_pnl']:+.2f}%, "
-              f"Total P&L: {summary['total_pnl']:+.2f}%")
+              f"Net P&L: {summary['total_net_pnl']:+.2f}%, "
+              f"Charges: ₹{summary['total_charges']:,.2f}")
 
     open_positions = repo.get_open_positions()
     if open_positions:
@@ -371,7 +534,8 @@ def print_status():
         for p in open_positions:
             pnl = p.get("current_pnl_pct", 0) or 0
             print(f"  {p['symbol']:12s}  entry=₹{p['entry_price']:.2f}  "
-                  f"P&L={pnl:+.2f}%  bars={p.get('bars_held', 0)}")
+                  f"P&L={pnl:+.2f}%  bars={p.get('bars_held', 0)}  "
+                  f"sizing={p.get('sizing_method', '-')}")
 
     pending = repo.get_pending_entries()
     if pending:

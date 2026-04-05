@@ -125,6 +125,50 @@ class InstitutionalFloorExitConfig:
     psz_exit_threshold: float = 0.0
 
 
+@dataclass
+class AccelCrossEntryConfig:
+    """Path 2: Accel Cross — Triple-trend momentum cross with institutional alignment.
+
+    Entry fires when:
+    - cts_slope crosses above zero.
+    - cts_accel is rising and above adaptive threshold.
+    - psz in (0.0, 0.2].
+    - cts in (0.0, 0.5].
+    - cwvap_dist <= 8.0%.
+    - cwc_slope > 0.
+    - Conviction Score 20-29.
+    """
+    enabled: bool = True
+    cts_min: float = 0.0
+    cts_max: float = 0.5
+    psz_min: float = 0.0
+    psz_max: float = 0.2
+    cwvap_dist_max: float = 8.0
+    cwc_slope_min: float = 0.0
+    score_min: int = 20
+    score_max: int = 29
+    flat_bars_boom: int = 4
+    chain_len_trend: int = 3
+
+
+@dataclass
+class AccelCrossExitConfig:
+    """Accel Cross exit: Two-Phase PSZ/CTS Glide (Mirroring Institutional Floor).
+
+    Exits when:
+    - Target: Price momentum (PSZ) cycles above peak then falls below exit threshold.
+    - CTS Trail: If momentum fades but institutional alignment holds, wait for ST_CROSS.
+    - Safety: Hard stop and PnL cap active.
+    """
+    enabled: bool = True
+    pnl_cap_enabled: bool = True
+    pnl_cap_pct: float = 8.0
+    hard_stop_enabled: bool = True
+    hard_stop_pct: float = 8.0
+    psz_peak_threshold: float = 0.25
+    psz_exit_threshold: float = 0.0
+
+
 # ---------------------------------------------------------------------------
 # Composite entry config
 # ---------------------------------------------------------------------------
@@ -135,7 +179,8 @@ class SavgolCTSEntryConfig(BaseEntryConfig):
 
     Entry paths evaluated:
     1. Slope Bottom   — cts_slope inflects from deep negative in a downtrend.
-    2. Institutional Floor — Sustained PSZ recovery with institutional alignment.
+    2. Accel Cross    — Triple-trend momentum cross with institutional alignment.
+    3. Institutional Floor — Sustained PSZ recovery with institutional alignment.
     """
     # Cooldown: prevent entry within N bars after specific exit reasons.
     cooldown_enabled: bool = True
@@ -148,6 +193,7 @@ class SavgolCTSEntryConfig(BaseEntryConfig):
 
     # --- Per-path configs ---
     slope_bottom: SlopeBottomEntryConfig = field(default_factory=SlopeBottomEntryConfig)
+    accel_cross: AccelCrossEntryConfig = field(default_factory=AccelCrossEntryConfig)
     institutional_floor: InstitutionalFloorEntryConfig = field(default_factory=InstitutionalFloorEntryConfig)
 
 
@@ -190,5 +236,6 @@ class SavgolCTSExitConfig(BaseExitConfig):
 
     # --- Per-path configs ---
     slope_bottom: SlopeBottomExitConfig = field(default_factory=SlopeBottomExitConfig)
+    accel_cross: AccelCrossExitConfig = field(default_factory=AccelCrossExitConfig)
     institutional_floor: InstitutionalFloorExitConfig = field(default_factory=InstitutionalFloorExitConfig)
     cwvap_guard: CwvapGuardConfig = field(default_factory=CwvapGuardConfig)

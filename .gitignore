@@ -108,6 +108,8 @@ scripts/study_shriramfin.py
 scripts/*.txt
 scripts/study_bel_jan_mar.py
 scripts/study_bel.py
-scripts/study_*.py
+#scripts/study_*.py
 scripts/test*.py
 
+wf_output.txt
+STUDY_CTS_ACCEL_SUMMARY.md

@@ -18,11 +18,13 @@ from src.trading.signals.savgol_cts.config import SavgolCTSEntryConfig, SavgolCT
 
 # Entry path checkers
 from src.trading.signals.savgol_cts.entries.slope_bottom import check_slope_bottom
+from src.trading.signals.savgol_cts.entries.accel_cross import check_entry_accel_cross
 from src.trading.signals.savgol_cts.entries.institutional_floor import check_institutional_floor
 
 # Exit path checkers
 from src.trading.signals.savgol_cts.exits.cwvap_guard import apply_cwvap_guard
 from src.trading.signals.savgol_cts.exits.slope_bottom import exit_slope_bottom
+from src.trading.signals.savgol_cts.exits.accel_cross import check_exit_accel_cross
 from src.trading.signals.savgol_cts.exits.institutional_floor import exit_institutional_floor
 
 
@@ -30,10 +32,12 @@ class SavgolCTSSignal(SignalInterface):
     """CTS -1/+1 mean-reversion signal with multiple entry paths.
 
     Entry paths:
-        1. Slope Bottom   — cts_slope inflects from deep negative in a downtrend.
-        2. Institutional Floor — Sustained PSZ recovery with institutional alignment.
+        1. Accel Cross    — Triple-trend momentum cross with institutional alignment.
+        2. Slope Bottom   — cts_slope inflects from deep negative in a downtrend.
+        3. Institutional Floor — Sustained PSZ recovery with institutional alignment.
 
     Exit paths (dispatched by entry tag):
+        Accel Cross            → ``check_exit_accel_cross``.
         Slope Bottom           → ``exit_slope_bottom``.
         Institutional Floor    → ``exit_institutional_floor``.
 
@@ -78,6 +82,11 @@ class SavgolCTSSignal(SignalInterface):
         cts = row.get("cts", np.nan)
         if np.isnan(cts):
             return False, 0, {"reason": "Missing CTS data"}
+
+        # Path 2: Accel Cross
+        passed, intensity, meta = check_entry_accel_cross(row, prev_row, cfg.accel_cross, records, idx)
+        if passed:
+            return True, intensity, meta
 
         # Path 5: Slope Bottom
         passed, intensity, meta = check_slope_bottom(row, prev_row, cfg)
@@ -131,6 +140,10 @@ class SavgolCTSSignal(SignalInterface):
                 row, prev_row, trade, peak_close, bars_held,
                 updated_state_val, cfg, records, idx,
             )
+        elif tag == EntryTag.ACCEL.value:
+            exit_status = check_exit_accel_cross(
+                records, idx, trade, updated_state_val, cfg.accel_cross, cfg.cwvap_guard, cfg
+            )
         elif tag == EntryTag.INSTITUTIONAL_FLOOR.value:
             exit_status = exit_institutional_floor(
                 row, prev_row, trade, peak_close, bars_held,
@@ -170,12 +183,13 @@ class SavgolCTSSignal(SignalInterface):
             and res in (ExitReason.PNL_CAP, ExitReason.TRAIL_STOP)
         )
         if_bespoke_exit = tag == EntryTag.INSTITUTIONAL_FLOOR.value
+        accel_bespoke_exit = tag == EntryTag.ACCEL.value
         
-        if res == ExitReason.BAR3_STOP or sb_hard_exit or if_bespoke_exit:
+        if res == ExitReason.BAR3_STOP or sb_hard_exit or if_bespoke_exit or accel_bespoke_exit:
             final_state = state_returned
         else:
             res, final_state = apply_cwvap_guard(
-                row, trade, res, state_returned, cwvap_values, cfg, records, idx,
+                row, trade, res, state_returned, cfg, records, idx,
             )
 
         # Update cross-trade cooldown state with the FINAL decision

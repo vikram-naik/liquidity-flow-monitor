@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import os
 import threading
+from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse
@@ -23,6 +24,16 @@ _WEB_DIR = os.path.join(os.path.dirname(__file__), '..', 'web')
 
 class ConfigUpdate(BaseModel):
     updates: dict[str, str]
+
+
+class RejectRequest(BaseModel):
+    reason: str = "manual_reject"
+
+
+class CapitalEventRequest(BaseModel):
+    event_type: str  # 'injection' | 'withdrawal'
+    amount: float
+    note: str = ""
 
 
 # ── Page ─────────────────────────────────────────────────────────────────────
@@ -86,9 +97,65 @@ def update_config(body: ConfigUpdate):
     return {"status": "ok"}
 
 
-class RejectRequest(BaseModel):
-    reason: str = "manual_reject"
+# ── Orders ───────────────────────────────────────────────────────────────────
 
+@router.get("/de/api/trading/orders")
+def list_orders(limit: int = Query(50, ge=1, le=500)):
+    return repo.get_recent_orders(limit)
+
+
+@router.get("/de/api/trading/orders/{position_id}")
+def orders_for_position(position_id: int):
+    return repo.get_orders_for_position(position_id)
+
+
+# ── Equity Curve ─────────────────────────────────────────────────────────────
+
+@router.get("/de/api/trading/equity-curve")
+def equity_curve(days: int = Query(365, ge=1, le=3650)):
+    return repo.get_equity_curve(days)
+
+
+# ── Ledger ───────────────────────────────────────────────────────────────────
+
+@router.get("/de/api/trading/ledger")
+def cash_ledger():
+    return repo.get_ledger()
+
+
+# ── Capital Events ───────────────────────────────────────────────────────────
+
+@router.get("/de/api/trading/capital-events")
+def list_capital_events():
+    return repo.get_capital_events()
+
+
+@router.post("/de/api/trading/capital-events")
+def add_capital_event(body: CapitalEventRequest):
+    if body.event_type not in ("injection", "withdrawal"):
+        raise HTTPException(status_code=400, detail="event_type must be 'injection' or 'withdrawal'")
+    if body.amount <= 0:
+        raise HTTPException(status_code=400, detail="amount must be positive")
+
+    current_capital = repo.get_total_capital()
+    if body.event_type == "injection":
+        balance_after = current_capital + body.amount
+    else:
+        if body.amount > current_capital:
+            raise HTTPException(status_code=400, detail="Withdrawal exceeds available capital")
+        balance_after = current_capital - body.amount
+
+    event_id = repo.create_capital_event(
+        date=datetime.now().strftime("%Y-%m-%d"),
+        event_type=body.event_type,
+        amount=body.amount,
+        balance_after=round(balance_after, 2),
+        note=body.note,
+    )
+    return {"status": "ok", "id": event_id, "balance_after": round(balance_after, 2)}
+
+
+# ── Position Approval ───────────────────────────────────────────────────────
 
 @router.post("/de/api/trading/positions/{position_id}/approve")
 def approve_position(position_id: int):
@@ -114,6 +181,8 @@ def approve_all_positions():
     count = repo.approve_all_proposed()
     return {"status": "ok", "approved": count}
 
+
+# ── Scan ─────────────────────────────────────────────────────────────────────
 
 @router.post("/de/api/trading/scan")
 def trigger_scan(dry_run: bool = Query(False)):

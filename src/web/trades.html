@@ -8,6 +8,7 @@
   <script src="https://cdn.jsdelivr.net/npm/ag-grid-community@31.0.3/dist/ag-grid-community.min.js"></script>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ag-grid-community@31.0.3/styles/ag-grid.css">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ag-grid-community@31.0.3/styles/ag-theme-alpine.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 </head>
 <body>
   <div class="hdr">
@@ -23,6 +24,8 @@
   <div class="tab-bar">
     <button class="tab-btn active" data-tab="dashboard">Dashboard</button>
     <button class="tab-btn" data-tab="tradelog">Trade Log</button>
+    <button class="tab-btn" data-tab="orderlog">Order Log</button>
+    <button class="tab-btn" data-tab="ledger">Ledger</button>
   </div>
 
   <!-- Dashboard Tab -->
@@ -30,6 +33,55 @@
     <div class="cards" id="summary-cards"></div>
 
     <div class="funds-bar" id="funds-bar"></div>
+
+    <!-- Equity Curve Chart -->
+    <div class="section-title" style="display:flex;align-items:center;justify-content:space-between">
+      <span>Equity Curve</span>
+      <div class="eq-period-btns">
+        <button class="btn btn-sm eq-period active" data-days="90">90d</button>
+        <button class="btn btn-sm eq-period" data-days="365">1y</button>
+        <button class="btn btn-sm eq-period" data-days="3650">All</button>
+      </div>
+    </div>
+    <div class="equity-chart-wrap">
+      <canvas id="equity-chart"></canvas>
+    </div>
+
+    <!-- Strategy Config (collapsible) -->
+    <details class="config-panel" id="config-panel">
+      <summary class="section-title" style="cursor:pointer">Strategy Config</summary>
+      <div class="config-grid" id="config-grid"></div>
+    </details>
+
+    <!-- Capital Events -->
+    <div class="section-title" style="display:flex;align-items:center;justify-content:space-between">
+      <span>Capital Events</span>
+      <button class="btn btn-sm" id="btn-add-capital">+ Add Event</button>
+    </div>
+    <div id="capital-events-section"></div>
+
+    <!-- Capital Event Modal -->
+    <div class="modal-overlay" id="capital-modal" style="display:none">
+      <div class="modal">
+        <div class="modal-title">Add Capital Event</div>
+        <div class="form-row">
+          <label>Type</label>
+          <select id="ce-type"><option value="injection">Injection</option><option value="withdrawal">Withdrawal</option></select>
+        </div>
+        <div class="form-row">
+          <label>Amount (₹)</label>
+          <input type="number" id="ce-amount" min="1" step="1000">
+        </div>
+        <div class="form-row">
+          <label>Note</label>
+          <input type="text" id="ce-note" placeholder="Optional note">
+        </div>
+        <div class="modal-actions">
+          <button class="btn" id="ce-cancel">Cancel</button>
+          <button class="btn btn-primary" id="ce-submit">Submit</button>
+        </div>
+      </div>
+    </div>
 
     <div class="actions-bar">
       <button class="btn btn-primary" id="btn-scan">Run Scan</button>
@@ -58,9 +110,9 @@
     <table class="data-table" id="open-table">
       <thead>
         <tr>
-          <th>Symbol</th><th>Entry Date</th><th>Entry Price</th>
-          <th>Qty</th><th>P&L%</th><th>MFE%</th><th>MAE%</th>
-          <th>Bars</th><th>Regime</th><th>Status</th>
+          <th>Symbol</th><th>Entry Tag</th><th>Entry Date</th><th>Entry Price</th>
+          <th>Qty</th><th>Capital</th><th>P&L%</th><th>MFE%</th><th>MAE%</th>
+          <th>Bars</th><th>Sizing</th><th>Regime</th><th>Status</th>
         </tr>
       </thead>
       <tbody></tbody>
@@ -76,6 +128,22 @@
       <button class="btn" id="btn-export-csv">Export CSV</button>
     </div>
     <div id="trade-grid" class="ag-theme-alpine-dark"></div>
+  </div>
+
+  <!-- Order Log Tab -->
+  <div class="tab-content" id="tab-orderlog">
+    <div class="actions-bar">
+      <button class="btn" id="btn-export-orders-csv">Export CSV</button>
+    </div>
+    <div id="order-grid" class="ag-theme-alpine-dark"></div>
+  </div>
+
+  <!-- Ledger Tab -->
+  <div class="tab-content" id="tab-ledger">
+    <div class="actions-bar">
+      <button class="btn" id="btn-export-ledger-csv">Export CSV</button>
+    </div>
+    <div id="ledger-grid" class="ag-theme-alpine-dark"></div>
   </div>
 
   <script src="/de/static/js/trades.js"></script>

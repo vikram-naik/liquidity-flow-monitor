@@ -4,6 +4,7 @@ class EntryTag(str, Enum):
     """Strongly typed entry tags with presentation-friendly strings."""
     SLOPE_BOTTOM = "SavgolCTS Slope-Bottom"
     INSTITUTIONAL_FLOOR = "SavgolCTS Institutional-Floor"
+    ACCEL = "SavgolCTS Accel-Cross"
     CTS_BT_FLOOR = "SavgolCTS CTS-BT-Floor"  # Legacy
 
     # Deprecated — retained for historical trade log compatibility.
@@ -29,6 +30,7 @@ class ExitReason(str, Enum):
     LH_LL_BREAK = "LH+LL trend break"
     ST_CROSS = "CTS crossed ST down"
     CWVAP_LOST = "Close below CWVAP"
+    RECLAIM_TIMEOUT = "CWVAP reclaim timeout"
     SLOPE_CYCLE = "CTS slope cycle complete"
     PNL_CAP = "PnL cap hit"
     

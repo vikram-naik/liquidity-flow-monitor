@@ -29,6 +29,7 @@ def compute_intensity(
     prev_row: dict,
     tag: EntryTag,
     extra_parts: list[str] | None = None,
+    override_score: float | None = None,
 ) -> tuple[int, dict]:
     """Score entry quality and build a human-readable reason string.
 
@@ -36,7 +37,10 @@ def compute_intensity(
         (intensity_int, meta_dict) where meta_dict contains ``reason``
         and ``entry_tag`` keys.
     """
-    intensity = 20.0  # Base score
+    if override_score is not None:
+        intensity = override_score
+    else:
+        intensity = 20.0  # Base score
     
     regime = row.get("regime", "")
     pdd = row.get("pdd_120", np.nan)
@@ -49,10 +53,11 @@ def compute_intensity(
         cwvap_dist = (close - cwvap) / cwvap * 100.0
 
     # Regime bonus: downtrend/notrend preferred for mean-reversion (0–10)
-    if regime == "downtrend":
-        intensity += 10.0
-    elif regime == "notrend":
-        intensity += 5.0
+    if override_score is None:
+        if regime == "downtrend":
+            intensity += 10.0
+        elif regime == "notrend":
+            intensity += 5.0
 
     # Path-Specific Scoring (Max 70 points)
     path_score = 0.0
@@ -92,7 +97,13 @@ def compute_intensity(
         if not np.isnan(cwvap_dist):
             path_score += _interp(cwvap_dist, 0.0, -5.0, 0.0, 20.0)
 
-    intensity += path_score
+    elif tag == EntryTag.ACCEL:
+        # Score is passed via override_score from the study-logic module
+        pass
+
+    if override_score is None:
+        intensity += path_score
+    
     intensity = min(100.0, max(0.0, float(np.nan_to_num(intensity))))
     intensity_int = int(round(intensity))
 

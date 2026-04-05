@@ -11,17 +11,26 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.classList.add('active');
     document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
     if (btn.dataset.tab === 'tradelog') loadTradeLog();
+    if (btn.dataset.tab === 'orderlog') loadOrderLog();
+    if (btn.dataset.tab === 'ledger') loadLedger();
   });
 });
 
-// ── Dashboard ───────────────────────────────────────────────────────────────
+// ── Helpers ─────────────────────────────────────────────────────────────────
+
+const INR = v => '₹' + Number(v).toLocaleString('en-IN', { maximumFractionDigits: 0 });
+const pnlClass = v => v >= 0 ? 'positive' : 'negative';
+const pnlSign = v => v >= 0 ? '+' : '';
+
+// ── Dashboard: Summary Cards ───────────────────────────────────────────────
 
 async function loadSummary() {
   try {
     const data = await fetch(API + '/summary').then(r => r.json());
     const cards = document.getElementById('summary-cards');
-    const unrealClass = data.unrealized_pnl >= 0 ? 'positive' : 'negative';
-    const totalClass = data.total_pnl >= 0 ? 'positive' : 'negative';
+    const unrealClass = pnlClass(data.unrealized_pnl);
+    const totalClass = pnlClass(data.total_pnl);
+    const netClass = pnlClass(data.total_net_pnl);
     const proposedHtml = data.proposed > 0
       ? `<div class="card" style="border-color:#bc8cff">
           <div class="label">Proposed (Review)</div>
@@ -40,7 +49,7 @@ async function loadSummary() {
       ${proposedHtml}
       <div class="card">
         <div class="label">Unrealized P&L</div>
-        <div class="value ${unrealClass}">${data.unrealized_pnl >= 0 ? '+' : ''}${data.unrealized_pnl}%</div>
+        <div class="value ${unrealClass}">${pnlSign(data.unrealized_pnl)}${data.unrealized_pnl}%</div>
       </div>
       <div class="card">
         <div class="label">Win Rate</div>
@@ -51,8 +60,16 @@ async function loadSummary() {
         <div class="value">${data.total_closed}</div>
       </div>
       <div class="card">
-        <div class="label">Total P&L</div>
-        <div class="value ${totalClass}">${data.total_pnl >= 0 ? '+' : ''}${data.total_pnl}%</div>
+        <div class="label">Gross P&L</div>
+        <div class="value ${totalClass}">${pnlSign(data.total_pnl)}${data.total_pnl}%</div>
+      </div>
+      <div class="card">
+        <div class="label">Net P&L</div>
+        <div class="value ${netClass}">${pnlSign(data.total_net_pnl)}${INR(data.total_net_pnl)}</div>
+      </div>
+      <div class="card">
+        <div class="label">Total Charges</div>
+        <div class="value" style="color:#d29922">${INR(data.total_charges)}</div>
       </div>
     `;
   } catch (e) {
@@ -60,14 +77,12 @@ async function loadSummary() {
   }
 }
 
-const INR = v => '₹' + Number(v).toLocaleString('en-IN', { maximumFractionDigits: 0 });
+// ── Dashboard: Funds Bar ───────────────────────────────────────────────────
 
 async function loadFunds() {
   try {
     const f = await fetch(API + '/funds').then(r => r.json());
     const bar = document.getElementById('funds-bar');
-    const pnlClass = v => v >= 0 ? 'positive' : 'negative';
-    const pnlSign = v => v >= 0 ? '+' : '';
     bar.innerHTML = `
       <div class="fund-item">
         <span class="fund-label">Total Capital</span>
@@ -100,6 +115,10 @@ async function loadFunds() {
         <span class="fund-label">Realized P&L</span>
         <span class="fund-value ${pnlClass(f.realized_pnl)}">${pnlSign(f.realized_pnl)}${INR(f.realized_pnl)}</span>
       </div>
+      <div class="fund-item">
+        <span class="fund-label">Charges Paid</span>
+        <span class="fund-value" style="color:#d29922">${INR(f.total_charges_paid)}</span>
+      </div>
       <div class="fund-divider"></div>
       <div class="fund-item">
         <span class="fund-label">Net Worth</span>
@@ -111,6 +130,215 @@ async function loadFunds() {
   }
 }
 
+// ── Dashboard: Equity Curve ────────────────────────────────────────────────
+
+let equityChart = null;
+
+async function loadEquityCurve(days = 90) {
+  try {
+    const data = await fetch(API + '/equity-curve?days=' + days).then(r => r.json());
+    const ctx = document.getElementById('equity-chart').getContext('2d');
+
+    const labels = data.map(d => d.date);
+    const equity = data.map(d => d.equity);
+    const drawdown = data.map(d => d.drawdown_pct);
+
+    if (equityChart) equityChart.destroy();
+
+    equityChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [
+          {
+            label: 'Equity',
+            data: equity,
+            borderColor: '#58a6ff',
+            backgroundColor: 'rgba(88,166,255,0.05)',
+            borderWidth: 1.5,
+            pointRadius: 0,
+            fill: true,
+            yAxisID: 'y',
+          },
+          {
+            label: 'Drawdown %',
+            data: drawdown,
+            borderColor: '#f85149',
+            backgroundColor: 'rgba(248,81,73,0.1)',
+            borderWidth: 1,
+            pointRadius: 0,
+            fill: true,
+            yAxisID: 'y1',
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { intersect: false, mode: 'index' },
+        plugins: {
+          legend: {
+            labels: { color: '#8b949e', font: { size: 11 } },
+          },
+          tooltip: {
+            callbacks: {
+              label: (ctx) => {
+                if (ctx.datasetIndex === 0) return 'Equity: ' + INR(ctx.parsed.y);
+                return 'DD: ' + ctx.parsed.y.toFixed(2) + '%';
+              },
+            },
+          },
+        },
+        scales: {
+          x: {
+            ticks: { color: '#484f58', font: { size: 10 }, maxTicksLimit: 12 },
+            grid: { color: '#21262d' },
+          },
+          y: {
+            position: 'left',
+            ticks: {
+              color: '#58a6ff', font: { size: 10 },
+              callback: v => INR(v),
+            },
+            grid: { color: '#21262d' },
+          },
+          y1: {
+            position: 'right',
+            ticks: { color: '#f85149', font: { size: 10 }, callback: v => v + '%' },
+            grid: { drawOnChartArea: false },
+            reverse: true,
+          },
+        },
+      },
+    });
+  } catch (e) {
+    console.error('Failed to load equity curve:', e);
+  }
+}
+
+// Equity period buttons
+document.querySelectorAll('.eq-period').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.eq-period').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    loadEquityCurve(parseInt(btn.dataset.days));
+  });
+});
+
+// ── Dashboard: Strategy Config ─────────────────────────────────────────────
+
+const EDITABLE_KEYS = {
+  signal_strategy: { type: 'text', label: 'Signal Strategy' },
+  sizing_strategy: { type: 'select', label: 'Sizing', options: ['equal_weight', 'kelly'] },
+  kelly_fraction: { type: 'number', label: 'Kelly Fraction', step: '0.05', min: '0.05', max: '1' },
+  max_concurrent_positions: { type: 'number', label: 'Max Positions', step: '1', min: '1', max: '20' },
+  brokerage_model: { type: 'text', label: 'Brokerage Model' },
+  execution_mode: { type: 'select', label: 'Execution', options: ['paper', 'live'] },
+  watchlist: { type: 'text', label: 'Watchlist' },
+  capital: { type: 'number', label: 'Seed Capital', step: '100000', min: '0' },
+};
+
+async function loadConfig() {
+  try {
+    const config = await fetch(API + '/config').then(r => r.json());
+    const grid = document.getElementById('config-grid');
+    grid.innerHTML = Object.entries(EDITABLE_KEYS).map(([key, meta]) => {
+      const val = config[key] || '';
+      let input;
+      if (meta.type === 'select') {
+        const opts = meta.options.map(o =>
+          `<option value="${o}" ${o === val ? 'selected' : ''}>${o}</option>`
+        ).join('');
+        input = `<select data-key="${key}">${opts}</select>`;
+      } else {
+        const attrs = meta.step ? `step="${meta.step}"` : '';
+        const minmax = (meta.min ? `min="${meta.min}"` : '') + ' ' + (meta.max ? `max="${meta.max}"` : '');
+        input = `<input type="${meta.type}" data-key="${key}" value="${val}" ${attrs} ${minmax}>`;
+      }
+      return `<div class="config-item">
+        <span class="cfg-label">${meta.label}</span>
+        ${input}
+      </div>`;
+    }).join('');
+
+    // Save on change
+    grid.querySelectorAll('input, select').forEach(el => {
+      el.addEventListener('change', async () => {
+        const updates = {};
+        updates[el.dataset.key] = el.value;
+        await fetch(API + '/config', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ updates }),
+        });
+      });
+    });
+  } catch (e) {
+    console.error('Failed to load config:', e);
+  }
+}
+
+// ── Dashboard: Capital Events ──────────────────────────────────────────────
+
+async function loadCapitalEvents() {
+  try {
+    const data = await fetch(API + '/capital-events').then(r => r.json());
+    const section = document.getElementById('capital-events-section');
+    if (!data.length) {
+      section.innerHTML = '<div style="color:#8b949e;font-size:12px">No capital events recorded</div>';
+      return;
+    }
+    section.innerHTML = `<table class="cap-events-table">
+      <thead><tr><th>Date</th><th>Type</th><th>Amount</th><th>Balance After</th><th>Note</th></tr></thead>
+      <tbody>${data.map(e => `<tr>
+        <td>${e.date}</td>
+        <td class="${e.event_type === 'injection' ? 'cap-injection' : 'cap-withdrawal'}">${e.event_type}</td>
+        <td>${INR(e.amount)}</td>
+        <td>${INR(e.balance_after)}</td>
+        <td style="color:#8b949e">${e.note || ''}</td>
+      </tr>`).join('')}</tbody>
+    </table>`;
+  } catch (e) {
+    console.error('Failed to load capital events:', e);
+  }
+}
+
+// Capital event modal
+document.getElementById('btn-add-capital').addEventListener('click', () => {
+  document.getElementById('capital-modal').style.display = 'flex';
+});
+
+document.getElementById('ce-cancel').addEventListener('click', () => {
+  document.getElementById('capital-modal').style.display = 'none';
+});
+
+document.getElementById('ce-submit').addEventListener('click', async () => {
+  const event_type = document.getElementById('ce-type').value;
+  const amount = parseFloat(document.getElementById('ce-amount').value);
+  const note = document.getElementById('ce-note').value;
+  if (!amount || amount <= 0) return;
+
+  try {
+    const res = await fetch(API + '/capital-events', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ event_type, amount, note }),
+    }).then(r => r.json());
+
+    if (res.status === 'ok') {
+      document.getElementById('capital-modal').style.display = 'none';
+      document.getElementById('ce-amount').value = '';
+      document.getElementById('ce-note').value = '';
+      loadCapitalEvents();
+      loadFunds();
+    }
+  } catch (e) {
+    console.error('Add capital event failed:', e);
+  }
+});
+
+// ── Dashboard: Open Positions ──────────────────────────────────────────────
+
 async function loadOpenPositions() {
   try {
     const data = await fetch(API + '/positions?status=open').then(r => r.json());
@@ -119,30 +347,36 @@ async function loadOpenPositions() {
 
     const tbody = document.querySelector('#open-table tbody');
     if (!all.length) {
-      tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:#8b949e">No open positions</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="13" style="text-align:center;color:#8b949e">No open positions</td></tr>';
       return;
     }
     tbody.innerHTML = all.map(p => {
       const pnl = p.current_pnl_pct || 0;
-      const pnlClass = pnl >= 0 ? 'pnl-pos' : 'pnl-neg';
-      const statusClass = p.status === 'open' ? 'status-open' : 'status-pending';
+      const pnlCls = pnl >= 0 ? 'pnl-pos' : 'pnl-neg';
+      const statusCls = p.status === 'open' ? 'status-open' : 'status-pending';
+      const sizingLabel = p.sizing_method === 'kelly' ? `K(${(p.kelly_f || 0.25).toFixed(2)})` : 'EqWt';
       return `<tr>
         <td><strong>${p.symbol}</strong></td>
+        <td>${p.entry_tag || '-'}</td>
         <td>${p.entry_date || '-'}</td>
         <td>${p.entry_price ? '₹' + p.entry_price.toFixed(2) : '-'}</td>
         <td>${p.quantity || '-'}</td>
-        <td class="${pnlClass}">${pnl >= 0 ? '+' : ''}${pnl.toFixed(2)}%</td>
+        <td>${p.capital_deployed ? INR(p.capital_deployed) : '-'}</td>
+        <td class="${pnlCls}">${pnl >= 0 ? '+' : ''}${pnl.toFixed(2)}%</td>
         <td>${(p.mfe_pct || 0).toFixed(2)}%</td>
         <td>${(p.mae_pct || 0).toFixed(2)}%</td>
         <td>${p.bars_held || 0}</td>
+        <td>${sizingLabel}</td>
         <td>${p.regime_at_entry || '-'}</td>
-        <td><span class="status-badge ${statusClass}">${p.status}</span></td>
+        <td><span class="status-badge ${statusCls}">${p.status}</span></td>
       </tr>`;
     }).join('');
   } catch (e) {
     console.error('Failed to load positions:', e);
   }
 }
+
+// ── Dashboard: Signals ─────────────────────────────────────────────────────
 
 async function loadSignals() {
   try {
@@ -247,6 +481,8 @@ function refreshAll() {
   loadOpenPositions();
   loadProposed();
   loadSignals();
+  loadEquityCurve();
+  loadCapitalEvents();
 }
 
 // ── Scan Buttons ────────────────────────────────────────────────────────────
@@ -260,7 +496,6 @@ async function triggerScan(dryRun) {
   try {
     await fetch(API + '/scan?dry_run=' + dryRun, { method: 'POST' });
     status.textContent = 'Scan running in background. Refresh in a few minutes.';
-    // Auto-refresh after 30s
     setTimeout(refreshAll, 30000);
   } catch (e) {
     status.textContent = 'Scan failed: ' + e.message;
@@ -269,7 +504,7 @@ async function triggerScan(dryRun) {
 
 // ── Trade Log (ag-Grid) ─────────────────────────────────────────────────────
 
-let gridApi = null;
+let tradeGridApi = null;
 
 function pnlCellRenderer(params) {
   const v = params.value || 0;
@@ -277,19 +512,31 @@ function pnlCellRenderer(params) {
   return `<span class="${cls}">${v >= 0 ? '+' : ''}${v.toFixed(2)}%</span>`;
 }
 
-const columnDefs = [
+function inrCellRenderer(params) {
+  const v = params.value || 0;
+  const cls = v >= 0 ? 'pnl-pos' : 'pnl-neg';
+  return `<span class="${cls}">${v >= 0 ? '+' : ''}${INR(v)}</span>`;
+}
+
+const tradeColumnDefs = [
   { field: 'symbol', headerName: 'Symbol', width: 110, pinned: 'left' },
+  { field: 'entry_tag', headerName: 'Entry Tag', width: 110 },
   { field: 'entry_date', headerName: 'Entry', width: 100 },
   { field: 'exit_date', headerName: 'Exit', width: 100 },
   { field: 'entry_price', headerName: 'Entry ₹', width: 90, valueFormatter: p => p.value ? p.value.toFixed(2) : '' },
   { field: 'exit_price', headerName: 'Exit ₹', width: 90, valueFormatter: p => p.value ? p.value.toFixed(2) : '' },
-  { field: 'final_pnl_pct', headerName: 'P&L%', width: 85, cellRenderer: pnlCellRenderer },
+  { field: 'quantity', headerName: 'Qty', width: 65 },
+  { field: 'capital_deployed', headerName: 'Capital', width: 100, valueFormatter: p => p.value ? INR(p.value) : '' },
+  { field: 'sizing_method', headerName: 'Sizing', width: 85 },
+  { field: 'final_pnl_pct', headerName: 'Gross%', width: 85, cellRenderer: pnlCellRenderer },
+  { field: 'net_pnl_pct', headerName: 'Net%', width: 80, cellRenderer: pnlCellRenderer },
+  { field: 'net_pnl_abs', headerName: 'Net ₹', width: 100, cellRenderer: inrCellRenderer },
+  { field: 'total_charges', headerName: 'Charges', width: 85, valueFormatter: p => p.value ? INR(p.value) : '₹0' },
   { field: 'mfe_pct', headerName: 'MFE%', width: 75, valueFormatter: p => (p.value || 0).toFixed(2) },
   { field: 'mae_pct', headerName: 'MAE%', width: 75, valueFormatter: p => (p.value || 0).toFixed(2) },
   { field: 'bars_held', headerName: 'Bars', width: 60 },
   { field: 'exit_reason', headerName: 'Exit Reason', width: 130 },
   { field: 'regime_at_entry', headerName: 'Regime', width: 110 },
-  { field: 'soft_filters_passed', headerName: 'Filters', width: 70 },
 ];
 
 async function loadTradeLog() {
@@ -297,9 +544,9 @@ async function loadTradeLog() {
     const data = await fetch(API + '/trades?limit=500').then(r => r.json());
     const gridDiv = document.getElementById('trade-grid');
 
-    if (!gridApi) {
-      gridApi = agGrid.createGrid(gridDiv, {
-        columnDefs,
+    if (!tradeGridApi) {
+      tradeGridApi = agGrid.createGrid(gridDiv, {
+        columnDefs: tradeColumnDefs,
         rowData: data,
         defaultColDef: {
           sortable: true,
@@ -311,16 +558,131 @@ async function loadTradeLog() {
         paginationPageSize: 50,
       });
     } else {
-      gridApi.setGridOption('rowData', data);
+      tradeGridApi.setGridOption('rowData', data);
     }
   } catch (e) {
     console.error('Failed to load trade log:', e);
   }
 }
 
-// CSV export
 document.getElementById('btn-export-csv').addEventListener('click', () => {
-  if (gridApi) gridApi.exportDataAsCsv({ fileName: 'trade_log.csv' });
+  if (tradeGridApi) tradeGridApi.exportDataAsCsv({ fileName: 'trade_log.csv' });
+});
+
+// ── Order Log (ag-Grid) ─────────────────────────────────────────────────────
+
+let orderGridApi = null;
+
+const orderColumnDefs = [
+  { field: 'executed_at', headerName: 'Date', width: 150 },
+  { field: 'symbol', headerName: 'Symbol', width: 110, pinned: 'left' },
+  { field: 'side', headerName: 'Side', width: 65,
+    cellRenderer: p => `<span style="color:${p.value === 'BUY' ? '#3fb950' : '#f85149'};font-weight:600">${p.value}</span>` },
+  { field: 'quantity', headerName: 'Qty', width: 70 },
+  { field: 'price', headerName: 'Price', width: 90, valueFormatter: p => p.value ? '₹' + p.value.toFixed(2) : '' },
+  { field: 'turnover', headerName: 'Turnover', width: 110, valueFormatter: p => p.value ? INR(p.value) : '' },
+  { field: 'brokerage', headerName: 'Brokerage', width: 85, valueFormatter: p => '₹' + (p.value || 0).toFixed(2) },
+  { field: 'stt', headerName: 'STT', width: 80, valueFormatter: p => '₹' + (p.value || 0).toFixed(2) },
+  { field: 'exchange_txn', headerName: 'Exch Txn', width: 80, valueFormatter: p => '₹' + (p.value || 0).toFixed(2) },
+  { field: 'gst', headerName: 'GST', width: 75, valueFormatter: p => '₹' + (p.value || 0).toFixed(2) },
+  { field: 'sebi_fee', headerName: 'SEBI', width: 70, valueFormatter: p => '₹' + (p.value || 0).toFixed(4) },
+  { field: 'stamp_duty', headerName: 'Stamp', width: 80, valueFormatter: p => '₹' + (p.value || 0).toFixed(2) },
+  { field: 'total_charges', headerName: 'Total Charges', width: 105, valueFormatter: p => INR(p.value || 0) },
+  { field: 'net_amount', headerName: 'Net Amount', width: 110, valueFormatter: p => INR(p.value || 0) },
+  { field: 'position_id', headerName: 'Pos ID', width: 70 },
+  { field: 'status', headerName: 'Status', width: 90 },
+  { field: 'broker_order_id', headerName: 'Order ID', width: 200 },
+];
+
+async function loadOrderLog() {
+  try {
+    const data = await fetch(API + '/orders?limit=500').then(r => r.json());
+    const gridDiv = document.getElementById('order-grid');
+
+    if (!orderGridApi) {
+      orderGridApi = agGrid.createGrid(gridDiv, {
+        columnDefs: orderColumnDefs,
+        rowData: data,
+        defaultColDef: {
+          sortable: true,
+          filter: true,
+          resizable: true,
+        },
+        animateRows: true,
+        pagination: true,
+        paginationPageSize: 50,
+      });
+    } else {
+      orderGridApi.setGridOption('rowData', data);
+    }
+  } catch (e) {
+    console.error('Failed to load order log:', e);
+  }
+}
+
+document.getElementById('btn-export-orders-csv').addEventListener('click', () => {
+  if (orderGridApi) orderGridApi.exportDataAsCsv({ fileName: 'order_log.csv' });
+});
+
+// ── Ledger (ag-Grid) ────────────────────────────────────────────────────────
+
+let ledgerGridApi = null;
+
+function ledgerTypeCellRenderer(params) {
+  const colors = { seed: '#58a6ff', injection: '#3fb950', withdrawal: '#f85149', buy: '#d29922', sell: '#bc8cff' };
+  const labels = { seed: 'SEED', injection: 'INJECTION', withdrawal: 'WITHDRAWAL', buy: 'BUY', sell: 'SELL' };
+  const c = colors[params.value] || '#8b949e';
+  const l = labels[params.value] || params.value;
+  return `<span style="color:${c};font-weight:600">${l}</span>`;
+}
+
+const ledgerColumnDefs = [
+  { field: 'date', headerName: 'Date', width: 110 },
+  { field: 'type', headerName: 'Type', width: 110, cellRenderer: ledgerTypeCellRenderer },
+  { field: 'symbol', headerName: 'Symbol', width: 110 },
+  { field: 'description', headerName: 'Description', width: 280, flex: 1 },
+  { field: 'cash_in', headerName: 'Cash In', width: 120,
+    valueFormatter: p => p.value ? INR(p.value) : '',
+    cellStyle: { color: '#3fb950' } },
+  { field: 'cash_out', headerName: 'Cash Out', width: 120,
+    valueFormatter: p => p.value ? INR(p.value) : '',
+    cellStyle: { color: '#f85149' } },
+  { field: 'charges', headerName: 'Charges', width: 100,
+    valueFormatter: p => p.value ? INR(p.value) : '',
+    cellStyle: { color: '#d29922' } },
+  { field: 'balance', headerName: 'Balance', width: 130,
+    valueFormatter: p => p.value != null ? INR(p.value) : '',
+    cellStyle: { fontWeight: '600' } },
+];
+
+async function loadLedger() {
+  try {
+    const data = await fetch(API + '/ledger').then(r => r.json());
+    const gridDiv = document.getElementById('ledger-grid');
+
+    if (!ledgerGridApi) {
+      ledgerGridApi = agGrid.createGrid(gridDiv, {
+        columnDefs: ledgerColumnDefs,
+        rowData: data,
+        defaultColDef: {
+          sortable: true,
+          filter: true,
+          resizable: true,
+        },
+        animateRows: true,
+        pagination: true,
+        paginationPageSize: 50,
+      });
+    } else {
+      ledgerGridApi.setGridOption('rowData', data);
+    }
+  } catch (e) {
+    console.error('Failed to load ledger:', e);
+  }
+}
+
+document.getElementById('btn-export-ledger-csv').addEventListener('click', () => {
+  if (ledgerGridApi) ledgerGridApi.exportDataAsCsv({ fileName: 'cash_ledger.csv' });
 });
 
 // ── Init ────────────────────────────────────────────────────────────────────
@@ -330,3 +692,6 @@ loadFunds();
 loadOpenPositions();
 loadProposed();
 loadSignals();
+loadEquityCurve();
+loadCapitalEvents();
+loadConfig();
