@@ -14,9 +14,3 @@
 - **Outputs**: All generated outputs (tests, studies, backtests) MUST be placed in `./output/`.
 - **UI Data**: `src/divergence_engine/chart.py` prepares data for the web UI (`src/web/`).
 
-## Signal Mechanics (savgol_cts)
-- **Entry Paths**:
-  1. **Slope Bottom**: CTS slope rising from P5 bottom in downtrend/notrend.
-  2. **Institutional Floor**: Sustained PSZ recovery + Institutional alignment below CWVAP.
-- **Exit Logic**: Dispatched by entry tag, followed by the **CWVAP Guard**.
-- **Intensity Scoring**: Computed in `scoring.py` (Range 0-100; >=80 is "STRONG").

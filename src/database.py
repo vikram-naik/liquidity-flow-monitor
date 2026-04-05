@@ -12,6 +12,13 @@ def get_db_connection():
     return conn
 
 
+def _migrate_add_column(cursor, table: str, column: str, col_type: str) -> None:
+    """Add a column to an existing table if it doesn't exist (safe migration)."""
+    cols = [row[1] for row in cursor.execute(f"PRAGMA table_info({table})").fetchall()]
+    if column not in cols:
+        cursor.execute(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}")
+
+
 def init_db():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
@@ -242,7 +249,7 @@ def init_db():
         position_id INTEGER NOT NULL,
         symbol TEXT NOT NULL,
         side TEXT NOT NULL,
-        order_type TEXT NOT NULL DEFAULT 'MARKET',
+        order_type TEXT NOT NULL DEFAULT 'LIMIT',
         quantity INTEGER NOT NULL,
         price REAL NOT NULL,
         turnover REAL NOT NULL,
@@ -259,7 +266,9 @@ def init_db():
         broker_order_id TEXT,
         mode TEXT NOT NULL DEFAULT 'paper',
         status TEXT NOT NULL DEFAULT 'COMPLETE',
-        executed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        executed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        -- Price resolution audit
+        price_rationale TEXT
     );
     """)
 
@@ -323,8 +332,12 @@ def init_db():
             ('sizing_strategy', 'equal_weight'),
             ('kelly_fraction', '0.25'),
             ('brokerage_model', 'zerodha'),
+            ('price_resolver', 'historical'),
         ]
     )
+
+    # Migrations — add columns that may not exist in older DBs
+    _migrate_add_column(cursor, "trading_orders", "price_rationale", "TEXT")
 
     # Trading indices
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_trading_positions_status ON trading_positions (status);")

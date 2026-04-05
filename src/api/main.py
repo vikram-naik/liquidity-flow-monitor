@@ -54,7 +54,7 @@ app.include_router(trading_router)
 from fastapi.responses import RedirectResponse
 @app.get("/")
 def root_redirect():
-    return RedirectResponse(url="/de/dashboard/RELIANCE")
+    return RedirectResponse(url="/de/dashboard")
 
 @app.on_event("startup")
 def startup_event():
@@ -146,9 +146,10 @@ def divergence_engine_data(
         raise HTTPException(status_code=500, detail=f"Engine error: {e}")
 
 
+@app.get("/de/dashboard")
 @app.get("/de/dashboard/{symbol}")
-def divergence_engine_chart(symbol: str):
-    """Serve the main chart UI for a given symbol."""
+def divergence_engine_chart(symbol: Optional[str] = None):
+    """Serve the main chart UI."""
     html_path = os.path.join(_WEB_DIR, "divergence_engine.html")
     if not os.path.isfile(html_path):
         raise HTTPException(status_code=404, detail="Chart page not found")

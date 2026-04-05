@@ -11,7 +11,8 @@
     "use strict";
 
     var parts = window.location.pathname.split("/");
-    var symbol = parts[parts.length - 1] || "RELIANCE";
+    var lastPart = parts[parts.length - 1];
+    var symbol = (lastPart && lastPart !== "dashboard") ? lastPart : "NIFTY 50";
     var aggMode = "daily";
 
     var PANEL_DEFINITIONS = {
@@ -148,7 +149,6 @@
         var rszArr = [], rszVArr = [];
         var entryMarkers = [];
         var exitMarkers = [];
-        var suppressedMarkers = [];
         var ctsSlopeBottomMarkers = [];
 
         for (var i = 0; i < ledger.length; i++) {
@@ -227,13 +227,6 @@
                 });
             }
 
-            if (r.exit_suppressed) {
-                suppressedMarkers.push({
-                    time: t, position: 'aboveBar', color: '#2979ff',
-                    shape: 'square', size: 0.5
-                });
-            }
-
             // CTS Slope Troughs (Bottoms) — Pre-computed by Engine (Causal)
             if (r.cts_slope_trough) {
                 ctsSlopeBottomMarkers.push({
@@ -300,7 +293,6 @@
         cs.setData(ohlc);
         var entryMarkersPrimitive = LC.createSeriesMarkers(cs, entryMarkers);
         var exitMarkersPrimitive = LC.createSeriesMarkers(cs, exitMarkers);
-        var suppressedMarkersPrimitive = LC.createSeriesMarkers(cs, suppressedMarkers);
 
         var sCwvap = pc.addSeries(LC.LineSeries, { color: "#00bfa5", lineWidth: 2, lastValueVisible: false });
         sCwvap.setData(cwvap);
@@ -517,38 +509,27 @@
 
         window.refreshUI = refreshUI;
 
-        var cbEntry = document.getElementById("cbEntry");
-        if (cbEntry) {
-            cbEntry.addEventListener("change", function () {
-                entryMarkersPrimitive.setMarkers(this.checked ? entryMarkers : []);
-            });
-        }
-
-        var cbExit = document.getElementById("cbExit");
-        if (cbExit) {
-            cbExit.addEventListener("change", function () {
-                exitMarkersPrimitive.setMarkers(this.checked ? exitMarkers : []);
-            });
-        }
-
-        var cbSuppressed = document.getElementById("cbSuppressed");
-        if (cbSuppressed) {
-            cbSuppressed.addEventListener("change", function () {
-                suppressedMarkersPrimitive.setMarkers(this.checked ? suppressedMarkers : []);
-            });
-        }
-
-        var toggleMap = { cbCWVAP: [sCwvap], cbVA: [sVaHigh, sVaLow], cbVol: [sVol] };
-        Object.keys(toggleMap).forEach(id => {
+        function bindToggle(id, handler) {
             var cb = document.getElementById(id);
-            if (cb) {
-                toggleMap[id].forEach(s => s.applyOptions({ visible: cb.checked }));
-                cb.addEventListener("change", function () {
-                    toggleMap[id].forEach(s => s.applyOptions({ visible: this.checked }));
-                    refreshUI();
-                });
+            if (!cb) return;
+            var saved = localStorage.getItem("de_toggle_" + id);
+            if (saved !== null) {
+                cb.checked = (saved === "true");
             }
+            handler(cb.checked);
+            cb.addEventListener("change", function () {
+                handler(this.checked);
+                localStorage.setItem("de_toggle_" + id, this.checked);
+                refreshUI();
+            });
+        }
+
+        bindToggle("cbCWVAP", val => sCwvap.applyOptions({ visible: val }));
+        bindToggle("cbVA", val => {
+            sVaHigh.applyOptions({ visible: val });
+            sVaLow.applyOptions({ visible: val });
         });
+        bindToggle("cbVol", val => sVol.applyOptions({ visible: val }));
 
         function syncCrosshair(chart, series, param) {
             if (!series) {
@@ -592,8 +573,6 @@
                             parts.push('<span style="color:#00e676">&#9650; ENTRY</span> ' + row.entry_reason);
                         if (row.exit_signal && row.exit_reason)
                             parts.push('<span style="color:#FFD700">&#9660; EXIT</span> ' + row.exit_reason);
-                        if (row.exit_suppressed)
-                            parts.push('<span style="color:#2979ff">&#9632; SUPPRESSED</span> Price Guard Active');
                         tooltipEl.innerHTML = parts.join('<br>');
                         tooltipEl.style.display = "block";
                         tooltipEl.style.left = (param.sourceEvent.clientX + 14) + "px";

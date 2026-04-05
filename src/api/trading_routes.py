@@ -49,7 +49,7 @@ def trades_page():
 # ── API Endpoints ────────────────────────────────────────────────────────────
 
 @router.get("/de/api/trading/positions")
-def list_positions(status: str = Query("open", pattern="^(open|closed|pending_entry|proposed|rejected|all)$")):
+def list_positions(status: str = Query("open", pattern="^(open|closed|pending_entry|pending_exit|proposed|rejected|all)$")):
     return repo.get_positions(status)
 
 
@@ -200,3 +200,27 @@ def trigger_scan(dry_run: bool = Query(False)):
     thread = threading.Thread(target=_run, daemon=True)
     thread.start()
     return {"status": "scan_started", "dry_run": dry_run}
+
+
+@router.post("/de/api/trading/execute")
+def trigger_execute(dry_run: bool = Query(False)):
+    """Trigger order execution in a background thread.
+
+    Resolves prices and places BUY/SELL orders for all pending entries and exits.
+    Designed to be called via cron during market hours the day after scanning.
+    """
+    from src.trading.executor import OrderExecutor
+
+    def _run():
+        try:
+            executor = OrderExecutor(dry_run=dry_run)
+            result = executor.run()
+            import logging
+            logging.getLogger(__name__).info("Execution complete: %s", result)
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error("Execution failed: %s", e)
+
+    thread = threading.Thread(target=_run, daemon=True)
+    thread.start()
+    return {"status": "execution_started", "dry_run": dry_run}

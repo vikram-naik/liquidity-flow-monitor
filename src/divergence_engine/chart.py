@@ -44,7 +44,6 @@ UI_COLUMNS = [
     # Signal markers (computed by check_entry/check_exit from src.trading.signals)
     "entry_signal", "entry_reason",
     "exit_signal", "exit_reason",
-    "exit_suppressed",
     "cooldown",
 ]
 

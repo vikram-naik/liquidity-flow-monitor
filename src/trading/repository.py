@@ -52,6 +52,9 @@ class TradingRepository:
     def get_proposed_positions(self) -> list[dict]:
         return self._query_positions("status = 'proposed'")
 
+    def get_pending_exits(self) -> list[dict]:
+        return self._query_positions("status = 'pending_exit'")
+
     def approve_position(self, position_id: int) -> bool:
         """Promote proposed -> pending_entry. Returns True if updated."""
         conn = get_db_connection()
@@ -98,7 +101,7 @@ class TradingRepository:
         conn = get_db_connection()
         try:
             row = conn.execute(
-                "SELECT COUNT(*) FROM trading_positions WHERE status IN ('open', 'pending_entry', 'proposed')"
+                "SELECT COUNT(*) FROM trading_positions WHERE status IN ('open', 'pending_entry', 'proposed', 'pending_exit')"
             ).fetchone()
             return row[0]
         finally:
@@ -109,7 +112,7 @@ class TradingRepository:
         try:
             row = conn.execute(
                 "SELECT COUNT(*) FROM trading_positions WHERE symbol = ? "
-                "AND status IN ('open', 'pending_entry', 'proposed')",
+                "AND status IN ('open', 'pending_entry', 'proposed', 'pending_exit')",
                 (symbol,),
             ).fetchone()
             return row[0] > 0
@@ -507,17 +510,17 @@ class TradingRepository:
         try:
             total_capital = self.get_total_capital()
 
-            # Capital deployed in open positions
+            # Capital deployed in open + pending_exit positions
             deployed_row = conn.execute(
                 "SELECT COALESCE(SUM(capital_deployed), 0) "
-                "FROM trading_positions WHERE status = 'open'"
+                "FROM trading_positions WHERE status IN ('open', 'pending_exit')"
             ).fetchone()
             capital_deployed = deployed_row[0]
 
-            # Current market value of open positions
+            # Current market value of open + pending_exit positions
             open_positions = conn.execute(
                 "SELECT capital_deployed, current_pnl_pct "
-                "FROM trading_positions WHERE status = 'open'"
+                "FROM trading_positions WHERE status IN ('open', 'pending_exit')"
             ).fetchall()
 
             market_value = 0.0
@@ -590,6 +593,10 @@ class TradingRepository:
                 "SELECT COUNT(*) FROM trading_positions WHERE status = 'proposed'"
             ).fetchone()[0]
 
+            pending_exit_count = conn.execute(
+                "SELECT COUNT(*) FROM trading_positions WHERE status = 'pending_exit'"
+            ).fetchone()[0]
+
             closed = conn.execute(
                 "SELECT COUNT(*) as total, "
                 "SUM(CASE WHEN final_pnl_pct > 0 THEN 1 ELSE 0 END) as wins, "
@@ -608,12 +615,13 @@ class TradingRepository:
             win_rate = round(wins / total_closed * 100, 1) if total_closed > 0 else 0
 
             unrealized = conn.execute(
-                "SELECT AVG(current_pnl_pct) FROM trading_positions WHERE status = 'open'"
+                "SELECT AVG(current_pnl_pct) FROM trading_positions WHERE status IN ('open', 'pending_exit')"
             ).fetchone()[0]
 
             return {
                 "open_positions": open_count,
                 "pending_entries": pending_count,
+                "pending_exits": pending_exit_count,
                 "proposed": proposed_count,
                 "total_closed": total_closed,
                 "wins": wins,
