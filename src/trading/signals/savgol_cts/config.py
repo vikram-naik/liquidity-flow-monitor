@@ -169,6 +169,28 @@ class AccelCrossExitConfig:
     psz_exit_threshold: float = 0.0
 
 
+@dataclass
+class StructuralInflectionEntryConfig:
+    """Path 4: Structural Inflection (Diamond) — High-conviction mean-reversion.
+
+    Entry fires when (8-gate process):
+    1. PSZ crosses above 0.
+    2. CTS Slope crosses above 0.
+    3. PSZ velocity rising for 3 bars.
+    4. CTS slope rising for 3 bars.
+    5. CWC slope > 0.
+    6. Price displacement: cwvap_dist < 0.5%.
+    7. Institutional floor: cts > -0.5.
+    8. Momentum surge: 4-bar total_slope_delta > 0.05.
+    """
+    enabled: bool = False
+    v_lookback: int = 3
+    s_lookback: int = 3
+    cwvap_dist_max: float = 0.5
+    cts_floor: float = -0.5
+    total_slope_delta_min: float = 0.05
+
+
 # ---------------------------------------------------------------------------
 # Composite entry config
 # ---------------------------------------------------------------------------
@@ -195,6 +217,7 @@ class SavgolCTSEntryConfig(BaseEntryConfig):
     slope_bottom: SlopeBottomEntryConfig = field(default_factory=SlopeBottomEntryConfig)
     accel_cross: AccelCrossEntryConfig = field(default_factory=AccelCrossEntryConfig)
     institutional_floor: InstitutionalFloorEntryConfig = field(default_factory=InstitutionalFloorEntryConfig)
+    structural_inflection: StructuralInflectionEntryConfig = field(default_factory=StructuralInflectionEntryConfig)
 
 
 # ---------------------------------------------------------------------------

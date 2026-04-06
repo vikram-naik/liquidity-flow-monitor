@@ -26,6 +26,7 @@ import logging
 import pandas as pd
 
 from src.divergence_engine.base_calc import BaseCalculator
+from src.divergence_engine.price_range import PriceRange
 from src.divergence_engine.cwc import CrossWindowCoherence
 from src.divergence_engine.cwvap import CompositeVWAP
 from src.divergence_engine.dvl_ledger import DVLLedger
@@ -65,6 +66,12 @@ _DROP_COLS = [
     "c_10_30", "c_30_60", "c_60_120", "cwc_delta",
     # MCS sub-components (feed mcs_composite only)
     "mcs", "mcs_mfm",
+    # Price Range intermediates (raw highs/lows + ATH level)
+    "rng_high_10", "rng_low_10",
+    "rng_high_22", "rng_low_22",
+    "rng_high_63", "rng_low_63",
+    "rng_high_252", "rng_low_252",
+    "ath",
 ]
 
 
@@ -128,6 +135,12 @@ class EngineResult:
             "cts_accel": _safe(row.get("cts_accel", 0), decimals=6),
             "gradient_shape": row.get("gradient_shape", "—"),
             "regime": row.get("regime", "notrend"),
+            "dist_high_10": _safe(row.get("dist_high_10", 0), decimals=2),
+            "dist_high_22": _safe(row.get("dist_high_22", 0), decimals=2),
+            "dist_high_63": _safe(row.get("dist_high_63", 0), decimals=2),
+            "dist_high_252": _safe(row.get("dist_high_252", 0), decimals=2),
+            "range_pos_252": _safe(row.get("range_pos_252", 0), decimals=4),
+            "is_ath": bool(row.get("is_ath", False)),
         }
         
         
@@ -224,12 +237,19 @@ class DivergenceEngine:
         base = BaseCalculator()
         df = base.compute_all(df)
 
+        # Module 1.25 — Price Range Position (dist from highs/lows, ATH flag)
+        prng = PriceRange()
+        df = prng.compute_all(df)
+
         # Module 1.5 — Market Regime Classification (ADX/DMI)
         df["regime"] = classify_market_regime(df)
 
         # Module 2 — DVL Ledger
         dvl = DVLLedger()
         df = dvl.compute_all(df)
+
+        # Defragment: consolidate internal blocks before CWVAP adds more columns
+        df = df.copy()
 
         # Module 3 — Composite VWAP (fast CTS, window=15)
         cwvap = CompositeVWAP(va_pct=_VA_PCT, cts_strategy="causal_savgol")

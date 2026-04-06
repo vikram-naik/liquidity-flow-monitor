@@ -5,6 +5,7 @@ class EntryTag(str, Enum):
     SLOPE_BOTTOM = "SavgolCTS Slope-Bottom"
     INSTITUTIONAL_FLOOR = "SavgolCTS Institutional-Floor"
     ACCEL = "SavgolCTS Accel-Cross"
+    STRUCTURAL_INFLECTION = "SavgolCTS Structural-Inflection"
     CTS_BT_FLOOR = "SavgolCTS CTS-BT-Floor"  # Legacy
 
     # Deprecated — retained for historical trade log compatibility.

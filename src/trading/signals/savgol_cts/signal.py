@@ -20,6 +20,7 @@ from src.trading.signals.savgol_cts.config import SavgolCTSEntryConfig, SavgolCT
 from src.trading.signals.savgol_cts.entries.slope_bottom import check_slope_bottom
 from src.trading.signals.savgol_cts.entries.accel_cross import check_entry_accel_cross
 from src.trading.signals.savgol_cts.entries.institutional_floor import check_institutional_floor
+from src.trading.signals.savgol_cts.entries.structural_inflection import check_structural_inflection
 
 # Exit path checkers
 from src.trading.signals.savgol_cts.exits.cwvap_guard import apply_cwvap_guard
@@ -98,6 +99,11 @@ class SavgolCTSSignal(SignalInterface):
         if passed:
             return True, intensity, meta
 
+        # Path 4: Structural Inflection
+        passed, intensity, meta = check_structural_inflection(row, prev_row, cfg, records, idx)
+        if passed:
+            return True, intensity, meta
+
         return False, 0, meta
 
     # ------------------------------------------------------------------
@@ -135,7 +141,7 @@ class SavgolCTSSignal(SignalInterface):
         updated_state_val = st.to_int()
 
         # --- Path-specific exit ---
-        if tag == EntryTag.SLOPE_BOTTOM.value:
+        if tag in (EntryTag.SLOPE_BOTTOM.value, EntryTag.STRUCTURAL_INFLECTION.value):
             exit_status = exit_slope_bottom(
                 row, prev_row, trade, peak_close, bars_held,
                 updated_state_val, cfg, records, idx,
@@ -179,7 +185,7 @@ class SavgolCTSSignal(SignalInterface):
         # crash through CWVAP too fast for suppression to help. CWVAP-Reclaim
         # benefits from suppression (CWVAP_EXHAUSTION runs > PNL_CAP).
         sb_hard_exit = (
-            tag == EntryTag.SLOPE_BOTTOM.value
+            tag in (EntryTag.SLOPE_BOTTOM.value, EntryTag.STRUCTURAL_INFLECTION.value)
             and res in (ExitReason.PNL_CAP, ExitReason.TRAIL_STOP)
         )
         if_bespoke_exit = tag == EntryTag.INSTITUTIONAL_FLOOR.value
