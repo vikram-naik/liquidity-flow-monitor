@@ -88,32 +88,39 @@ class SavgolCTSSignal(SignalInterface):
         if np.isnan(cts):
             return False, 0, {"reason": "Missing CTS data"}
 
+        rejections = []
+
         # Path 2: Accel Cross
         passed, intensity, meta = check_entry_accel_cross(row, prev_row, cfg.accel_cross, records, idx)
         if passed:
             return True, intensity, meta
+        rejections.append(f"Accel: {meta.get('reason', 'Failed')}")
 
         # Path 5: Slope Bottom
         passed, intensity, meta = check_slope_bottom(row, prev_row, cfg)
         if passed:
             return True, intensity, meta
+        rejections.append(f"Slope: {meta.get('reason', 'Failed')}")
 
         # Path 3: Institutional Floor
         passed, intensity, meta = check_institutional_floor(row, prev_row, cfg, records, idx)
         if passed:
             return True, intensity, meta
+        rejections.append(f"IFloor: {meta.get('reason', 'Failed')}")
 
         # Path 4: Structural Inflection
         passed, intensity, meta = check_structural_inflection(row, prev_row, cfg, records, idx)
         if passed:
             return True, intensity, meta
+        rejections.append(f"Struct: {meta.get('reason', 'Failed')}")
 
         # Path 6: Range Reversion
         passed, intensity, meta = check_range_reversion(row, prev_row, cfg, records, idx)
         if passed:
             return True, intensity, meta
+        rejections.append(f"Range: {meta.get('reason', 'Failed')}")
 
-        return False, 0, meta
+        return False, 0, {"reason": " | ".join(rejections)}
 
     # ------------------------------------------------------------------
     # Exit

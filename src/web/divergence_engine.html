@@ -65,6 +65,19 @@
         </div>
       </div>
 
+      <!-- Engine State (collapsible) -->
+      <div class="sidebar-section sidebar-bottom">
+        <div class="state-hdr" id="engine-state-toggle" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0; cursor: pointer; user-select: none;">
+          <h3 style="margin-bottom: 0;">Engine State</h3>
+          <span id="engine-state-chevron" style="color: #8b949e; font-size: 14px; transition: transform 0.2s;">&#9660;</span>
+        </div>
+        <div id="engine-state-content" style="margin-top: 12px;">
+          <table class="ann-table" id="state-table">
+            <!-- Populated by JS -->
+          </table>
+        </div>
+      </div>
+
       <!-- Watchlist Management -->
       <div id="watchlist-manager" class="sidebar-section">
         <div class="wl-header" style="margin-bottom: 4px;">
@@ -97,19 +110,6 @@
         </div>
         <div id="wl-items" class="wl-items-list">
           <!-- Populated by JS -->
-        </div>
-      </div>
-
-      <!-- Engine State (collapsible) -->
-      <div class="sidebar-section sidebar-bottom">
-        <div class="state-hdr" id="engine-state-toggle" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0; cursor: pointer; user-select: none;">
-          <h3 style="margin-bottom: 0;">Engine State</h3>
-          <span id="engine-state-chevron" style="color: #8b949e; font-size: 14px; transition: transform 0.2s;">&#9660;</span>
-        </div>
-        <div id="engine-state-content" style="margin-top: 12px;">
-          <table class="ann-table" id="state-table">
-            <!-- Populated by JS -->
-          </table>
         </div>
       </div>
     </aside>

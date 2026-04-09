@@ -625,24 +625,26 @@
         document.getElementById("state-table").innerHTML =
             "<tr><td>Date</td><td class='val'>" + (l.date ? l.date.split("T")[0] : "\u2014") + "</td></tr>" +
             "<tr><td>Regime</td><td class='val' style='color:" + regimeColor + "'>" + regime + "</td></tr>" +
-            "<tr><td>Close</td><td class='val'>" + fmt(l.close) + "</td></tr>" +
-            "<tr><td>CWVAP</td><td class='val'>" + fmt(l.cwvap) + "</td></tr>" +
-            "<tr><td>CTS</td><td class='val'>" + fmt(l.cts, 4) + "</td></tr>" +
-            "<tr><td>CTS Slope</td><td class='val'>" + fmt(l.cts_slope, 4) + "</td></tr>" +
-            "<tr><td>CTS Accel</td><td class='val'>" + fmt(l.cts_accel, 4) + "</td></tr>" +
-            "<tr><td>PSZ</td><td class='val'>" + fmt(l.price_slope_z, 4) + "</td></tr>" +
-            "<tr><td>PSZ_v</td><td class='val'>" + fmt(l.psz_v, 5) + "</td></tr>" +
-            "<tr><td>RSZ</td><td class='val'>" + fmt(l.rdv_slope_z, 4) + "</td></tr>" +
-            "<tr><td>RSZ_v</td><td class='val'>" + fmt(l.rsz_v, 5) + "</td></tr>" +
             (function () {
                 if (!l.entry_reason || l.entry_reason === "Neutral/No Entry" || l.entry_reason === "Hold") return "";
-                var color = l.entry_signal ? "#00e676" : "#ff7043";
-                var label = l.entry_signal ? "Signal Reason" : "Rejected Reason";
-                return "<tr><td>" + label + "</td><td class='val' style='color:" + color + "; font-size:11px'>" + l.entry_reason + "</td></tr>";
+                
+                if (l.entry_signal) {
+                    return "<tr><td>Signal Reason</td><td class='val' style='color:#00e676; font-size:11px; vertical-align:top'>" + l.entry_reason + "</td></tr>";
+                } else {
+                    var reasons = l.entry_reason.split(" | ");
+                    var rowsHtml = reasons.map(function(r) {
+                        var parts = r.split(": ");
+                        var type = parts.length > 1 ? parts[0] : "";
+                        var text = parts.length > 1 ? parts.slice(1).join(": ") : r;
+                        return "<tr><td style='color:#b0bec5; width:50px; vertical-align:top; padding:4px; font-weight:500; border: 1px solid #30363d;'>" + type + "</td><td style='color:#ff7043; vertical-align:top; padding:4px; border: 1px solid #30363d;'>" + text + "</td></tr>";
+                    }).join("");
+                    var tableHtml = "<table style='width:100%; border-collapse:collapse; margin-top:6px; font-size:11px; border: 1px solid #30363d;'>" + rowsHtml + "</table>";
+                    return "<tr><td colspan='2' style='padding-top:12px; border-top:1px solid #21262d; margin-top:8px;'><div style='color:#b0bec5; font-weight:600; text-transform:uppercase; font-size:10px; letter-spacing:0.5px; margin-bottom:4px;'>Rejected Reasons</div>" + tableHtml + "</td></tr>";
+                }
             })() +
             (function () {
                 if (!l.exit_reason) return "";
-                return "<tr><td>Exit Signal</td><td class='val' style='color:#ff1744; font-size:11px'>" + l.exit_reason + "</td></tr>";
+                return "<tr><td>Exit Signal</td><td class='val' style='color:#ff1744; font-size:11px; vertical-align:top'>" + l.exit_reason + "</td></tr>";
             })();
 
 
