@@ -214,18 +214,25 @@ def simulate_trades(ticker: str, df: pd.DataFrame) -> list[Trade]:
             # must be narrow relative to the stock's own volatility.
             # A flat rectangle base has a tight range; a falling knife
             # has a wide range even if % looks small on a volatile stock.
+            # Tightened to 2.0 to block more falling knives (e.g. ADANIENT 2025-02)
             rw10_in_atrs = (rw_10 / 100 * close) / atr if atr > 0 else 99
-            has_base = bars_at_base >= 5 and rw10_in_atrs < 2.5
 
             # Institutional acceleration guard: reject when cts_accel is
             # negative AND falling — smart money selling is accelerating,
             # the base is about to break
             accel_deteriorating = cts_accel < 0 and cts_accel < cts_accel_prev
 
-            # PSZ direction guard: reject when PSZ is falling at entry.
-            # A valid base bounce should have PSZ stabilising or improving,
-            # not accelerating downward. (Caught CIPLA 2026-03-06)
-            psz_falling = psz < psz_prev
+            # PSZ direction guard: reject when PSZ velocity is negative or zero.
+            # A valid base bounce should have PSZ momentum improving (psz_v > 0).
+            # (Caught ADANIENT 2025-02-04)
+            psz_falling = psz_v <= 0
+
+            # PSZ sign guard: for mean-reversion, PSZ must be negative.
+            # If PSZ is already positive, the reversal momentum phase has
+            # begun — we missed the entry window.
+            # (Caught TATACONSUM 2023-03-09, CIPLA 2026-03-02)
+            # REJECTED for NIFTY 50 — momentum entries often outperform
+            psz_already_positive = psz > 0
 
             # CTS slope freefall guard: reject when cts_slope is deeply
             # negative — institutions are still aggressively selling.
@@ -238,10 +245,13 @@ def simulate_trades(ticker: str, df: pd.DataFrame) -> list[Trade]:
             # ITC 2025-12 CTS=-0.21, DRREDDY 2022 CTS=-0.31)
             cts_not_capitulated = cts > -0.50
 
+            has_base = bars_at_base >= 5 and rw10_in_atrs < 2.0
+
             if is_annual_oversold and is_quarterly_oversold and \
                is_short_term_inflecting and is_green and has_base and \
                not accel_deteriorating and not psz_falling and \
-               not cts_slope_freefall and not cts_not_capitulated:
+               not cts_slope_freefall and \
+               not cts_not_capitulated:
 
                 # Conviction scoring
                 score = 10
@@ -351,11 +361,106 @@ def summarize_study(trades: list[Trade], label: str, out: io.StringIO):
     out.write(tabulate(detail, headers="keys", tablefmt="simple", floatfmt=".2f", showindex=False) + "\n")
 
 
+def summarize_period(trades: list[Trade], label: str, period: str, out: io.StringIO) -> dict:
+    """Summarize trades for a period and return stats dict for comparison."""
+    if not trades:
+        out.write(f"\n{label} ({period}): No trades found.\n")
+        return {}
+
+    df = pd.DataFrame([{
+        "symbol": t.symbol,
+        "signal_date": getattr(t, "signal_date", ""),
+        "entry_date": t.entry_date,
+        "exit_date": t.exit_date,
+        "pnl": t.pnl_pct,
+        "mfe": t.mfe_pct,
+        "mae": t.mae_pct,
+        "bars": t.duration,
+        "score": t.conviction_score,
+        "reason": str(t.exit_reason),
+        "regime": t.regime_at_entry,
+        "cts": t.cts_at_signal,
+        "psz": t.psz_at_entry,
+    } for t in trades])
+
+    wins = df[df["pnl"] > 0]
+    losses = df[df["pnl"] <= 0]
+    avg_win = wins["pnl"].mean() if len(wins) else 0
+    avg_loss = losses["pnl"].mean() if len(losses) else 0
+    payoff = abs(avg_win / avg_loss) if avg_loss != 0 else float("inf")
+    wr = (df["pnl"] > 0).mean() * 100
+    gross_win = wins["pnl"].sum() if len(wins) else 0
+    gross_loss = abs(losses["pnl"].sum()) if len(losses) else 0
+    pf = gross_win / gross_loss if gross_loss > 0 else float("inf")
+    median_pnl = df["pnl"].median()
+    symbols_traded = df["symbol"].nunique()
+
+    sep = "=" * 60
+    thin = "-" * 42
+    out.write(f"\n{sep}\n")
+    out.write(f"  {label}  ({period})\n")
+    out.write(f"{sep}\n\n")
+    out.write(f"  {'Metric':<22} {'Value':>10}\n")
+    out.write(f"  {thin}\n")
+    out.write(f"  {'Trades':<22} {len(df):>10}\n")
+    out.write(f"  {'Symbols traded':<22} {symbols_traded:>10}\n")
+    out.write(f"  {'Winners / Losers':<22} {f'{len(wins)} / {len(losses)}':>10}\n")
+    out.write(f"  {'Win rate':<22} {wr:>9.1f}%\n")
+    out.write(f"  {'Avg PnL':<22} {df['pnl'].mean():>+9.2f}%\n")
+    out.write(f"  {'Median PnL':<22} {median_pnl:>+9.2f}%\n")
+    out.write(f"  {'Avg winner':<22} {avg_win:>+9.2f}%\n")
+    out.write(f"  {'Avg loser':<22} {avg_loss:>+9.2f}%\n")
+    out.write(f"  {'Payoff ratio':<22} {payoff:>9.2f}x\n")
+    out.write(f"  {'Profit factor':<22} {pf:>9.2f}\n")
+    out.write(f"  {'Total PnL':<22} {df['pnl'].sum():>+9.2f}%\n")
+    out.write(f"  {'Avg MFE':<22} {df['mfe'].mean():>+9.2f}%\n")
+    out.write(f"  {'Avg MAE':<22} {df['mae'].mean():>9.2f}%\n")
+    out.write(f"  {'Avg duration':<22} {df['bars'].mean():>8.1f} bars\n")
+
+    out.write("\n  Exit Breakdown:\n")
+    reason_agg = df.groupby("reason").agg(
+        count=("pnl", "size"),
+        win_rate=("pnl", lambda x: (x > 0).mean() * 100),
+        avg_pnl=("pnl", "mean"),
+    ).sort_values("avg_pnl", ascending=False)
+    out.write(tabulate(reason_agg, headers="keys", tablefmt="simple", floatfmt=".2f") + "\n")
+
+    out.write("\n  Regime Breakdown:\n")
+    regime_agg = df.groupby("regime").agg(
+        count=("pnl", "size"),
+        win_rate=("pnl", lambda x: (x > 0).mean() * 100),
+        avg_pnl=("pnl", "mean"),
+    ).sort_values("avg_pnl", ascending=False)
+    out.write(tabulate(regime_agg, headers="keys", tablefmt="simple", floatfmt=".2f") + "\n")
+
+    out.write("\n  Trade Log:\n")
+    detail = df[["symbol", "signal_date", "entry_date", "exit_date", "pnl", "mfe", "mae",
+                 "bars", "score", "reason", "regime", "cts", "psz"]].sort_values("entry_date")
+    out.write(tabulate(detail, headers="keys", tablefmt="simple", floatfmt=".2f", showindex=False) + "\n")
+
+    return {
+        "trades": len(df), "win_rate": round(wr, 1),
+        "avg_pnl": round(df["pnl"].mean(), 2), "median_pnl": round(median_pnl, 2),
+        "avg_win": round(avg_win, 2), "avg_loss": round(avg_loss, 2),
+        "payoff": round(payoff, 2), "profit_factor": round(pf, 2),
+        "total_pnl": round(df["pnl"].sum(), 2),
+        "avg_mfe": round(df["mfe"].mean(), 2), "avg_mae": round(df["mae"].mean(), 2),
+        "hard_stops": int((df["reason"].str.contains("HARD_STOP")).sum()),
+        "time_decays": int((df["reason"].str.contains("TIME_DECAY")).sum()),
+    }
+
+
 def main():
     parser = argparse.ArgumentParser(description="Study: Range Reversion (Oversold → Overbought)")
     parser.add_argument("--watchlist", default="NIFTY 50")
     parser.add_argument("--symbol", help="Run for a single symbol")
     parser.add_argument("--start-date", help="Start date (YYYY-MM-DD)")
+    parser.add_argument("--walk-forward", action="store_true",
+                        help="Run walk-forward validation (train/test split)")
+    parser.add_argument("--train-end", default="2023-12-31",
+                        help="Train period end date (default: 2023-12-31)")
+    parser.add_argument("--test-start", default="2024-01-01",
+                        help="Test period start date (default: 2024-01-01)")
     args = parser.parse_args()
 
     symbols = [args.symbol] if args.symbol else get_watchlist_symbols(args.watchlist)
@@ -363,15 +468,8 @@ def main():
         print(f"No symbols found for watchlist {args.watchlist}")
         return
 
-    out = io.StringIO()
-    out.write(f"Range Reversion Study (Oversold → Overbought)\n")
-    out.write(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}\n")
-    out.write(f"Watchlist: {args.watchlist}\n")
-    out.write(f"Entry: rp_252<0.25 AND rp_63<0.30 AND rp_10 inflecting AND green AND bars_base>=5 AND rw10_atrs<2.5 AND cts<-0.50 AND NOT(psz_falling) AND NOT(cts_slope<-0.05) AND NOT(accel<0 AND falling)\n")
-    out.write(f"Exit:  PSZ zero-cross cycle (patience={PSZ_PATIENCE} bars) OR hard stop -8%\n")
-
+    # Collect all trades across all symbols
     all_trades = []
-
     for sym in symbols:
         print(f"Analyzing {sym}...")
         try:
@@ -384,18 +482,97 @@ def main():
         except Exception as e:
             print(f"  Error: {e}")
 
-    summarize_study(all_trades, "RANGE REVERSION — FULL STUDY", out)
+    out = io.StringIO()
+    entry_desc = ("rp_252<0.25 AND rp_63<0.30 AND rp_10 inflecting AND green "
+                  "AND bars_base>=5 AND rw10_atrs<2.0 AND cts<-0.50 "
+                  "AND psz_v>0 AND NOT(cts_slope<-0.05) AND NOT(accel<0 AND falling)")
+    exit_desc = f"PSZ zero-cross cycle (patience={PSZ_PATIENCE} bars) OR hard stop -8%"
+
+    if args.walk_forward:
+        # --- Walk-Forward Mode ---
+        train_end = args.train_end
+        test_start = args.test_start
+        test_end = datetime.now().strftime("%Y-%m-%d")
+
+        train_trades = [t for t in all_trades if t.entry_date <= train_end]
+        test_trades = [t for t in all_trades if t.entry_date >= test_start]
+
+        sep = "=" * 60
+        out.write(f"{sep}\n")
+        out.write(f"  RANGE REVERSION — WALK-FORWARD VALIDATION\n")
+        out.write(f"  Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}\n")
+        out.write(f"{sep}\n\n")
+        out.write(f"  Watchlist:  {args.watchlist} ({len(symbols)} symbols)\n")
+        out.write(f"  Train:      start to {train_end}\n")
+        out.write(f"  Test:       {test_start} to {test_end}\n")
+        out.write(f"  Entry:      {entry_desc}\n")
+        out.write(f"  Exit:       {exit_desc}\n")
+
+        train_stats = summarize_period(train_trades, "TRAIN", f"start to {train_end}", out)
+        test_stats = summarize_period(test_trades, "TEST", f"{test_start} to {test_end}", out)
+
+        # Stability comparison
+        if train_stats and test_stats:
+            out.write(f"\n{sep}\n")
+            out.write(f"  PARAMETER STABILITY  (Test vs Train)\n")
+            out.write(f"{sep}\n\n")
+            out.write(f"  {'Metric':<22} {'Train':>10} {'Test':>10} {'Delta':>10}\n")
+            out.write(f"  {'-'*54}\n")
+            compare_keys = [
+                ("trades",         "",  0),
+                ("win_rate",       "%", 1),
+                ("avg_pnl",        "%", 2),
+                ("median_pnl",     "%", 2),
+                ("avg_win",        "%", 2),
+                ("avg_loss",       "%", 2),
+                ("payoff",         "x", 2),
+                ("profit_factor",  "",  2),
+                ("total_pnl",      "%", 2),
+                ("avg_mfe",        "%", 2),
+                ("avg_mae",        "%", 2),
+                ("hard_stops",     "",  0),
+                ("time_decays",    "",  0),
+            ]
+            for key, suffix, dec in compare_keys:
+                t = train_stats.get(key, 0)
+                s = test_stats.get(key, 0)
+                delta = s - t
+                fmt = f".{dec}f"
+                out.write(f"  {key:<22} {t:>9{fmt}}{suffix} {s:>9{fmt}}{suffix} {delta:>+9{fmt}}{suffix}\n")
+
+            # Verdict
+            out.write(f"\n  {'─'*54}\n")
+            wr_ok = test_stats["win_rate"] >= 50.0
+            pf_ok = test_stats["payoff"] >= 3.0
+            stable_wr = abs(test_stats["win_rate"] - train_stats["win_rate"]) < 10
+            stable_pf = test_stats["payoff"] >= train_stats["payoff"] * 0.6
+            out.write(f"  Test WR >= 50%:       {'PASS' if wr_ok else 'FAIL'} ({test_stats['win_rate']:.1f}%)\n")
+            out.write(f"  Test Payoff >= 3x:    {'PASS' if pf_ok else 'FAIL'} ({test_stats['payoff']:.2f}x)\n")
+            out.write(f"  WR stable (<10pp):    {'PASS' if stable_wr else 'FAIL'} (delta={test_stats['win_rate']-train_stats['win_rate']:+.1f}pp)\n")
+            out.write(f"  Payoff stable (>60%): {'PASS' if stable_pf else 'FAIL'} (test/train={test_stats['payoff']/train_stats['payoff']*100:.0f}%)\n")
+            all_pass = wr_ok and pf_ok and stable_wr and stable_pf
+            out.write(f"\n  VERDICT: {'PASS — ready for paper trading' if all_pass else 'NEEDS REVIEW'}\n")
+
+    else:
+        # --- Standard Study Mode ---
+        out.write(f"Range Reversion Study (Oversold → Overbought)\n")
+        out.write(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}\n")
+        out.write(f"Watchlist: {args.watchlist}\n")
+        out.write(f"Entry: {entry_desc}\n")
+        out.write(f"Exit:  {exit_desc}\n")
+        summarize_study(all_trades, "RANGE REVERSION — FULL STUDY", out)
 
     report = out.getvalue()
     print(report)
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    report_path = OUTPUT_DIR / f"study_range_reversion_{ts}.txt"
+    mode = "wf" if args.walk_forward else "study"
+    report_path = OUTPUT_DIR / f"range_reversion_{mode}_{ts}.txt"
     report_path.write_text(report)
 
     if all_trades:
-        csv_path = OUTPUT_DIR / f"study_range_reversion_{ts}.csv"
+        csv_path = OUTPUT_DIR / f"range_reversion_{mode}_{ts}.csv"
         pd.DataFrame([{
             "symbol": t.symbol,
             "signal_date": getattr(t, "signal_date", ""),

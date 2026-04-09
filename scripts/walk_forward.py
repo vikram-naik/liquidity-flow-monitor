@@ -223,6 +223,7 @@ def run_period(symbols: list[str], start: str, end: str,
             period_trades = [t for t in trades if start <= str(t.entry_date) <= end]
             all_trades.extend(period_trades)
         except Exception as e:
+            print(f"Failed {sym}: {repr(e)}")
             failed.append((sym, str(e)))
 
     traded = len(set(t.symbol for t in all_trades))

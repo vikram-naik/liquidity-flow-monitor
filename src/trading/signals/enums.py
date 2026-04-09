@@ -6,6 +6,8 @@ class EntryTag(str, Enum):
     INSTITUTIONAL_FLOOR = "SavgolCTS Institutional-Floor"
     ACCEL = "SavgolCTS Accel-Cross"
     STRUCTURAL_INFLECTION = "SavgolCTS Structural-Inflection"
+    RANGE_REVERSION = "SavgolCTS Range-Reversion"
+    POSITION_SWING = "SavgolCTS Position-Swing"
     CTS_BT_FLOOR = "SavgolCTS CTS-BT-Floor"  # Legacy
 
     # Deprecated — retained for historical trade log compatibility.
@@ -38,5 +40,7 @@ class ExitReason(str, Enum):
     # Universal / Generic
     END_OF_DATA = "End of Data (Open Trade)"
     HARD_STOP = "Hard Stop Hit"
+    INITIAL_STOP = "Initial Stop Hit"
     TRAIL_STOP = "Trailing Stop Hit"
     TIME_DECAY = "Time Decay Max Hold Reached"
+    TIME_FAIL = "Time Failure"

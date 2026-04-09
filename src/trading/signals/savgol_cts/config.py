@@ -191,6 +191,64 @@ class StructuralInflectionEntryConfig:
     total_slope_delta_min: float = 0.05
 
 
+@dataclass
+class RangeReversionEntryConfig:
+    """Path 6: Range Reversion — Mean-reversion on oversold NIFTY 50 stocks.
+
+    Entry fires when (10-gate process):
+    1. rp_252 < 0.25 (Near 52-week low)
+    2. rp_63 < 0.30 (Quarterly range beaten down)
+    3. rp_10 > rp_10_prev (Short-term inflecting upward)
+    4. close > prev_close (Green candle)
+    5. bars_at_base >= 5 (Base formed)
+    6. rw10_in_atrs < 2.0 (ATR-relative range tight)
+    7. cts < -0.50 (Institutional capitulation confirmed)
+    8. psz_v > 0 (Momentum velocity improving)
+    9. NOT cts_slope < -0.05 (Institutions not in freefall)
+    10. NOT (cts_accel < 0 AND falling) (Selling not accelerating)
+    """
+    enabled: bool = True
+    rp252_max: float = 0.25
+    rp63_max: float = 0.30
+    bars_at_base_min: int = 5
+    rw10_atrs_max: float = 2.0
+    cts_max: float = -0.50
+    cts_slope_min: float = -0.05
+
+
+@dataclass
+class RangeReversionExitConfig:
+    """Range Reversion exit: PSZ zero-cross cycle.
+
+    After entry, wait for PSZ to cross above zero, then exit when
+    it drops back below zero.
+    """
+    enabled: bool = True
+    patience_bars: int = 8
+    hard_stop_pct: float = 8.0
+
+@dataclass
+class PositionSwingEntryConfig:
+    """Path 7: Position Swing — Deep value in a long-term structural uptrend."""
+    enabled: bool = True
+    rp63_max: float = 0.4
+    pdd_min: float = 0.0
+    cts_accel_min: float = 0.02
+    cwc_slope_min: float = 0.0
+    mkt_psz_min: float = -0.5
+    coherence_min: float = 0.0
+
+@dataclass
+class PositionSwingExitConfig:
+    """Position Swing exit: ATR-based trailing and time failure."""
+    enabled: bool = True
+    stop_atr: float = 3.5
+    trail_start_pnl: float = 5.0
+    trail_atr: float = 2.5
+    time_fail_bars: int = 20
+    time_fail_pnl: float = 0.0
+
+
 # ---------------------------------------------------------------------------
 # Composite entry config
 # ---------------------------------------------------------------------------
@@ -203,6 +261,8 @@ class SavgolCTSEntryConfig(BaseEntryConfig):
     1. Slope Bottom   — cts_slope inflects from deep negative in a downtrend.
     2. Accel Cross    — Triple-trend momentum cross with institutional alignment.
     3. Institutional Floor — Sustained PSZ recovery with institutional alignment.
+    4. Structural Inflection — Momentum cross with institutional alignment.
+    5. Range Reversion — Price range mean-reversion with institutional alignment.
     """
     # Cooldown: prevent entry within N bars after specific exit reasons.
     cooldown_enabled: bool = True
@@ -218,11 +278,14 @@ class SavgolCTSEntryConfig(BaseEntryConfig):
     accel_cross: AccelCrossEntryConfig = field(default_factory=AccelCrossEntryConfig)
     institutional_floor: InstitutionalFloorEntryConfig = field(default_factory=InstitutionalFloorEntryConfig)
     structural_inflection: StructuralInflectionEntryConfig = field(default_factory=StructuralInflectionEntryConfig)
+    range_reversion: RangeReversionEntryConfig = field(default_factory=RangeReversionEntryConfig)
+    position_swing: PositionSwingEntryConfig = field(default_factory=PositionSwingEntryConfig)
 
 
 # ---------------------------------------------------------------------------
 # Exit path configs
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class CwvapGuardConfig:
@@ -261,4 +324,6 @@ class SavgolCTSExitConfig(BaseExitConfig):
     slope_bottom: SlopeBottomExitConfig = field(default_factory=SlopeBottomExitConfig)
     accel_cross: AccelCrossExitConfig = field(default_factory=AccelCrossExitConfig)
     institutional_floor: InstitutionalFloorExitConfig = field(default_factory=InstitutionalFloorExitConfig)
+    range_reversion: RangeReversionExitConfig = field(default_factory=RangeReversionExitConfig)
+    position_swing: PositionSwingExitConfig = field(default_factory=PositionSwingExitConfig)
     cwvap_guard: CwvapGuardConfig = field(default_factory=CwvapGuardConfig)
