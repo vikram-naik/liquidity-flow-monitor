@@ -101,6 +101,17 @@ def compute_intensity(
         # Score is passed via override_score from the study-logic module
         pass
 
+    elif tag == EntryTag.ACCEL_ZERO_CROSS:
+        # Score based on how deep cts and cts_slope are.
+        if not np.isnan(cts):
+            # CTS: -0.85 -> 0 pts, -1.0 -> 25 pts
+            path_score += _interp(cts, -0.85, -1.0, 0.0, 25.0)
+        
+        cs = row.get("cts_slope", np.nan)
+        if not np.isnan(cs):
+            # CTS Slope: -0.1 -> 0 pts, -0.2 -> 25 pts
+            path_score += _interp(cs, -0.1, -0.2, 0.0, 25.0)
+
     if override_score is None:
         intensity += path_score
     

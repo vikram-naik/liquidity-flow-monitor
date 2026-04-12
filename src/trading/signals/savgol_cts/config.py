@@ -228,26 +228,23 @@ class RangeReversionExitConfig:
     hard_stop_pct: float = 8.0
 
 @dataclass
-class PositionSwingEntryConfig:
-    """Path 7: Position Swing — Deep value in a long-term structural uptrend."""
+class AccelZeroCrossEntryConfig:
+    """Path 7: Accel Zero Cross — cts_accel crosses zero from negative to positive."""
     enabled: bool = True
-    rp63_max: float = 0.4
-    pdd_min: float = 0.0
-    cts_accel_min: float = 0.02
-    cwc_slope_min: float = 0.0
-    mkt_psz_min: float = -0.5
-    coherence_min: float = 0.0
 
 @dataclass
-class PositionSwingExitConfig:
-    """Position Swing exit: ATR-based trailing and time failure."""
+class AccelZeroCrossExitConfig:
+    """Accel Zero Cross exit: Two-Phase PSZ/CTS Glide with Trailing Stop."""
     enabled: bool = True
-    stop_atr: float = 3.5
-    trail_start_pnl: float = 5.0
-    trail_atr: float = 2.5
-    time_fail_bars: int = 20
-    time_fail_pnl: float = 0.0
-
+    pnl_cap_enabled: bool = False
+    pnl_cap_pct: float = 15.0
+    hard_stop_enabled: bool = False
+    hard_stop_pct: float = 6.0
+    trail_enabled: bool = True
+    trail_activation_pct: float = 5.0
+    trail_lock_ratio: float = 0.50
+    psz_peak_threshold: float = 0.25
+    psz_exit_threshold: float = 0.0
 
 # ---------------------------------------------------------------------------
 # Composite entry config
@@ -261,8 +258,7 @@ class SavgolCTSEntryConfig(BaseEntryConfig):
     1. Slope Bottom   — cts_slope inflects from deep negative in a downtrend.
     2. Accel Cross    — Triple-trend momentum cross with institutional alignment.
     3. Institutional Floor — Sustained PSZ recovery with institutional alignment.
-    4. Structural Inflection — Momentum cross with institutional alignment.
-    5. Range Reversion — Price range mean-reversion with institutional alignment.
+    4. Range Reversion — Price range mean-reversion with institutional alignment.
     """
     # Cooldown: prevent entry within N bars after specific exit reasons.
     cooldown_enabled: bool = True
@@ -277,9 +273,8 @@ class SavgolCTSEntryConfig(BaseEntryConfig):
     slope_bottom: SlopeBottomEntryConfig = field(default_factory=SlopeBottomEntryConfig)
     accel_cross: AccelCrossEntryConfig = field(default_factory=AccelCrossEntryConfig)
     institutional_floor: InstitutionalFloorEntryConfig = field(default_factory=InstitutionalFloorEntryConfig)
-    structural_inflection: StructuralInflectionEntryConfig = field(default_factory=StructuralInflectionEntryConfig)
     range_reversion: RangeReversionEntryConfig = field(default_factory=RangeReversionEntryConfig)
-    position_swing: PositionSwingEntryConfig = field(default_factory=PositionSwingEntryConfig)
+    accel_zero_cross: AccelZeroCrossEntryConfig = field(default_factory=AccelZeroCrossEntryConfig)
 
 
 # ---------------------------------------------------------------------------
@@ -325,5 +320,6 @@ class SavgolCTSExitConfig(BaseExitConfig):
     accel_cross: AccelCrossExitConfig = field(default_factory=AccelCrossExitConfig)
     institutional_floor: InstitutionalFloorExitConfig = field(default_factory=InstitutionalFloorExitConfig)
     range_reversion: RangeReversionExitConfig = field(default_factory=RangeReversionExitConfig)
-    position_swing: PositionSwingExitConfig = field(default_factory=PositionSwingExitConfig)
+    accel_zero_cross: AccelZeroCrossExitConfig = field(default_factory=AccelZeroCrossExitConfig)
     cwvap_guard: CwvapGuardConfig = field(default_factory=CwvapGuardConfig)
+

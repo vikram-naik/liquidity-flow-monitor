@@ -146,7 +146,7 @@ def simulate_trades(
                 entry_idx=i,
                 atr_at_entry=atr,
                 soft_filters_passed=sig.get("soft_count", 0),
-                conviction_score=sig.get("details", {}).get("conv_score", 0),
+                conviction_score=sig.get("details", {}).get("score", 0),
                 rdv_pass=sig.get("details", {}).get("rdv", False),
                 mcs_pass=sig.get("details", {}).get("mcs", False),
                 cwc_pass=sig.get("details", {}).get("cwc", False),

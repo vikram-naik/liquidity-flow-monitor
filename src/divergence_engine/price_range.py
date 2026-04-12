@@ -26,6 +26,8 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
+from src.divergence_engine.analysis.trend import PriceRangeTrend
+
 # Default lookback windows (trading days)
 _WINDOWS = (10, 22, 63, 252)
 
@@ -55,6 +57,12 @@ class PriceRange:
 
         df = self._compute_ath(df)
         df = self._compute_basing(df)
+        df = self._compute_composite(df)
+
+        # Module 1.30 — Price Range Trend (PRT)
+        prt = PriceRangeTrend()
+        df = prt.compute(df)
+
         return df
 
     # ------------------------------------------------------------------
@@ -147,4 +155,23 @@ class PriceRange:
         rw63 = df["range_width_63"].values
         df["base_tightness"] = np.where(rw63 > 0, rw10 / rw63, 1.0)
 
+        return df
+
+    # ------------------------------------------------------------------
+    # Composite Features
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _compute_composite(df: pd.DataFrame) -> pd.DataFrame:
+        """Compute composite features like Fractal Alignment Score (FAS)."""
+        # Map 0..1 to -1..1
+        p10 = (df["range_pos_10"] * 2.0) - 1.0
+        p22 = (df["range_pos_22"] * 2.0) - 1.0
+        p63 = (df["range_pos_63"] * 2.0) - 1.0
+        p252 = (df["range_pos_252"] * 2.0) - 1.0
+
+        # Fractal Alignment Score (Macro-weighted to show structural location)
+        # 60% Yearly, 30% Quarterly, 20% Monthly, 10% Weekly
+        df["fas"] = (0.10 * p10) + (0.2 * p22) + (0.30 * p63) + (0.60 * p252)
+        
         return df

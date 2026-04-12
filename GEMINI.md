@@ -13,4 +13,5 @@
 - **Environment**: Use the root `venv`.
 - **Outputs**: All generated outputs (tests, studies, backtests) MUST be placed in `./output/`.
 - **UI Data**: `src/divergence_engine/chart.py` prepares data for the web UI (`src/web/`).
+- **DivergenceEngine Initialization**: NEVER pass `start_date` and `end_date` during `DivergenceEngine` initialization (e.g. `DivergenceEngine(ticker)`). Always load the entire history first so that indicators warm up correctly, then filter the resulting ledger `DataFrame` by date.
 

@@ -5,9 +5,8 @@ class EntryTag(str, Enum):
     SLOPE_BOTTOM = "SavgolCTS Slope-Bottom"
     INSTITUTIONAL_FLOOR = "SavgolCTS Institutional-Floor"
     ACCEL = "SavgolCTS Accel-Cross"
-    STRUCTURAL_INFLECTION = "SavgolCTS Structural-Inflection"
     RANGE_REVERSION = "SavgolCTS Range-Reversion"
-    POSITION_SWING = "SavgolCTS Position-Swing"
+    ACCEL_ZERO_CROSS = "SavgolCTS Accel-Zero-Cross"
     CTS_BT_FLOOR = "SavgolCTS CTS-BT-Floor"  # Legacy
 
     # Deprecated — retained for historical trade log compatibility.
@@ -32,6 +31,7 @@ class ExitReason(str, Enum):
     BAR5_STOP = "Bar-5 PnL stop"
     LH_LL_BREAK = "LH+LL trend break"
     ST_CROSS = "CTS crossed ST down"
+    CTS_ZERO_DOWN = "CTS crossed zero down"
     CWVAP_LOST = "Close below CWVAP"
     RECLAIM_TIMEOUT = "CWVAP reclaim timeout"
     SLOPE_CYCLE = "CTS slope cycle complete"

@@ -16,6 +16,7 @@ savgol_cts/
     slope_bottom.py    # Path 1: cts_slope rising from P5 bottom in downtrend
     accel_cross.py     # Path 2: Triple-trend momentum cross with inst alignment
     institutional_floor.py # Path 3: Sustained PSZ recovery + Inst alignment
+    bayesian.py        # Path 8: Massive 90th percentile PSZ delta jump with Deep Reversion
   exits/
     slope_bottom.py    # Slope Bottom exit: pure slope zero-cross cycle
     accel_cross.py     # Accel Cross exit: Two-Phase PSZ/CTS Glide (mirrors IF)
@@ -38,6 +39,16 @@ check_entry(row, prev_row, cfg, records, idx)       [signal.py]
   |     FAIL --> REJECT "Cooldown active", metadata: {"cooldown": True}
   |
   |-- [Guard] CTS is NaN? --> REJECT "Missing CTS data"
+  |
+  |-- PATH 8: Bayesian High-Conviction                   [entries/bayesian.py]
+  |     |-- [Gate]  cfg.bayesian.enabled?
+  |     |-- [Prior] psz_t1 < 0 (Negative floor)
+  |     |-- [Prior] psz_t1 < psz_t (Inflection)
+  |     |-- [Prior] psz_delta > 252-day 90th percentile (Massive Anomaly)
+  |     |-- [Prior] close < cwvap (Deep Reversion)
+  |     |-- [Score] Naive Bayes calculation (CTS >= -0.5, RP252 >= 0.5, RSZ > 0)
+  |     |-- [Score Gate] Calculated Score % in {89, 88, 83, 80, 62} (Profit Factor > 1.5)
+  |     +-- PASS --> EntryTag.BAYESIAN
   |
   |-- PATH 2: Accel Cross                                [entries/accel_cross.py]
   |     |-- [Gate]  cfg.accel_cross.enabled?
@@ -92,7 +103,7 @@ check_exit(row, prev_row, trade, ...)                [signal.py]
   |-- tag == SLOPE_BOTTOM
   |     --> exit_slope_bottom()                      [exits/slope_bottom.py]
   |
-  |-- tag == INSTITUTIONAL_FLOOR
+  |-- tag == INSTITUTIONAL_FLOOR or BAYESIAN
   |     --> exit_institutional_floor()               [exits/institutional_floor.py]
   |
   |-- [Optional] ST exit (cfg.st_exit_enabled, default False)
@@ -113,9 +124,9 @@ bit 6 (& 0x40): price_above_cwvap — (IF/ACCEL: repurposed as psz_was_positive 
 
 ---
 
-### Exit: Accel Cross & Institutional Floor paths
+### Exit: Accel Cross, Institutional Floor, & Bayesian paths
 
-Tags: `ACCEL`, `INSTITUTIONAL_FLOOR`
+Tags: `ACCEL`, `INSTITUTIONAL_FLOOR`, `BAYESIAN`
 
 Two-Phase Glide — momentum cycling exit strategy.
 

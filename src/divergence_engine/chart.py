@@ -28,8 +28,8 @@ UI_COLUMNS = [
     "coherence_raw", "coherence",
     "regime",
     # Delivery metrics
-    "cwvap_dist", "rdv", "cwc", "cdvl", "gradient_shape", "pdd_30", "pdd_120", "mcs_composite",
-    "cts", "cts_slope", "cts_accel", "cts_slope_trough",
+    "cwvap_dist", "rdv", "cwc", "cdvl", "gradient_shape", "pdd_30", "pdd_120", "mcs_composite", "prt", "prt_slope", "prt_accel",
+    "cts", "cts_slope", "cts_accel",
     "velocity_60_norm", "vel_dp5",
     # PSZ (price slope z) raw + thresholds
     "psz_v", "psz_buy_threshold", "psz_sell_threshold",
@@ -37,6 +37,8 @@ UI_COLUMNS = [
     "rsz_v", "rsz_buy_threshold", "rsz_sell_threshold",
     # NextGen gate thresholds (rolling percentiles from trend_participation)
     "cts_buy_threshold", "cts_sell_threshold", "cts_accel_threshold", "pdd_120_threshold",
+    # Features
+    "fas", "entry_signal_prob",
     # Divergence
     "accum_div", "distrib_div",
     # Delivery-Profile Value Area (Module 3)
@@ -81,6 +83,24 @@ def ledger_to_json(df: pd.DataFrame) -> list[dict]:
     Trims to UI_COLUMNS and uses vectorised conversion for performance.
     """
     df = _SIGNAL.tag_signals(df)
+
+    # Entry Signal Probability Feature
+    # 1 when psz crosses zero (-ve to +ve) and prt < 0 and cts_slope > 0
+    # 0 when psz crosses zero and any of the other conditions fire
+    # -1 when none of the conditions fire
+    if all(col in df.columns for col in ["price_slope_z", "prt", "cts_slope"]):
+        psz_cross_up = (df["price_slope_z"] > 0) & (df["price_slope_z"].shift(1) < 0)
+        prt_cond = df["prt"] < 0
+        cts_cond = df["cts_slope"] > 0
+
+        cond_all = psz_cross_up & prt_cond & cts_cond
+        cond_psz_any = psz_cross_up & (prt_cond | cts_cond)
+
+        df["entry_signal_prob"] = np.select(
+            [cond_all, cond_psz_any],
+            [1.0, 0.0],
+            default=-1.0
+        )
 
     # Trim to only the columns the UI needs
     cols = [c for c in UI_COLUMNS if c in df.columns]

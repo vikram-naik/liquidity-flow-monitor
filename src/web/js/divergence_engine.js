@@ -23,7 +23,12 @@
         "psz": { label: "PSZ — Price Slope Z" },
         "price_slope_z": { label: "Price Slope Z (Raw)" },
         "rsz": { label: "RSZ — RDV Slope Z" },
-        "rdv_slope_z": { label: "RDV Slope Z (Raw)" }
+        "rdv_slope_z": { label: "RDV Slope Z (Raw)" },
+        "prt": { label: "PRT — Price Range Trend" },
+        "prt_slope": { label: "PRT Slope" },
+        "prt_accel": { label: "PRT Acceleration" },
+        "fas": { label: "FAS — Fractal Alignment Score" },
+        "entry_signal_prob": { label: "Entry Signal Prob (PSZ × PRT × CTS)" }
     };
 
     function getActivePanels() {
@@ -31,7 +36,7 @@
             var conf = JSON.parse(localStorage.getItem("de_panel_config"));
             if (Array.isArray(conf) && conf.length > 0) return conf;
         } catch (e) { }
-        return ["cts", "cts_accel", "cwc", "psz"]; // updated defaults
+        return ["cts", "cts_accel", "cwc", "psz", "fas"]; // updated defaults
     }
 
     var params = new URLSearchParams(window.location.search);
@@ -139,7 +144,7 @@
         var deliveryVol = [];
         var timeToIndex = {};
         var pZ = [], rZ = [], cRaw = [], cSmooth = [];
-        var rdvArr = [], cwcArr = [], rdvConsArr = [], atrArr = [], distArr = [], delPctArr = [], pddArr = [];
+        var rdvArr = [], cwcArr = [], rdvConsArr = [], atrArr = [], distArr = [], delPctArr = [], pddArr = [], prtArr = [], prtSlopeArr = [], prtAccelArr = [], fasArr = [], entrySignalProbArr = [];
         // NextGen gate series
         var ctsSlopeArr = [], ctsAccelArr = [], ctsAccelThreshArr = [], ctsBuyThreshArr = [], ctsSellThreshArr = [];
         var cdvlArr = [], vel60Arr = [], pdd120Arr = [], pdd120ThreshArr = [];
@@ -149,7 +154,6 @@
         var rszArr = [], rszVArr = [];
         var entryMarkers = [];
         var exitMarkers = [];
-        var ctsSlopeBottomMarkers = [];
 
         for (var i = 0; i < ledger.length; i++) {
             var r = ledger[i];
@@ -189,6 +193,11 @@
             if (r.velocity_60_norm != null) vel60Arr.push({ time: t, value: r.velocity_60_norm }); else vel60Arr.push({ time: t });
             if (r.pdd_120 != null) pdd120Arr.push({ time: t, value: r.pdd_120 }); else pdd120Arr.push({ time: t });
             if (r.pdd_120_threshold != null) pdd120ThreshArr.push({ time: t, value: r.pdd_120_threshold }); else pdd120ThreshArr.push({ time: t });
+            if (r.prt != null) prtArr.push({ time: t, value: r.prt }); else prtArr.push({ time: t });
+            if (r.prt_slope != null) prtSlopeArr.push({ time: t, value: r.prt_slope }); else prtSlopeArr.push({ time: t });
+            if (r.prt_accel != null) prtAccelArr.push({ time: t, value: r.prt_accel }); else prtAccelArr.push({ time: t });
+            if (r.fas != null) fasArr.push({ time: t, value: r.fas }); else fasArr.push({ time: t });
+            if (r.entry_signal_prob != null) entrySignalProbArr.push({ time: t, value: r.entry_signal_prob }); else entrySignalProbArr.push({ time: t });
 
             // PSZ
             if (r.price_slope_z != null) pszArr.push({ time: t, value: r.price_slope_z }); else pszArr.push({ time: t });
@@ -224,17 +233,6 @@
                 exitMarkers.push({
                     time: t, position: 'aboveBar', color: '#FFD700',
                     shape: 'arrowDown', text: ''
-                });
-            }
-
-            // CTS Slope Troughs (Bottoms) — Pre-computed by Engine (Causal)
-            if (r.cts_slope_trough) {
-                ctsSlopeBottomMarkers.push({
-                    time: t,
-                    position: 'inBar',
-                    color: '#ef5350',
-                    shape: 'arrowUp',
-                    text: 'Trough'
                 });
             }
 
@@ -317,7 +315,7 @@
 
             var panelDiv = document.createElement("div");
             panelDiv.id = panelId;
-            panelDiv.className = panelKey === "cts" ? "panel p-sub-lg" : "panel p-sub";
+            panelDiv.className = "panel p-sub";
             panelDiv.innerHTML = '<div id="legSub' + i + '" class="legend"></div>';
             container.appendChild(panelDiv);
 
@@ -357,6 +355,98 @@
                 legConfig.push({ api: sCts, label: "CTS", col: "cts", color: "#4fc3f7" });
                 legConfig.push({ api: sCtsBuy, label: "Buy Thresh (P10)", col: "cts_buy_threshold", color: "#42b883", dashed: true });
                 legConfig.push({ api: sCtsSell, label: "Sell Thresh (P90)", col: "cts_sell_threshold", color: "#ef5350", dashed: true });
+            } else if (panelKey === "prt") {
+                // PRT — Price Range Trend (-1 to 1)
+                var pScale = c.priceScale("right");
+                pScale.applyOptions({
+                    autoScale: false,
+                    scaleMargins: { top: 0, bottom: 0 }
+                });
+                if (pScale.setPriceRange) {
+                    try {
+                        pScale.setPriceRange({ min: -1.2, max: 1.2 });
+                    } catch (e) {
+                        console.error("Failed to set price range for PRT", e);
+                    }
+                }
+
+                var sPrt = c.addSeries(LC.LineSeries, { color: "#ff8a65", lineWidth: 2, lastValueVisible: false, priceLineVisible: false });
+                sPrt.setData(prtArr);
+
+                var sPrtZ = c.addSeries(LC.LineSeries, { color: "rgba(139, 148, 158, 0.3)", lineWidth: 1, lineStyle: 0, lastValueVisible: false, priceLineVisible: false });
+                sPrtZ.setData(prtArr.map(d => ({ time: d.time, value: 0 })));
+
+                legConfig.push({ api: sPrt, label: "PRT", col: "prt", color: "#ff8a65" });
+            } else if (panelKey === "prt_slope") {
+                // PRT Slope
+                var sPrtSlope = c.addSeries(LC.LineSeries, { color: "#80cbc4", lineWidth: 2, lastValueVisible: false, priceLineVisible: false });
+                sPrtSlope.setData(prtSlopeArr);
+                var sPrtSZ = c.addSeries(LC.LineSeries, { color: "#424242", lineWidth: 1, lineStyle: 2, lastValueVisible: false, priceLineVisible: false });
+                sPrtSZ.setData(prtSlopeArr.map(d => ({ time: d.time, value: 0 })));
+                legConfig.push({ api: sPrtSlope, label: "PRT Slope", col: "prt_slope", color: "#80cbc4" });
+            } else if (panelKey === "prt_accel") {
+                // PRT Accel
+                var sPrtAccel = c.addSeries(LC.LineSeries, { color: "#ce93d8", lineWidth: 2, lastValueVisible: false, priceLineVisible: false });
+                sPrtAccel.setData(prtAccelArr);
+                var sPrtAZ = c.addSeries(LC.LineSeries, { color: "#424242", lineWidth: 1, lineStyle: 2, lastValueVisible: false, priceLineVisible: false });
+                sPrtAZ.setData(prtAccelArr.map(d => ({ time: d.time, value: 0 })));
+                legConfig.push({ api: sPrtAccel, label: "PRT Accel", col: "prt_accel", color: "#ce93d8" });
+            } else if (panelKey === "fas") {
+                // FAS — Fractal Alignment Score (-1 to 1)
+                var pScale = c.priceScale("right");
+                pScale.applyOptions({
+                    autoScale: false,
+                    scaleMargins: { top: 0, bottom: 0 }
+                });
+                if (pScale.setPriceRange) {
+                    try {
+                        pScale.setPriceRange({ min: -1.2, max: 1.2 });
+                    } catch (e) {
+                        console.error("Failed to set price range for FAS", e);
+                    }
+                }
+
+                var sFas = c.addSeries(LC.LineSeries, { color: "#ffb74d", lineWidth: 2, lastValueVisible: false, priceLineVisible: false });
+                sFas.setData(fasArr);
+
+                var sFasZ = c.addSeries(LC.LineSeries, { color: "rgba(255, 255, 255, 0.5)", lineWidth: 1, lineStyle: 2, lastValueVisible: false, priceLineVisible: false });
+                sFasZ.setData(fasArr.map(d => ({ time: d.time, value: 0 })));
+
+                legConfig.push({ api: sFas, label: "FAS", col: "fas", color: "#ffb74d" });
+            } else if (panelKey === "entry_signal_prob") {
+                // Entry Signal Probability (-1, 0, 1)
+                var pScale = c.priceScale("right");
+                pScale.applyOptions({
+                    autoScale: false,
+                    scaleMargins: { top: 0.1, bottom: 0.1 }
+                });
+                if (pScale.setPriceRange) {
+                    try {
+                        pScale.setPriceRange({ min: -1.2, max: 1.2 });
+                    } catch (e) {
+                        console.error("Failed to set price range for Entry Signal Prob", e);
+                    }
+                }
+
+                var sProb = c.addSeries(LC.HistogramSeries, { color: "#00e676", lastValueVisible: false, priceLineVisible: false });
+                var mappedProb = [];
+                entrySignalProbArr.forEach(d => {
+                    if (d.value != null) {
+                        var cVal;
+                        if (d.value === 1) cVal = "rgba(0, 230, 118, 0.6)";
+                        else if (d.value === 0) cVal = "rgba(255, 183, 77, 0.6)";
+                        else cVal = "rgba(139, 148, 158, 0.2)";
+                        
+                        mappedProb.push({
+                            time: d.time,
+                            value: d.value,
+                            color: cVal
+                        });
+                    }
+                });
+                sProb.setData(mappedProb);
+
+                legConfig.push({ api: sProb, label: "Signal Prob", col: "entry_signal_prob", color: "#00e676" });
             } else if (panelKey === "cts_slope") {
                 // Bull extra gate: cts_slope >= bull_slope_min
                 var sCtsSlope = c.addSeries(LightweightCharts.LineSeries, { color: "#80cbc4", lineWidth: 2, lastValueVisible: false, priceLineVisible: false });
@@ -377,9 +467,6 @@
                 });
 
                 legConfig.push({ api: sCtsSlope, label: "CTS Slope", col: "cts_slope", color: "#80cbc4" });
-
-                // Apply markers to CTS Slope panel
-                LightweightCharts.createSeriesMarkers(sCtsSlope, ctsSlopeBottomMarkers);
             } else if (panelKey === "cts_accel") {
                 // Gate 1: cts_accel > cts_accel_threshold (discounted in bear)
                 var sCtsAccel = c.addSeries(LC.LineSeries, { color: "#ce93d8", lineWidth: 2, lastValueVisible: false, priceLineVisible: false });
