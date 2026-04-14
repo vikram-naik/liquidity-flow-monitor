@@ -20,6 +20,8 @@ class SavgolCTSExitState:
     suppressed_this_bar: bool = False
     slope_crossed_zero: bool = False  # Track if slope has crossed above zero (Slope Bottom phase 1 complete)
     price_above_cwvap: bool = False    # Track if price has reclaimed CWVAP post-entry
+    prt_exit_suppressed: bool = False  # Track if the prt exit was suppressed.
+    fas_crossed_zero: bool = False   # Track if the prt crosses zero
 
     @classmethod
     def from_int(cls, val: int) -> SavgolCTSExitState:
@@ -31,11 +33,15 @@ class SavgolCTSExitState:
             suppressed_this_bar=bool((val >> 4) & 1),
             slope_crossed_zero=bool((val >> 5) & 1),
             price_above_cwvap=bool((val >> 6) & 1),
+            prt_exit_suppressed=bool((val >> 7) & 1),
+            fas_crossed_zero=bool((val >> 8) & 1),
         )
 
     def to_int(self) -> int:
         return (
-            (int(self.price_above_cwvap) << 6)
+            ( int(self.fas_crossed_zero) << 8)
+            | (int(self.prt_exit_suppressed) << 7) 
+            | (int(self.price_above_cwvap) << 6)
             | (int(self.slope_crossed_zero) << 5)
             | (int(self.suppressed_this_bar) << 4)
             | (int(self.exit_suppressed) << 3)

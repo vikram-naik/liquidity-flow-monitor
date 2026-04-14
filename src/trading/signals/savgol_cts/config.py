@@ -230,7 +230,7 @@ class RangeReversionExitConfig:
 @dataclass
 class AccelZeroCrossEntryConfig:
     """Path 7: Accel Zero Cross — cts_accel crosses zero from negative to positive."""
-    enabled: bool = True
+    enabled: bool = False
 
 @dataclass
 class AccelZeroCrossExitConfig:
@@ -245,6 +245,28 @@ class AccelZeroCrossExitConfig:
     trail_lock_ratio: float = 0.50
     psz_peak_threshold: float = 0.25
     psz_exit_threshold: float = 0.0
+
+
+@dataclass
+class PrtSlopeZeroCrossEntryConfig:
+    """Path: PRT Slope Zero Cross — PRT slope crosses above zero with FAS alignment."""
+    enabled: bool = True
+    prt_slope_min: float = 0.04
+    fas_min: float = -1.5
+    fas_max: float = 0.0
+    psz_threshold: float = -0.1
+    psz_v_min: float = 0.00
+    prt_accel_max: float = 0.1
+    cts_accel_delta_min: float = 0.01
+    min_score: float = 8.0
+
+@dataclass
+class PrtSlopeZeroCrossExitConfig:
+    """PRT Slope Zero Cross exit: CWVAP reclaim + FAS trailing."""
+    enabled: bool = True
+    cwvap_timeout_bars: int = 8
+    fas_exit_min: float = -0.1
+    fas_exit_max: float = 1.0
 
 # ---------------------------------------------------------------------------
 # Composite entry config
@@ -275,6 +297,7 @@ class SavgolCTSEntryConfig(BaseEntryConfig):
     institutional_floor: InstitutionalFloorEntryConfig = field(default_factory=InstitutionalFloorEntryConfig)
     range_reversion: RangeReversionEntryConfig = field(default_factory=RangeReversionEntryConfig)
     accel_zero_cross: AccelZeroCrossEntryConfig = field(default_factory=AccelZeroCrossEntryConfig)
+    prt_slope_zero_cross: PrtSlopeZeroCrossEntryConfig = field(default_factory=PrtSlopeZeroCrossEntryConfig)
 
 
 # ---------------------------------------------------------------------------
@@ -321,5 +344,6 @@ class SavgolCTSExitConfig(BaseExitConfig):
     institutional_floor: InstitutionalFloorExitConfig = field(default_factory=InstitutionalFloorExitConfig)
     range_reversion: RangeReversionExitConfig = field(default_factory=RangeReversionExitConfig)
     accel_zero_cross: AccelZeroCrossExitConfig = field(default_factory=AccelZeroCrossExitConfig)
+    prt_slope_zero_cross: PrtSlopeZeroCrossExitConfig = field(default_factory=PrtSlopeZeroCrossExitConfig)
     cwvap_guard: CwvapGuardConfig = field(default_factory=CwvapGuardConfig)
 

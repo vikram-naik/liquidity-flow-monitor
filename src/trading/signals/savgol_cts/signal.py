@@ -22,6 +22,7 @@ from src.trading.signals.savgol_cts.entries.accel_cross import check_entry_accel
 from src.trading.signals.savgol_cts.entries.institutional_floor import check_institutional_floor
 from src.trading.signals.savgol_cts.entries.range_reversion import check_range_reversion
 from src.trading.signals.savgol_cts.entries.accel_zero_cross import check_accel_zero_cross
+from src.trading.signals.savgol_cts.entries.prt_slope_zero_cross import check_prt_slope_zero_cross
 
 # Exit path checkers
 from src.trading.signals.savgol_cts.exits.cwvap_guard import apply_cwvap_guard
@@ -30,6 +31,7 @@ from src.trading.signals.savgol_cts.exits.accel_cross import check_exit_accel_cr
 from src.trading.signals.savgol_cts.exits.institutional_floor import exit_institutional_floor
 from src.trading.signals.savgol_cts.exits.range_reversion import exit_range_reversion
 from src.trading.signals.savgol_cts.exits.accel_zero_cross import exit_accel_zero_cross
+from src.trading.signals.savgol_cts.exits.prt_slope_zero_cross import exit_prt_slope_zero_cross
 
 
 class SavgolCTSSignal(SignalInterface):
@@ -126,6 +128,13 @@ class SavgolCTSSignal(SignalInterface):
         if cfg.accel_zero_cross.enabled:
             rejections.append(f"AccelZero: {meta.get('reason', 'Failed')}")
 
+        # Path 8: PRT Slope Zero Cross
+        passed, intensity, meta = check_prt_slope_zero_cross(row, prev_row, cfg.prt_slope_zero_cross, records, idx)
+        if passed:
+            return True, intensity, meta
+        if cfg.prt_slope_zero_cross.enabled:
+            rejections.append(f"PRTSlopeZero: {meta.get('reason', 'Failed')}")
+
         return False, 0, {"reason": " | ".join(rejections)}
 
     # ------------------------------------------------------------------
@@ -187,6 +196,11 @@ class SavgolCTSSignal(SignalInterface):
                 row, prev_row, trade, peak_close, bars_held,
                 updated_state_val, cfg.accel_zero_cross, records, idx,
             )
+        elif tag == EntryTag.PRT_SLOPE_ZERO_CROSS.value:
+            exit_status = exit_prt_slope_zero_cross(
+                row, prev_row, trade, peak_close, bars_held,
+                updated_state_val, cfg.prt_slope_zero_cross, records, idx,
+            )
         else:
             # Unknown entry tag — no exit logic, hold
             exit_status = (None, updated_state_val)
@@ -227,8 +241,9 @@ class SavgolCTSSignal(SignalInterface):
         if_bespoke_exit = tag == EntryTag.INSTITUTIONAL_FLOOR.value
         accel_bespoke_exit = tag == EntryTag.ACCEL.value
         rr_bespoke_exit = tag == EntryTag.RANGE_REVERSION.value
+        prt_bespoke_exit = tag == EntryTag.PRT_SLOPE_ZERO_CROSS.value
         
-        if res == ExitReason.BAR3_STOP or sb_hard_exit or accel_zero_hard_exit or if_bespoke_exit or accel_bespoke_exit or rr_bespoke_exit:
+        if res == ExitReason.BAR3_STOP or prt_bespoke_exit or sb_hard_exit or accel_zero_hard_exit or if_bespoke_exit or accel_bespoke_exit or rr_bespoke_exit:
             final_state = state_returned
         else:
             res, final_state = apply_cwvap_guard(

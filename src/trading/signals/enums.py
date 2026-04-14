@@ -7,6 +7,7 @@ class EntryTag(str, Enum):
     ACCEL = "SavgolCTS Accel-Cross"
     RANGE_REVERSION = "SavgolCTS Range-Reversion"
     ACCEL_ZERO_CROSS = "SavgolCTS Accel-Zero-Cross"
+    PRT_SLOPE_ZERO_CROSS = "SavgolCTS PRT-Slope-Zero-Cross"
     CTS_BT_FLOOR = "SavgolCTS CTS-BT-Floor"  # Legacy
 
     # Deprecated — retained for historical trade log compatibility.
