@@ -1,6 +1,6 @@
-from fastapi import FastAPI, HTTPException, Depends, Query
+from fastapi import FastAPI, HTTPException, Depends, Query, Request
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 from datetime import datetime, timezone, date
 from typing import List, Optional
@@ -10,6 +10,7 @@ import sys
 import requests
 import pandas as pd
 import io
+import traceback
 
 # Add project root to sys.path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
@@ -43,6 +44,15 @@ NSE_INDICES = {
 
 
 app = FastAPI(title="LFM Divergence Engine", docs_url="/de/api/docs", openapi_url="/de/api/openapi.json")
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    print(f"ERROR: Global exception caught for {request.url}: {exc}")
+    traceback.print_exc()
+    return JSONResponse(
+        status_code=500,
+        content={"detail": f"Internal Server Error: {str(exc)}"},
+    )
 
 # Mount static web assets
 _WEB_DIR = os.path.join(os.path.dirname(__file__), '..', 'web')
@@ -110,6 +120,7 @@ def divergence_engine_data(
     start_date: Optional[str] = Query(None, description="ISO date YYYY-MM-DD"),
     end_date: Optional[str] = Query(None, description="ISO date YYYY-MM-DD"),
     agg_mode: str = Query("daily", description="Aggregation mode: daily, weekly, monthly"),
+    focus_date: Optional[str] = Query(None, description="ISO date YYYY-MM-DD"),
 ):
     """Run the divergence engine and return JSON ledger + state summary."""
     if agg_mode not in ("daily", "weekly", "monthly"):
@@ -126,6 +137,17 @@ def divergence_engine_data(
         )
         result = engine.run()
 
+        # Windowing logic for focus_date (Performance optimization)
+        if focus_date and result.ledger is not None and not result.ledger.empty:
+            # Ensure date column is string for comparison if it's not already
+            ledger_dates = result.ledger['date'].astype(str).str.split(' ').str[0]
+            idx_list = result.ledger.index[ledger_dates == focus_date].tolist()
+            if idx_list:
+                idx = idx_list[0]
+                start_i = max(0, idx - 200)
+                end_i = min(len(result.ledger), idx + 200)
+                result.ledger = result.ledger.iloc[start_i:end_i]
+
         last_date = None
         if result.ledger is not None and len(result.ledger) > 0:
             try:
@@ -141,8 +163,10 @@ def divergence_engine_data(
             "ledger": ledger_to_json(result.ledger),
         }
     except ValueError as e:
+        traceback.print_exc()
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Engine error: {e}")
 
 
@@ -317,5 +341,6 @@ def import_index_constituents(req: IndexImportRequest, conn: sqlite3.Connection 
     except HTTPException:
         raise
     except Exception as e:
+        traceback.print_exc()
         conn.rollback()
         raise HTTPException(status_code=500, detail=f"Internal Error: {str(e)}")

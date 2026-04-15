@@ -15,6 +15,13 @@
     var symbol = (lastPart && lastPart !== "dashboard") ? lastPart : "NIFTY 50";
     var aggMode = "daily";
 
+    // NEW: Shared variables for jumping to dates
+    var globalLedger = [];
+    var globalTimeToIndex = {};
+    var mainSeries = null;
+    var focusDate = new URLSearchParams(window.location.search).get("focus");
+    var isInitialLoad = true;
+
     var PANEL_DEFINITIONS = {
         "cts": { label: "CTS — Trend Score (Gate 2)" },
         "cts_slope": { label: "CTS Slope (Bull Gate)" },
@@ -88,12 +95,22 @@
 
     function loadSymbol(targetSymbol) {
         if (!targetSymbol) return;
+
+        // UX Fix: Reset focus date when switching symbols (unless it's the initial page load)
+        if (!isInitialLoad && targetSymbol.toUpperCase() !== symbol) {
+            focusDate = null;
+            const picker = document.getElementById("jump-to-date");
+            if (picker) picker.value = "";
+        }
+        isInitialLoad = false;
+
         symbol = targetSymbol.toUpperCase();
         var apiUrl = "/de/api/divergence-engine/" + symbol + "?agg_mode=" + aggMode;
         if (params.get("start_date")) apiUrl += "&start_date=" + params.get("start_date");
         if (params.get("end_date")) {
             apiUrl += "&end_date=" + params.get("end_date");
         }
+        if (focusDate) apiUrl += "&focus_date=" + focusDate;
 
         loadingEl.style.display = "flex";
         loadingEl.innerHTML = "Loading Engine Data...";
@@ -107,6 +124,7 @@
             })
             .then(function (data) {
                 loadingEl.style.display = "none";
+                globalLedger = data.ledger;
 
                 // Display Last Data Date
                 const dateDisplay = document.getElementById("last-data-date");
@@ -126,6 +144,11 @@
                 refreshUI(); // Ensure legends and sidebar are populated immediately
                 buildSidebarAnnotations(data.latest);
                 WatchlistManager.updateActiveState();
+
+                if (focusDate) {
+                    setTimeout(() => jumpToDate(focusDate), 500);
+                }
+
                 window.history.pushState({}, "", "/de/dashboard/" + symbol);
             })
             .catch(function (err) {
@@ -142,7 +165,7 @@
         var ohlc = [], cwvap = [], vaHigh = [], vaLow = [];
         var ctsArr = [];
         var deliveryVol = [];
-        var timeToIndex = {};
+        globalTimeToIndex = {};
         var pZ = [], rZ = [], cRaw = [], cSmooth = [];
         var rdvArr = [], cwcArr = [], rdvConsArr = [], atrArr = [], distArr = [], delPctArr = [], pddArr = [], prtArr = [], prtSlopeArr = [], prtAccelArr = [], fasArr = [], entrySignalProbArr = [];
         // NextGen gate series
@@ -159,7 +182,7 @@
             var r = ledger[i];
             var t = r.date ? (r.date.includes(" ") ? r.date.split(" ")[0] : r.date) : null;
             if (!t) continue;
-            timeToIndex[t] = i;
+            globalTimeToIndex[t] = i;
 
             if (r.open != null && r.high != null && r.low != null && r.close != null) {
                 ohlc.push({ time: t, open: r.open, high: r.high, low: r.low, close: r.close });
@@ -289,6 +312,7 @@
             wickUpColor: "#26a69a", wickDownColor: "#ef5350", lastValueVisible: false, priceLineVisible: false
         });
         cs.setData(ohlc);
+        mainSeries = cs;
         var entryMarkersPrimitive = LC.createSeriesMarkers(cs, entryMarkers);
         var exitMarkersPrimitive = LC.createSeriesMarkers(cs, exitMarkers);
 
@@ -559,17 +583,18 @@
             allLegConfigs.push({ id: "legSub" + i, config: legConfig });
         });
 
-        function updateLegend(containerId, config, param, targetIdx) {
+        function updateLegend(containerId, config, param, targetIdx, ledgerIn) {
             var container = document.getElementById(containerId);
             if (!container) return;
+            var currentLedger = ledgerIn || ledger;
             var html = "";
             config.forEach(function (s) {
                 if (!s.api.options().visible) return;
                 var val = null;
                 if (param && param.seriesData && param.seriesData.has(s.api)) {
                     val = param.seriesData.get(s.api);
-                } else if (ledger[targetIdx]) {
-                    var row = ledger[targetIdx];
+                } else if (currentLedger && currentLedger[targetIdx]) {
+                    var row = currentLedger[targetIdx];
                     if (s.col === "price") val = { close: row.close };
                     else if (row[s.col] != null) val = { value: row[s.col] };
                 }
@@ -585,13 +610,16 @@
 
         function refreshUI(param) {
             var targetTime = param ? param.time : null;
-            var targetIdx = targetTime ? timeToIndex[targetTime] : ledger.length - 1;
+            // Use global variables and protect against undefined
+            var targetIdx = (targetTime && globalTimeToIndex) ? globalTimeToIndex[targetTime] : (globalLedger.length - 1);
+            if (targetIdx === undefined) targetIdx = globalLedger.length - 1;
 
             allLegConfigs.forEach(function (lg) {
-                updateLegend(lg.id, lg.config, param, targetIdx);
+                // Ensure ledger passed to updateLegend is globalLedger
+                updateLegend(lg.id, lg.config, param, targetIdx, globalLedger);
             });
 
-            if (ledger[targetIdx]) buildSidebarAnnotations(ledger[targetIdx]);
+            if (globalLedger[targetIdx]) buildSidebarAnnotations(globalLedger[targetIdx]);
         }
 
         window.refreshUI = refreshUI;
@@ -652,8 +680,8 @@
                     });
                     refreshUI(param);
 
-                    var idx = timeToIndex[param.time];
-                    var row = idx !== undefined ? ledger[idx] : null;
+                    var idx = globalTimeToIndex[param.time];
+                    var row = idx !== undefined ? globalLedger[idx] : null;
                     if (row && param.sourceEvent && (row.exit_signal && row.exit_reason || row.entry_signal && row.entry_reason)) {
                         var parts = [];
                         if (row.entry_signal && row.entry_reason)
@@ -700,6 +728,76 @@
         ro.observe(container);
 
         return [pc];
+    }
+
+    function jumpToDate(dateStr) {
+        if (!dateStr || !chartInstances[0] || globalTimeToIndex[dateStr] === undefined) return;
+
+        const idx = globalTimeToIndex[dateStr];
+        const bars = globalLedger;
+
+        // 1. Center the view on the date (+/- 65 bars)
+        const fromIdx = Math.max(0, idx - 65);
+        const toIdx = Math.min(bars.length - 1, idx + 65);
+        
+        const fromTime = bars[fromIdx].date.split(" ")[0];
+        const toTime = bars[toIdx].date.split(" ")[0];
+
+        chartInstances[0].timeScale().setVisibleRange({
+            from: fromTime,
+            to: toTime
+        });
+
+        // 2. TRIGGER RELEVANT DATA: Update all legends and sidebar for this date
+        if (window.refreshUI) {
+            window.refreshUI({ time: dateStr });
+        }
+
+        // 3. Visual Pointer: Set crosshair and add a focus marker
+        chartInstances.forEach(c => {
+            c.setCrosshairPosition(0, dateStr, c.series ? c.series[0] : null);
+        });
+        
+        // Add a focus marker to main series
+        const baseMarkers = []; 
+        for (var i = 0; i < globalLedger.length; i++) {
+            var r = globalLedger[i];
+            var t = r.date ? r.date.split(" ")[0] : null;
+            if (r.entry_signal) {
+                baseMarkers.push({ time: t, position: 'belowBar', color: '#00e676', shape: 'arrowUp', text: String(r.entry_signal) });
+            }
+            if (r.cooldown) {
+                baseMarkers.push({ time: t, position: 'aboveBar', color: '#00bcd4', shape: 'circle' });
+            }
+            if (r.exit_signal) {
+                baseMarkers.push({ time: t, position: 'aboveBar', color: '#FFD700', shape: 'arrowDown', text: '' });
+            }
+        }
+        
+        if (mainSeries) {
+            mainSeries.setMarkers([
+                ...baseMarkers,
+                { time: dateStr, position: 'aboveBar', color: '#f1c40f', shape: 'arrowDown', text: 'FOCUS' }
+            ]);
+        }
+        
+        // Update the date picker value to match
+        const picker = document.getElementById("jump-to-date");
+        if (picker) picker.value = dateStr;
+    }
+
+    // Add listener for the new date input
+    const jumpPicker = document.getElementById("jump-to-date");
+    if (jumpPicker) {
+        jumpPicker.addEventListener("change", function(e) {
+            jumpToDate(e.target.value);
+        });
+        // UX Fix: Allow re-triggering jump on Enter even if date hasn't changed
+        jumpPicker.addEventListener("keydown", function(e) {
+            if (e.key === "Enter") {
+                jumpToDate(this.value);
+            }
+        });
     }
 
     function buildSidebarAnnotations(l) {

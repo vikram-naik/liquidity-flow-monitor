@@ -7,6 +7,68 @@ from src.trading.signals.savgol_cts.config import PrtSlopeZeroCrossEntryConfig
 from src.trading.signals.savgol_cts.scoring import compute_intensity
 
 
+def is_flattish_line_adaptive(y1, y2, y3, lookback_window_data, sensitivity=0.05):
+    """
+    Evaluates if 3 points are a flat line, using the recent market environment
+    to automatically calculate the tolerance.
+    
+    Parameters:
+    - y1, y2, y3: The three points to evaluate.
+    - lookback_window_data: An array/list of the recent N data points to gauge current volatility.
+    - sensitivity: The maximum allowed variance as a percentage of the lookback range (e.g. 0.05 = 5%).
+    """
+    # 1. Dynamically calculate the tolerance based on local environment
+    local_max = np.max(lookback_window_data)
+    local_min = np.min(lookback_window_data)
+    local_range = local_max - local_min
+    
+    # Protect against a zero-range denominator (perfectly flat historical window)
+    if local_range == 0:
+        dynamic_tolerance = 0.0001 # absolute minimum threshold
+    else:
+        dynamic_tolerance = local_range * sensitivity
+        
+    # 2. Horizontal Test (Using the dynamically calculated tolerance)
+    y_min = min(y1, y2, y3)
+    y_max = max(y1, y2, y3)
+    range_spread = y_max - y_min
+    passes_horizontal = range_spread <= dynamic_tolerance
+    
+    # 3. Linearity Test (Using the dynamically calculated tolerance)
+    expected_y2 = (y1 + y3) / 2.0
+    midpoint_deviation = abs(y2 - expected_y2)
+    passes_linear = midpoint_deviation <= dynamic_tolerance
+    
+    return {
+        "is_valid": passes_horizontal and passes_linear,
+        "dynamic_tolerance_used": round(dynamic_tolerance, 5),
+        "range_spread": round(range_spread, 5),
+        "midpoint_deviation": round(midpoint_deviation, 5)
+    }
+
+# # --- Testing the Adaptive Logic ---
+
+# # Scenario A: The market has been highly volatile recently.
+# # The macro range is wide (from -1.0 to 0.5).
+# high_volatility_history = [-1.0, -0.8, -0.2, 0.4, 0.5, 0.1, -0.4, -0.9]
+
+# # Scenario B: The market has been dead quiet recently.
+# # The macro range is very tight (from -0.55 to -0.40).
+# low_volatility_history = [-0.55, -0.52, -0.48, -0.45, -0.42, -0.40, -0.43, -0.47]
+
+# # Our 3 points to test (from your previous prompt)
+# p1, p2, p3 = -0.4591, -0.5397, -0.4290
+
+# print("Testing in High Volatility Environment:")
+# result_high_vol = is_flattish_line_adaptive(p1, p2, p3, high_volatility_history, sensitivity=0.10)
+# print(f"Valid: {result_high_vol['is_valid']}, Tolerance Calculated: {result_high_vol['dynamic_tolerance_used']}")
+
+# print("\nTesting in Low Volatility Environment:")
+# result_low_vol = is_flattish_line_adaptive(p1, p2, p3, low_volatility_history, sensitivity=0.10)
+# print(f"Valid: {result_low_vol['is_valid']}, Tolerance Calculated: {result_low_vol['dynamic_tolerance_used']}")
+
+
+
 def check_prt_slope_zero_cross(
     row: dict,
     prev_row: dict,
@@ -25,6 +87,15 @@ def check_prt_slope_zero_cross(
     prt = row.get("prt",np.nan)
     prev_prt = prev_row.get("prt",np.nan)
     prev_prt_1 = records[idx-2].get("prt",np.nan)
+    lookback_size = 10
+    # Generate the window (Chronological order: idx-10, idx-9 ... idx-1)
+    lookback_window_data = [
+        records[idx - n].get("prt", np.nan) 
+        for n in range(lookback_size, 0, -1)
+    ] 
+
+    # Convert to a numpy array for efficient math operations later
+    lookback_array = np.array(lookback_window_data)
     
     fas = row.get("fas", np.nan)
     
@@ -41,7 +112,7 @@ def check_prt_slope_zero_cross(
     
     rdv_slope_z = row.get("rdv_slope_z", np.nan)
 
-    if any(np.isnan(x) for x in [prt, prev_prt_1, prt_slope, prev_prt_slope, prt_accel, fas, psz, psz_v, psz_v_1, psz_v_2, cts, cts_slope, prev_cts_slope, cts_accel, cts_accel_threshold, rdv_slope_z]):
+    if any(np.isnan(x) for x in [prt, prev_prt, prev_prt_1, prt_slope, prev_prt_slope, prt_accel, fas, psz, psz_v, psz_v_1, psz_v_2, cts, cts_slope, prev_cts_slope, cts_accel, cts_accel_threshold, rdv_slope_z]):
         return False, 0, {"reason": "Missing data for PRT Slope Zero Cross"}
 
     # 1. PRT Slope crosses above zero
@@ -53,8 +124,9 @@ def check_prt_slope_zero_cross(
         return False, 0, {"reason": f"prt_slope ({prt_slope:.3f}) < min ({cfg.prt_slope_min:.3f})"}
     
     # 2.1 PRT is not flat.
-    if not(prt - prev_prt_1 > 0.05):
-        return False, 0, {"reason": f"prt - prev_prt_1 ({(prt - prev_prt_1):.4f}) > 0.05."}
+    results = is_flattish_line_adaptive(y1=prt, y2=prev_prt, y3=prev_prt_1, lookback_window_data=lookback_array , sensitivity=0.05)
+    if results["is_valid"]:
+        return False, 0, {"reason": f" [{prt:.4f},{prev_prt}.{prev_prt_1}] not flat, tolr = 0.05."}
 
     # 3. FAS alignment
     if not (cfg.fas_min <= fas < cfg.fas_max):
@@ -82,7 +154,7 @@ def check_prt_slope_zero_cross(
         if cts_slope > prev_cts_slope and abs(cts_slope - prev_cts_slope) > 0.01:
             path_score += 1.0  # Ideal: Decelerating selling
     else:
-        path_score += -3.0  # We have already run up a bit.
+        path_score += -4.0  # We have already run up a bit.
     
     # B. CTS Acceleration State (Max 2)
     prev_cts_accel = prev_row.get("cts_accel", np.nan)
@@ -100,15 +172,16 @@ def check_prt_slope_zero_cross(
                     path_score += 2.0
                 else:
                     path_score += -2.0
-                # if cts_accel > prev_cts_accel:
-                #     path_score += 1.0
-                # else:
-                #     path_score += -1.0
 
-            # C. CTS Acceleration Momentum Bonus (Max 1)
             if not np.isnan(prev2_cts_accel):
-                if cts_accel > prev_cts_accel and prev_cts_accel > prev2_cts_accel:
+                if cts_accel > prev_cts_accel:
                     path_score += 1.0
+                    # C. CTS Acceleration Momentum Bonus (Max 1)
+                    if prev_cts_accel > prev2_cts_accel:
+                        path_score += 1.0
+                else:
+                    # The price is falling, penalize
+                    path_score += -3.0
         else:
             # penalize if acceleration is negative.
             path_score += -4.0
@@ -150,12 +223,12 @@ def check_prt_slope_zero_cross(
         else:
             path_score += -2.0            
     else:
-        path_score -= 1.0
+        path_score += -1.0
 
     # if prt_slope crosses with momentum, the trade fizzles out early, so penalize.
     # WIRPO: dt: 25-Mar-2025
     if prt_slope > 0.1:
-        path_score -= 1.0
+        path_score += -2.0
 
     if path_score <= cfg.min_score:
         return False, 0, {"reason": f"path_score ({path_score}) <= min ({cfg.min_score})"}

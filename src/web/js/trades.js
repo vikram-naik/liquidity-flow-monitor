@@ -356,7 +356,7 @@ async function loadOpenPositions() {
       const statusCls = p.status === 'open' ? 'status-open' : 'status-pending';
       const sizingLabel = p.sizing_method === 'kelly' ? `K(${(p.kelly_f || 0.25).toFixed(2)})` : 'EqWt';
       return `<tr>
-        <td><strong>${p.symbol}</strong></td>
+        <td><a href="/de/dashboard/${p.symbol}?focus=${p.entry_date}" class="back-link"><strong>${p.symbol}</strong></a></td>
         <td>${p.entry_tag || '-'}</td>
         <td>${p.entry_date || '-'}</td>
         <td>${p.entry_price ? '₹' + p.entry_price.toFixed(2) : '-'}</td>
@@ -395,7 +395,7 @@ async function loadSignals() {
         s.grad_pass ? 'GRAD' : null,
       ].filter(Boolean).join(', ');
       return `<div class="signal-item">
-        <span class="sym">${s.symbol}</span>
+        <a href="/de/dashboard/${s.symbol}?focus=${s.signal_date}" class="back-link"><span class="sym">${s.symbol}</span></a>
         <span class="meta">${s.signal_date} &bull; ${s.signal_type} &bull;
         PSZ=${(s.psz_at_signal || 0).toFixed(3)} &bull; ${s.regime || ''} &bull;
         Filters: ${filters || 'none'}</span>
@@ -424,7 +424,7 @@ async function loadProposed() {
       const fpass = c => c ? 'filter-pass' : 'filter-fail';
       const ftxt = c => c ? 'PASS' : '-';
       return `<tr data-id="${p.id}">
-        <td><strong>${p.symbol}</strong></td>
+        <td><a href="/de/dashboard/${p.symbol}?focus=${p.signal_date}" class="back-link"><strong>${p.symbol}</strong></a></td>
         <td>${p.signal_date || '-'}</td>
         <td>${p.regime_at_entry || '-'}</td>
         <td>${p.soft_filters_passed || 0}/4</td>
@@ -519,7 +519,8 @@ function inrCellRenderer(params) {
 }
 
 const tradeColumnDefs = [
-  { field: 'symbol', headerName: 'Symbol', width: 110, pinned: 'left' },
+  { field: 'symbol', headerName: 'Symbol', width: 110, pinned: 'left',
+    cellRenderer: p => `<a href="/de/dashboard/${p.value}?focus=${p.data.entry_date}" class="back-link" style="font-weight:600">${p.value}</a>` },
   { field: 'entry_tag', headerName: 'Entry Tag', width: 110 },
   { field: 'entry_date', headerName: 'Entry', width: 100 },
   { field: 'exit_date', headerName: 'Exit', width: 100 },

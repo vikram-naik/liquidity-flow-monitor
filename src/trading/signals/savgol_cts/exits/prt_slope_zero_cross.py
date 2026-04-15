@@ -37,7 +37,18 @@ def exit_prt_slope_zero_cross(
     cwvap = row.get("cwvap", np.nan)
     fas = row.get("fas", np.nan)
     va_high = row.get("va_high", np.nan)
+    cts = row.get("cts", np.nan)
+    cts_st = row.get("cts_sell_threshold", np.nan)
+    prev_cts = prev_row.get("cts", np.nan)
+    
     if any(np.isnan(x) for x in [close_now, cwvap, fas, va_high]):
+        return None, st.to_int()
+
+    # 0. Fallback Phase: CTS Trail (repurposed psz_was_above flag)
+    if st.psz_was_above:
+        if not np.isnan(cts) and not np.isnan(cts_st) and not np.isnan(prev_cts):
+            if prev_cts >= cts_st and cts < cts_st:
+                return ExitReason.ST_CROSS, st.to_int()
         return None, st.to_int()
 
     # 1. Phase 1: Waiting for CWVAP reclaim
@@ -45,7 +56,12 @@ def exit_prt_slope_zero_cross(
         if fas > 0:
             st.fas_crossed_zero = True
         elif bars_held >= cfg.cwvap_timeout_bars:
-            return ExitReason.RECLAIM_TIMEOUT, st.to_int()
+            # Timeout hit: Check if institutional trend (CTS) is still alive
+            if not np.isnan(cts) and not np.isnan(cts_st) and cts < cts_st:
+                st.psz_was_above = True  # Activate CTS trail fallback
+                return None, st.to_int()
+            else:
+                return ExitReason.RECLAIM_TIMEOUT, st.to_int()
         return None, st.to_int()
     
     # 2. Phase 2: FAS trailing
