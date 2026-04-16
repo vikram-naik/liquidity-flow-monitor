@@ -259,6 +259,7 @@ class PrtSlopeZeroCrossEntryConfig:
     prt_accel_max: float = 0.1
     cts_accel_delta_min: float = 0.01
     min_score: float = 8.0
+    telemetry_enabled: bool = False
 
 @dataclass
 class PrtSlopeZeroCrossExitConfig:

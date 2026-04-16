@@ -27,6 +27,8 @@ ENTRY_ALIASES = {
     "slope-bottom": EntryTag.SLOPE_BOTTOM.value,
     "inst-floor":   EntryTag.INSTITUTIONAL_FLOOR.value,
     "accel-cross":  EntryTag.ACCEL.value,
+    "aceel-0-cross":     EntryTag.ACCEL_ZERO_CROSS.value,
+    "prt-slope-zero-cross": EntryTag.PRT_SLOPE_ZERO_CROSS.value,
 }
 
 def main():
@@ -95,18 +97,18 @@ def main():
                         acc_rise = row.get("cts_accel", 0.0) > prev_row.get("cts_accel", 0.0)
                         acc_str = row.get("cts_accel", 0.0) > row.get("cts_accel_threshold", 0.0)
                         slp_rise = row.get("cts_slope", 0.0) > prev_row.get("cts_slope", 0.0)
+                        psz_v = row.get("psz_v", 0.0)
 
-                        # Simplified Study Conviction Score (-4 to +4)
-                        score = sum([1 if cond else -1 for cond in [
-                            is_above_bt, slp_rise, acc_rise, acc_str
-                        ]])
+                        # Use actual conviction score instead of calculating a simplified one
+                        score = t.conviction_score
 
                         enriched_data[id(t)] = {
                             "study_score": score,
                             "above_bt": is_above_bt,
                             "slp_rise": slp_rise,
                             "acc_rise": acc_rise,
-                            "acc_str": acc_str
+                            "acc_str": acc_str,
+                            "psz_v": psz_v 
                         }
             except Exception as e:
                 print(f"  Error enriching {sym}: {e}")
@@ -133,18 +135,18 @@ def main():
     for i, t in enumerate(filtered, 1):
         extra = enriched_data.get(id(t), {
             "study_score": 0, "above_bt": False, "slp_rise": False, 
-            "acc_rise": False, "acc_str": False
+            "acc_rise": False, "acc_str": False, "psz_v": 0
         })
         
         above_bt = "YES" if extra["above_bt"] else "no"
         slp_rise = "YES" if extra["slp_rise"] else "no"
         acc_rise = "YES" if extra["acc_rise"] else "no"
         acc_strong = "YES" if extra["acc_str"] else "no"
-        
+        psz_v = extra["psz_v"]
         reason = t.exit_reason.value if hasattr(t.exit_reason, "value") else str(t.exit_reason)
         
         print(f"{i:>3} | {t.symbol:<12} | {t.entry_date:<10} | {t.pnl_pct:>7.2f} | "
-              f"{extra['study_score']:>+5} | {above_bt:<6} | {slp_rise:<4} | {acc_rise:<4} | {acc_strong:<4} | {reason}")
+              f"{extra['study_score']:>+5} | {above_bt:<6} | {slp_rise:<4} | {acc_rise:<4} | {acc_strong:<4} | {reason} | {psz_v}")
 
 
 if __name__ == "__main__":
