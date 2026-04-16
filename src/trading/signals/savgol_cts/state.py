@@ -22,6 +22,7 @@ class SavgolCTSExitState:
     price_above_cwvap: bool = False    # Track if price has reclaimed CWVAP post-entry
     prt_exit_suppressed: bool = False  # Track if the prt exit was suppressed.
     fas_crossed_zero: bool = False   # Track if the prt crosses zero
+    extreme_bottom_extension: bool = False # Track if trade hit absolute floor (grant 2x timeout)
 
     @classmethod
     def from_int(cls, val: int) -> SavgolCTSExitState:
@@ -35,11 +36,13 @@ class SavgolCTSExitState:
             price_above_cwvap=bool((val >> 6) & 1),
             prt_exit_suppressed=bool((val >> 7) & 1),
             fas_crossed_zero=bool((val >> 8) & 1),
+            extreme_bottom_extension=bool((val >> 9) & 1),
         )
 
     def to_int(self) -> int:
         return (
-            ( int(self.fas_crossed_zero) << 8)
+            (int(self.extreme_bottom_extension) << 9)
+            | (int(self.fas_crossed_zero) << 8)
             | (int(self.prt_exit_suppressed) << 7) 
             | (int(self.price_above_cwvap) << 6)
             | (int(self.slope_crossed_zero) << 5)

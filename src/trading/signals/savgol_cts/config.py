@@ -265,7 +265,7 @@ class PrtSlopeZeroCrossEntryConfig:
 class PrtSlopeZeroCrossExitConfig:
     """PRT Slope Zero Cross exit: CWVAP reclaim + FAS trailing."""
     enabled: bool = True
-    cwvap_timeout_bars: int = 16
+    cwvap_timeout_bars: int = 8
     fas_exit_min: float = -0.1
     fas_exit_max: float = 1.0
 

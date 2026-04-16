@@ -26,6 +26,11 @@ class ScoreTracker:
     def passed_all_gates(self) -> bool:
         return all(g[1] for g in self.gates)
 
+    def get_score(self, category: str) -> float | None:
+        """Return the sum of points for a specific category."""
+        matches = [pts for cat, pts, _ in self.logs if cat == category]
+        return sum(matches) if matches else None
+
     def print_table(self) -> None:
         if not self.enabled:
             return

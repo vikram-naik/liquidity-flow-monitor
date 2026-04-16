@@ -190,7 +190,10 @@ def check_prt_slope_zero_cross(
                 tracker.add("CTS Acceleration", -4.0, f"Acceleration ({cts_accel:.3f}) <= threshold ({cts_accel_threshold:.3f})")
             else:
                 tracker.add("CTS Acceleration", 1.0, f"Acceleration ({cts_accel:.3f}) > threshold ({cts_accel_threshold:.3f})")
-                if (cts_accel - cts_accel_threshold) >= 0.01 and (cts_accel - prev_cts_accel) >= 0.01:
+                
+                # Check delta vs prev for strong/weak break
+                delta_accel = cts_accel - prev_cts_accel
+                if (cts_accel - cts_accel_threshold) >= 0.01 and delta_accel >= 0.01:
                     tracker.add("CTS Acceleration (Strong Break)", 2.0, "Strong break above threshold and prev")
                 else:
                     tracker.add("CTS Acceleration (Weak Break)", -2.0, "Weak break above threshold/prev")
@@ -198,9 +201,19 @@ def check_prt_slope_zero_cross(
                 if not np.isnan(prev2_cts_accel):
                     if cts_accel > prev_cts_accel:
                         tracker.add("CTS Acceleration (Rising)", 1.0, f"Rising acceleration ({prev_cts_accel:.3f} -> {cts_accel:.3f})")
+                        
+                        # Jerk Penalty: Is the rate of acceleration slowing down? (Rounding top)
+                        prev_delta_accel = prev_cts_accel - prev2_cts_accel
+                        is_slowing = delta_accel < prev_delta_accel
+                        if is_slowing:
+                            tracker.add("CTS Acceleration (Slowing)", -3.0, f"Decelerating momentum ({prev_delta_accel:.4f} -> {delta_accel:.4f})")
+                        
                         # C. CTS Acceleration Momentum Bonus (Max 1)
                         if prev_cts_accel > prev2_cts_accel:
-                            tracker.add("CTS Acceleration (Sustained)", 1.0, f"Sustained rising ({prev2_cts_accel:.3f} -> {prev_cts_accel:.3f})")
+                            if is_slowing:
+                                tracker.add("CTS Acceleration (Sustained-Slowing)", 0.0, "Sustained rising suppressed (Slowing)")
+                            else:
+                                tracker.add("CTS Acceleration (Sustained)", 1.0, f"Sustained rising ({prev2_cts_accel:.3f} -> {prev_cts_accel:.3f})")
                         else:
                             tracker.add("CTS Acceleration (3-bar Falling)", -2.0, f"3-bar Acceleration falling ({prev2_cts_accel:.3f} -> {prev_cts_accel:.3f})")
                     else:
@@ -208,17 +221,46 @@ def check_prt_slope_zero_cross(
         else:
             tracker.add("CTS Acceleration", -4.0, f"Negative acceleration ({cts_accel:.3f})")
 
+    # Distribution / Top Proximity Guards (using PriceRange features)
+    dist_high_252 = row.get("dist_high_252", np.nan)
+    rp252 = row.get("range_pos_252", np.nan)
+    
+    if not np.isnan(dist_high_252) and dist_high_252 > -10.0:
+        # Heavily penalize proximity to yearly high for mean-reversion path
+        tracker.add("Price Proximity (High)", -3.0, f"Too close to yearly high ({dist_high_252:.2f}%)")
+    
+    # FAS Alignment bonuses
     if fas < -0.5:
-        tracker.add("FAS Alignment", 1.0, f"Deep FAS ({fas:.3f}) < -0.5")
-        if fas <= -0.8:
-            tracker.add("FAS Alignment (Extreme)", 2.0, f"Extreme depth FAS ({fas:.3f}) <= -0.8")
+        # Only award FAS bonuses if CTS isn't in a hard-selling/acceleration-failure state
+        # A score of -4.0 in "CTS Acceleration" usually means accel <= threshold or negative.
+        cts_accel_score = tracker.get_score("CTS Acceleration")
+        if cts_accel_score is not None and cts_accel_score <= -4.0:
+            tracker.add("FAS Alignment (Suppressed)", 0.0, f"Deep FAS ({fas:.3f}) but CTS in freefall/fail state")
+        else:
+            tracker.add("FAS Alignment", 1.0, f"Deep FAS ({fas:.3f}) < -0.5")
+            if fas <= -0.8:
+                tracker.add("FAS Alignment (Extreme)", 2.0, f"Extreme depth FAS ({fas:.3f}) <= -0.8")
+    elif fas >= -0.2:
+        # Explicitly penalize shallow FAS (Distribution risk)
+        tracker.add("FAS Alignment (Shallow)", -5.0, f"Shallow FAS ({fas:.3f}) >= -0.2 (Top risk)")
     else:
-        tracker.add("FAS Alignment", -1.0, f"FAS ({fas:.3f}) >= -0.5 (Not deep enough)")
+        tracker.add("FAS Alignment", -1.0, f"FAS ({fas:.3f}) in mid-range")
+    
+    if not np.isnan(rp252) and rp252 > 0.45:
+        tracker.add("Range Position Guard", -2.0, f"RP252 ({rp252:.3f}) too high for MR")
 
     # Price momentum, must be positive
-    if psz_v > cfg.psz_v_min:
+    cts_accel_score = tracker.get_score("CTS Acceleration")
+    is_cts_fail = cts_accel_score is not None and cts_accel_score <= -4.0
+    
+    psz_v_passed = psz_v > cfg.psz_v_min
+    if psz_v_passed:
         if is_cts_falling:
             tracker.add("PSZ Velocity Guard", 0.0, f"psz_v positive ({psz_v:.3f}) but CTS falling (Ignored dead-cat)")
+            psz_v_passed = False # Treat as failed for bonus logic below
+        elif is_cts_fail:
+            tracker.add("PSZ Velocity Guard (Reduced)", 1.0, f"psz_v ({psz_v:.3f}) reduced due to CTS failure")
+            # We allow psz_v_passed to be True for basic acceleration check, but we will suppress Strong/Sustained below
         else:
             tracker.add("PSZ Velocity Guard", 2.0, f"psz_v ({psz_v:.3f}) > {cfg.psz_v_min:.2f} (Positive momentum)")
     else:
@@ -239,16 +281,26 @@ def check_prt_slope_zero_cross(
                 tracker.add("PSZ Acceleration", -2.0, "Velocity spiked from a dead/flat base (Ignored)")
             else:
                 tracker.add("PSZ Acceleration", 1.0, f"psz_v rising ({psz_v_1:.3f} -> {psz_v:.3f})")
-                if abs(psz_v - psz_v_1) > 0.01:
-                    tracker.add("PSZ Acceleration (Strong)", 1.0, "Strong psz_v delta > 0.01")
-                else:
-                    tracker.add("PSZ Acceleration (Weak)", -2.0, "Weak psz_v delta <= 0.01")
+                
+                # Only award "Strong" or "Sustained" bonuses if the core velocity gate passed
+                # AND we are not in a CTS failure state
+                if psz_v_passed and not is_cts_fail:
+                    is_psz_strong = abs(psz_v - psz_v_1) > 0.01 and psz_v > 0.01
+                    if is_psz_strong:
+                        tracker.add("PSZ Acceleration (Strong)", 1.0, f"Strong psz_v delta ({abs(psz_v - psz_v_1):.3f}) and velocity ({psz_v:.3f})")
+                    else:
+                        tracker.add("PSZ Acceleration (Weak)", -2.0, f"Weak psz_v delta/velocity ({psz_v:.3f})")
 
-                sum_total = abs(psz_v + psz_v_1 + psz_v_2)
-                if (sum_total/3) > 0.01:
-                    tracker.add("PSZ Acceleration (Sustained)", 1.0, "3-bar avg > 0.01")
+                    sum_total = abs(psz_v + psz_v_1 + psz_v_2)
+                    if (sum_total/3) > 0.01:
+                        tracker.add("PSZ Acceleration (Sustained)", 1.0, "3-bar avg > 0.01")
+                    else:
+                        penalty = -3.0 if not is_psz_strong else -2.0
+                        tracker.add("PSZ Acceleration (Not Sustained)", penalty, f"3-bar avg ({sum_total/3:.4f}) <= 0.01")
+                elif is_cts_fail:
+                    tracker.add("PSZ Acceleration (Suppressed)", 0.0, "Strong/Sustained suppressed (CTS Failure)")
                 else:
-                    tracker.add("PSZ Acceleration (Not Sustained)", -2.0, "3-bar avg <= 0.01")            
+                    tracker.add("PSZ Acceleration (Guard)", 0.0, "Suppressed Strong/Sustained (Negative Velocity)")
     else:
         tracker.add("PSZ Acceleration", -2.0, f"psz_v falling ({psz_v_1:.3f} -> {psz_v:.3f})")
 
