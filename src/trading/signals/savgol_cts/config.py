@@ -19,33 +19,20 @@ from src.trading.signals.enums import ExitReason
 
 @dataclass
 class SlopeBottomEntryConfig:
-    """Path 5: Slope Bottom — cts_slope rising from deep negative in downtrend.
-
-    Entry fires when:
-    - cts_slope <= slope_threshold (-0.187, P5 empirical bottom)
-    - cts_slope is rising (current > previous)
-    - regime == "downtrend"
-    - slope_delta <= slope_delta_max (reject violent dead-cat bounces)
-    - cwvap_dist in [cwvap_dist_min, cwvap_dist_max] (meaningful distance below CWVAP)
-
-    Empirically (NIFTY 500, 2024-04 to 2026-03): 218 trades, 48.6% WR,
-    1.84x payoff, +2.27% expectancy with pure slope zero-cross exit.
-    """
+    """Path 5: Slope Bottom — cts_slope rising from deep negative in downtrend."""
     enabled: bool = True
-    slope_threshold: float = -0.1     # P5 bottom threshold
-    slope_delta_min: float = 0.002       # conviction gate (reject noise)
-    slope_delta_max: float = 0.02       # reject violent bounces (dead cats)
-    cwvap_dist_min: float = -3.0       # not too far below CWVAP (%)
-    cwvap_dist_max: float = 0.5        # must be meaningfully below CWVAP (%)
-    slope_exhaustion_min: float = -0.22 # floor for signal-day slope (avoid infinite falls)
-    open_cwvap_guard: bool = True      # reject gap ups above CWVAP
-    accel_rising_guard: bool = True    # reject dropping or negative accel
-    cts_max: float = -0.85             # Require deep exhaustion (not mid-bounce)
-    pdd_guard: bool = True             # toggle PDD institutional exhaustion guard
-    pdd_max: float = 0.0               # reject when pdd_120 > max (institutions still distributing)
-    pure_bear_guard: bool = True       # reject entries on pure red, lower-close days (falling knife guard)
-    
-    # Shallow Inflection Guard: if mathematical exhaustion is shallow (cts_slope > min), price must be deeply exhausted (cwvap_dist < max)
+    slope_threshold: float = -0.1
+    slope_delta_min: float = 0.002
+    slope_delta_max: float = 0.02
+    cwvap_dist_min: float = -3.0
+    cwvap_dist_max: float = 0.5
+    slope_exhaustion_min: float = -0.22
+    open_cwvap_guard: bool = True
+    accel_rising_guard: bool = True
+    cts_max: float = -0.85
+    pdd_guard: bool = True
+    pdd_max: float = 0.0
+    pure_bear_guard: bool = True
     shallow_guard_enabled: bool = True
     shallow_slope_min: float = -0.12
     shallow_dist_max: float = -1.0
@@ -53,36 +40,17 @@ class SlopeBottomEntryConfig:
 
 @dataclass
 class SlopeBottomExitConfig:
-    """Slope Bottom exit: pure slope zero-cross cycle.
-
-    After entry, wait for cts_slope to cross above zero, then exit when
-    it drops back below zero. The full slope cycle captures the reversal
-    and exits when momentum fades.
-    """
+    """Slope Bottom exit: pure slope zero-cross cycle."""
     pnl_cap_enabled: bool = True
-    pnl_cap_pct: float = 8.0  # take profit when PnL% >= this
-    # MFE-based trailing stop: locks a fraction of peak PnL once
-    # the running MFE exceeds activation threshold.
+    pnl_cap_pct: float = 8.0
     trail_enabled: bool = False
-    trail_activation_pct: float = 3.0    # activate once running MFE >= 3%
-    trail_lock_ratio: float = 0.50       # lock 50% of peak PnL as floor
+    trail_activation_pct: float = 3.0
+    trail_lock_ratio: float = 0.50
 
 
 @dataclass
 class InstitutionalFloorEntryConfig:
-    """Path 3: Institutional Floor — Sustained PSZ recovery with institutional alignment.
-
-    Entry fires when (9-gate process):
-    1. Sustained Exhaustion: Previous 3 bars PSZ <= psz_threshold.
-    2. Inflection: Signal bar PSZ >= psz_threshold + psz_delta.
-    3. Displacement: Close price < CWVAP.
-    4. Momentum Acceleration: psz_v strictly increasing over psz_v_lookback.
-    5. Velocity Delta: Each acceleration step >= psz_v_delta.
-    6. Institutional Dislocation: cts <= cts_buy_threshold.
-    7. Institutional Improvement: cts_slope > prev_cts_slope.
-    8. Contrarian Guard: cts_slope < 0.
-    9. Institutional Alignment: cwc_slope > 0.
-    """
+    """Path 3: Institutional Floor — Sustained PSZ recovery with institutional alignment."""
     enabled: bool = True
     psz_threshold: float = -0.30
     psz_delta: float = 0.01
@@ -95,8 +63,6 @@ class InstitutionalFloorEntryConfig:
     accel_rising_guard: bool = True
     cts_slope_neg_guard: bool = True
     cwc_slope_rising_guard: bool = True
-
-    # Conviction scoring
     conviction_enabled: bool = True
     conviction_min_score: int = 5
     conv_cwvap_deep: float = -3.0
@@ -109,13 +75,7 @@ class InstitutionalFloorEntryConfig:
 
 @dataclass
 class InstitutionalFloorExitConfig:
-    """Institutional Floor exit: Bespoke exit replicating the NIFTY 50 study.
-    
-    Exits when:
-    - Target: Price reclaims CWVAP, PSZ climbs above peak threshold, then falls below exit threshold (glides to zero).
-    - Safety: Hard stop to prevent infinite holding (unlike the study).
-    - PnL cap: Takes profit early if 8% target hit.
-    """
+    """Institutional Floor exit: target CWVAP reclaim and PSZ peak trail."""
     enabled: bool = True
     pnl_cap_enabled: bool = True
     pnl_cap_pct: float = 8.0
@@ -127,17 +87,7 @@ class InstitutionalFloorExitConfig:
 
 @dataclass
 class AccelCrossEntryConfig:
-    """Path 2: Accel Cross — Triple-trend momentum cross with institutional alignment.
-
-    Entry fires when:
-    - cts_slope crosses above zero.
-    - cts_accel is rising and above adaptive threshold.
-    - psz in (0.0, 0.2].
-    - cts in (0.0, 0.5].
-    - cwvap_dist <= 8.0%.
-    - cwc_slope > 0.
-    - Conviction Score 20-29.
-    """
+    """Path 2: Accel Cross — Triple-trend momentum cross with institutional alignment."""
     enabled: bool = True
     cts_min: float = 0.0
     cts_max: float = 0.5
@@ -153,13 +103,7 @@ class AccelCrossEntryConfig:
 
 @dataclass
 class AccelCrossExitConfig:
-    """Accel Cross exit: Two-Phase PSZ/CTS Glide (Mirroring Institutional Floor).
-
-    Exits when:
-    - Target: Price momentum (PSZ) cycles above peak then falls below exit threshold.
-    - CTS Trail: If momentum fades but institutional alignment holds, wait for ST_CROSS.
-    - Safety: Hard stop and PnL cap active.
-    """
+    """Accel Cross exit: Two-Phase PSZ/CTS Glide."""
     enabled: bool = True
     pnl_cap_enabled: bool = True
     pnl_cap_pct: float = 8.0
@@ -170,43 +114,8 @@ class AccelCrossExitConfig:
 
 
 @dataclass
-class StructuralInflectionEntryConfig:
-    """Path 4: Structural Inflection (Diamond) — High-conviction mean-reversion.
-
-    Entry fires when (8-gate process):
-    1. PSZ crosses above 0.
-    2. CTS Slope crosses above 0.
-    3. PSZ velocity rising for 3 bars.
-    4. CTS slope rising for 3 bars.
-    5. CWC slope > 0.
-    6. Price displacement: cwvap_dist < 0.5%.
-    7. Institutional floor: cts > -0.5.
-    8. Momentum surge: 4-bar total_slope_delta > 0.05.
-    """
-    enabled: bool = False
-    v_lookback: int = 3
-    s_lookback: int = 3
-    cwvap_dist_max: float = 0.5
-    cts_floor: float = -0.5
-    total_slope_delta_min: float = 0.05
-
-
-@dataclass
 class RangeReversionEntryConfig:
-    """Path 6: Range Reversion — Mean-reversion on oversold NIFTY 50 stocks.
-
-    Entry fires when (10-gate process):
-    1. rp_252 < 0.25 (Near 52-week low)
-    2. rp_63 < 0.30 (Quarterly range beaten down)
-    3. rp_10 > rp_10_prev (Short-term inflecting upward)
-    4. close > prev_close (Green candle)
-    5. bars_at_base >= 5 (Base formed)
-    6. rw10_in_atrs < 2.0 (ATR-relative range tight)
-    7. cts < -0.50 (Institutional capitulation confirmed)
-    8. psz_v > 0 (Momentum velocity improving)
-    9. NOT cts_slope < -0.05 (Institutions not in freefall)
-    10. NOT (cts_accel < 0 AND falling) (Selling not accelerating)
-    """
+    """Path 6: Range Reversion — Mean-reversion on oversold NIFTY 50 stocks."""
     enabled: bool = True
     rp252_max: float = 0.25
     rp63_max: float = 0.30
@@ -218,19 +127,17 @@ class RangeReversionEntryConfig:
 
 @dataclass
 class RangeReversionExitConfig:
-    """Range Reversion exit: PSZ zero-cross cycle.
-
-    After entry, wait for PSZ to cross above zero, then exit when
-    it drops back below zero.
-    """
+    """Range Reversion exit: PSZ zero-cross cycle."""
     enabled: bool = True
     patience_bars: int = 8
     hard_stop_pct: float = 8.0
 
+
 @dataclass
 class AccelZeroCrossEntryConfig:
-    """Path 7: Accel Zero Cross — cts_accel crosses zero from negative to positive."""
+    """Path 7: Accel Zero Cross — cts_accel crosses zero."""
     enabled: bool = False
+
 
 @dataclass
 class AccelZeroCrossExitConfig:
@@ -261,6 +168,7 @@ class PrtSlopeZeroCrossEntryConfig:
     min_score: float = 8.0
     telemetry_enabled: bool = False
 
+
 @dataclass
 class PrtSlopeZeroCrossExitConfig:
     """PRT Slope Zero Cross exit: CWVAP reclaim + FAS trailing."""
@@ -269,21 +177,32 @@ class PrtSlopeZeroCrossExitConfig:
     fas_exit_min: float = -0.1
     fas_exit_max: float = 1.0
 
+
+@dataclass
+class FasZeroCrossEntryConfig:
+    """Path: FAS Zero Cross — FAS crosses above zero with active institutional engine."""
+    enabled: bool = True
+    lookback_size: int = 10
+    sensitivity: float = 0.15
+    min_score: float = 10.0
+    telemetry_enabled: bool = False
+
+
+@dataclass
+class FasZeroCrossExitConfig:
+    """FAS Zero Cross exit: Phase-Shift Exit (Anchor + CTS Trail)."""
+    enabled: bool = True
+    anchor_bars: int = 5
+    anchor_fas_floor: float = -0.3
+
+
 # ---------------------------------------------------------------------------
 # Composite entry config
 # ---------------------------------------------------------------------------
 
 @dataclass
 class SavgolCTSEntryConfig(BaseEntryConfig):
-    """Configuration for CTS mean-reversion entry signal.
-
-    Entry paths evaluated:
-    1. Slope Bottom   — cts_slope inflects from deep negative in a downtrend.
-    2. Accel Cross    — Triple-trend momentum cross with institutional alignment.
-    3. Institutional Floor — Sustained PSZ recovery with institutional alignment.
-    4. Range Reversion — Price range mean-reversion with institutional alignment.
-    """
-    # Cooldown: prevent entry within N bars after specific exit reasons.
+    """Configuration for CTS mean-reversion entry signal."""
     cooldown_enabled: bool = True
     cooldown_bars: int = 10
     cooldown_exit_reasons: tuple[ExitReason, ...] = (
@@ -292,30 +211,24 @@ class SavgolCTSEntryConfig(BaseEntryConfig):
         ExitReason.BAR5_STOP,
     )
 
-    # --- Per-path configs ---
     slope_bottom: SlopeBottomEntryConfig = field(default_factory=SlopeBottomEntryConfig)
     accel_cross: AccelCrossEntryConfig = field(default_factory=AccelCrossEntryConfig)
     institutional_floor: InstitutionalFloorEntryConfig = field(default_factory=InstitutionalFloorEntryConfig)
     range_reversion: RangeReversionEntryConfig = field(default_factory=RangeReversionEntryConfig)
     accel_zero_cross: AccelZeroCrossEntryConfig = field(default_factory=AccelZeroCrossEntryConfig)
     prt_slope_zero_cross: PrtSlopeZeroCrossEntryConfig = field(default_factory=PrtSlopeZeroCrossEntryConfig)
+    fas_zero_cross: FasZeroCrossEntryConfig = field(default_factory=FasZeroCrossEntryConfig)
 
 
 # ---------------------------------------------------------------------------
 # Exit path configs
 # ---------------------------------------------------------------------------
 
-
 @dataclass
 class CwvapGuardConfig:
-    """CWVAP price guard — post-exit suppression / release logic.
-
-    While above CWVAP with positive momentum, structural exits are
-    suppressed.  When momentum fades or price drops below tolerance,
-    the suppressed exit is released.
-    """
-    tolerance_pct: float = 0.50  # allowable % dip below CWVAP
-    tolerance_bars: int = 1      # max bars below CWVAP within tolerance
+    """CWVAP price guard logic."""
+    tolerance_pct: float = 0.50
+    tolerance_bars: int = 1
 
 
 # ---------------------------------------------------------------------------
@@ -324,27 +237,15 @@ class CwvapGuardConfig:
 
 @dataclass
 class SavgolCTSExitConfig(BaseExitConfig):
-    """Configuration for CTS mean-reversion exit signal.
-
-    Exit triggers:
-    - CWVAP Lost:    Close drops below CWVAP + ATR margin.
-    - Slope Cycle:   CTS slope crosses above and then below zero.
-    - Bar Stops:     Early exit based on PnL at specific bar count.
-    - PnL Cap:       Exit when PnL reaches a specific target.
-
-    The CWVAP guard runs *after* all path-specific exits and may suppress
-    or release the proposed exit based on price/momentum context.
-    """
-    # --- Shared exit parameters ---
-    st_exit_enabled: bool = False    # universal Sell Threshold toggle
+    """Configuration for CTS mean-reversion exit signal."""
+    st_exit_enabled: bool = False
     st_crossover_tolerance: float = 0.03
 
-    # --- Per-path configs ---
     slope_bottom: SlopeBottomExitConfig = field(default_factory=SlopeBottomExitConfig)
     accel_cross: AccelCrossExitConfig = field(default_factory=AccelCrossExitConfig)
     institutional_floor: InstitutionalFloorExitConfig = field(default_factory=InstitutionalFloorExitConfig)
     range_reversion: RangeReversionExitConfig = field(default_factory=RangeReversionExitConfig)
     accel_zero_cross: AccelZeroCrossExitConfig = field(default_factory=AccelZeroCrossExitConfig)
     prt_slope_zero_cross: PrtSlopeZeroCrossExitConfig = field(default_factory=PrtSlopeZeroCrossExitConfig)
+    fas_zero_cross: FasZeroCrossExitConfig = field(default_factory=FasZeroCrossExitConfig)
     cwvap_guard: CwvapGuardConfig = field(default_factory=CwvapGuardConfig)
-

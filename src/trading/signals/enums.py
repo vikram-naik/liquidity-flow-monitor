@@ -8,6 +8,7 @@ class EntryTag(str, Enum):
     RANGE_REVERSION = "SavgolCTS Range-Reversion"
     ACCEL_ZERO_CROSS = "SavgolCTS Accel-Zero-Cross"
     PRT_SLOPE_ZERO_CROSS = "SavgolCTS PRT-Slope-Zero-Cross"
+    FAS_ZERO_CROSS = "SavgolCTS FAS-Zero-Cross"
     CTS_BT_FLOOR = "SavgolCTS CTS-BT-Floor"  # Legacy
 
     # Deprecated — retained for historical trade log compatibility.
@@ -37,6 +38,7 @@ class ExitReason(str, Enum):
     RECLAIM_TIMEOUT = "CWVAP reclaim timeout"
     SLOPE_CYCLE = "CTS slope cycle complete"
     PNL_CAP = "PnL cap hit"
+    FAS_FLOOR = "FAS floor breach"
     
     # Universal / Generic
     END_OF_DATA = "End of Data (Open Trade)"

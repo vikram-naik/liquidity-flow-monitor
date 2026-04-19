@@ -46,29 +46,6 @@ def is_flattish_line_adaptive(y1, y2, y3, lookback_window_data, sensitivity=0.05
         "midpoint_deviation": round(midpoint_deviation, 5)
     }
 
-# # --- Testing the Adaptive Logic ---
-
-# # Scenario A: The market has been highly volatile recently.
-# # The macro range is wide (from -1.0 to 0.5).
-# high_volatility_history = [-1.0, -0.8, -0.2, 0.4, 0.5, 0.1, -0.4, -0.9]
-
-# # Scenario B: The market has been dead quiet recently.
-# # The macro range is very tight (from -0.55 to -0.40).
-# low_volatility_history = [-0.55, -0.52, -0.48, -0.45, -0.42, -0.40, -0.43, -0.47]
-
-# # Our 3 points to test (from your previous prompt)
-# p1, p2, p3 = -0.4591, -0.5397, -0.4290
-
-# print("Testing in High Volatility Environment:")
-# result_high_vol = is_flattish_line_adaptive(p1, p2, p3, high_volatility_history, sensitivity=0.10)
-# print(f"Valid: {result_high_vol['is_valid']}, Tolerance Calculated: {result_high_vol['dynamic_tolerance_used']}")
-
-# print("\nTesting in Low Volatility Environment:")
-# result_low_vol = is_flattish_line_adaptive(p1, p2, p3, low_volatility_history, sensitivity=0.10)
-# print(f"Valid: {result_low_vol['is_valid']}, Tolerance Calculated: {result_low_vol['dynamic_tolerance_used']}")
-
-
-
 def check_prt_slope_zero_cross(
     row: dict,
     prev_row: dict,
@@ -196,7 +173,7 @@ def check_prt_slope_zero_cross(
                 if (cts_accel - cts_accel_threshold) >= 0.01 and delta_accel >= 0.01:
                     tracker.add("CTS Acceleration (Strong Break)", 2.0, "Strong break above threshold and prev")
                 else:
-                    tracker.add("CTS Acceleration (Weak Break)", -2.0, "Weak break above threshold/prev")
+                    tracker.add("CTS Acceleration (Weak Break)", -5.0, "Weak break above threshold/prev")
 
                 if not np.isnan(prev2_cts_accel):
                     if cts_accel > prev_cts_accel:
@@ -235,7 +212,7 @@ def check_prt_slope_zero_cross(
         # A score of -4.0 in "CTS Acceleration" usually means accel <= threshold or negative.
         cts_accel_score = tracker.get_score("CTS Acceleration")
         if cts_accel_score is not None and cts_accel_score <= -4.0:
-            tracker.add("FAS Alignment (Suppressed)", 0.0, f"Deep FAS ({fas:.3f}) but CTS in freefall/fail state")
+            tracker.add("FAS Alignment (Suppressed)", -1.0, f"Deep FAS ({fas:.3f}) but CTS in freefall/fail state")
         else:
             tracker.add("FAS Alignment", 1.0, f"Deep FAS ({fas:.3f}) < -0.5")
             if fas <= -0.8:
@@ -278,7 +255,7 @@ def check_prt_slope_zero_cross(
             )
 
             if velocity_was_flat_results["is_valid"]:
-                tracker.add("PSZ Acceleration", -2.0, "Velocity spiked from a dead/flat base (Ignored)")
+                tracker.add("PSZ Acceleration", -5.0, "Velocity spiked from a dead/flat base (Ignored)")
             else:
                 tracker.add("PSZ Acceleration", 1.0, f"psz_v rising ({psz_v_1:.3f} -> {psz_v:.3f})")
                 
@@ -298,9 +275,9 @@ def check_prt_slope_zero_cross(
                         penalty = -3.0 if not is_psz_strong else -2.0
                         tracker.add("PSZ Acceleration (Not Sustained)", penalty, f"3-bar avg ({sum_total/3:.4f}) <= 0.01")
                 elif is_cts_fail:
-                    tracker.add("PSZ Acceleration (Suppressed)", 0.0, "Strong/Sustained suppressed (CTS Failure)")
+                    tracker.add("PSZ Acceleration (Suppressed)", -1.0, "Strong/Sustained suppressed (CTS Failure)")
                 else:
-                    tracker.add("PSZ Acceleration (Guard)", 0.0, "Suppressed Strong/Sustained (Negative Velocity)")
+                    tracker.add("PSZ Acceleration (Guard)", -1.0, "Strong/Sustained suppressed (Negative Velocity)")
     else:
         tracker.add("PSZ Acceleration", -2.0, f"psz_v falling ({psz_v_1:.3f} -> {psz_v:.3f})")
 
@@ -309,6 +286,9 @@ def check_prt_slope_zero_cross(
         tracker.add("PRT Momentum Guard", -2.0, f"prt_slope ({prt_slope:.3f}) > 0.1 (Fizzle risk)")
 
     tracker.print_table()
+
+    if first_fail_reason is not None:
+        return False, 0, {"reason": first_fail_reason}
 
     if not tracker.passed_scoring():
         return False, 0, {"reason": f"path_score ({tracker.total}) <= min ({cfg.min_score})"}

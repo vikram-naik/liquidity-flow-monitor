@@ -46,9 +46,9 @@ def exit_prt_slope_zero_cross(
 
     # 0. Global Momentum Guard
     # PRT entry starts with CTS < 0. If it recovers > 0 and then fails back <= 0, the recovery failed.
-    if not np.isnan(cts) and not np.isnan(prev_cts):
-        if prev_cts > 0 and cts <= 0:
-            return ExitReason.ST_CROSS, st.to_int()
+    # if not np.isnan(cts) and not np.isnan(prev_cts):
+    #     if prev_cts > 0 and cts <= 0:
+    #         return ExitReason.ST_CROSS, st.to_int()
 
     # 1. Fallback Phase: CTS Trail (repurposed psz_was_above flag)
     if st.psz_was_above:
@@ -63,7 +63,7 @@ def exit_prt_slope_zero_cross(
             st.fas_crossed_zero = True
         else:
             # Extreme Bottom Guard: if at the absolute floor, grant double time to recover
-            if fas <= -1.0:
+            if fas <= -0.9:
                 st.extreme_bottom_extension = True
             
             effective_timeout = cfg.cwvap_timeout_bars
