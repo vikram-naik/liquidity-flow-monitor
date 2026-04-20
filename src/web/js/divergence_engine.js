@@ -167,7 +167,7 @@
         var deliveryVol = [];
         globalTimeToIndex = {};
         var pZ = [], rZ = [], cRaw = [], cSmooth = [];
-        var rdvArr = [], cwcArr = [], rdvConsArr = [], atrArr = [], distArr = [], delPctArr = [], pddArr = [], prtArr = [], prtSlopeArr = [], prtAccelArr = [], fasArr = [], entrySignalProbArr = [];
+        var rdvArr = [], cwcArr = [], rdvConsArr = [], atrArr = [], distArr = [], delPctArr = [], pddArr = [], prtArr = [], prtSlopeArr = [], prtAccelArr = [], fasArr = [], fasBuyThreshArr = [], fasSellThreshArr = [], entrySignalProbArr = [];
         // NextGen gate series
         var ctsSlopeArr = [], ctsAccelArr = [], ctsAccelThreshArr = [], ctsBuyThreshArr = [], ctsSellThreshArr = [];
         var cdvlArr = [], vel60Arr = [], pdd120Arr = [], pdd120ThreshArr = [];
@@ -220,6 +220,8 @@
             if (r.prt_slope != null) prtSlopeArr.push({ time: t, value: r.prt_slope }); else prtSlopeArr.push({ time: t });
             if (r.prt_accel != null) prtAccelArr.push({ time: t, value: r.prt_accel }); else prtAccelArr.push({ time: t });
             if (r.fas != null) fasArr.push({ time: t, value: r.fas }); else fasArr.push({ time: t });
+            if (r.fas_buy_threshold != null) fasBuyThreshArr.push({ time: t, value: r.fas_buy_threshold }); else fasBuyThreshArr.push({ time: t });
+            if (r.fas_sell_threshold != null) fasSellThreshArr.push({ time: t, value: r.fas_sell_threshold }); else fasSellThreshArr.push({ time: t });
             if (r.entry_signal_prob != null) entrySignalProbArr.push({ time: t, value: r.entry_signal_prob }); else entrySignalProbArr.push({ time: t });
 
             // PSZ
@@ -436,7 +438,15 @@
                 var sFasZ = c.addSeries(LC.LineSeries, { color: "rgba(255, 255, 255, 0.5)", lineWidth: 1, lineStyle: 2, lastValueVisible: false, priceLineVisible: false });
                 sFasZ.setData(fasArr.map(d => ({ time: d.time, value: 0 })));
 
+                var sFasBuy = c.addSeries(LC.LineSeries, { color: "#42b883", lineWidth: 1, lineStyle: 2, lastValueVisible: false, priceLineVisible: false });
+                sFasBuy.setData(fasBuyThreshArr);
+
+                var sFasSell = c.addSeries(LC.LineSeries, { color: "#ef5350", lineWidth: 1, lineStyle: 2, lastValueVisible: false, priceLineVisible: false });
+                sFasSell.setData(fasSellThreshArr);
+
                 legConfig.push({ api: sFas, label: "FAS", col: "fas", color: "#ffb74d" });
+                legConfig.push({ api: sFasBuy, label: "Buy Thresh (P10)", col: "fas_buy_threshold", color: "#42b883", dashed: true });
+                legConfig.push({ api: sFasSell, label: "Sell Thresh (P90)", col: "fas_sell_threshold", color: "#ef5350", dashed: true });
             } else if (panelKey === "entry_signal_prob") {
                 // Entry Signal Probability (-1, 0, 1)
                 var pScale = c.priceScale("right");

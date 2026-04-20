@@ -184,6 +184,7 @@ class FasZeroCrossEntryConfig:
     enabled: bool = True
     lookback_size: int = 10
     sensitivity: float = 0.15
+    psz_v_min: float = 0.0
     min_score: float = 9.9
     telemetry_enabled: bool = False
 
@@ -204,7 +205,7 @@ class FasZeroCrossExitConfig:
 class FasFloorReversionEntryConfig:
     """Path 10: FAS Floor Reversion — FAS deep floor with extreme exhaustion."""
     enabled: bool = True
-    fas_max: float = -1.15
+    fas_max: float = -1.10
     prt_slope_min: float = 0.0
     cts_max: float = -0.99
     cts_slope_max: float = 0.0

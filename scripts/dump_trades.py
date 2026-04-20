@@ -60,6 +60,11 @@ def main():
         all_trades.extend(run_period(symbols, "2024-01-01", test_end,
                                      entry_cfg, exit_cfg, "TEST", signal))
 
+    # Initialize signal day info defaults
+    for t in all_trades:
+        t.signal_date = t.entry_date
+        t.psz_v_signal = 0.0
+
     # Filter by entry type
     if args.entry:
         tag_val = ENTRY_ALIASES[args.entry]
@@ -73,9 +78,9 @@ def main():
     if args.reason:
         filtered = [t for t in filtered if args.reason.lower() in (t.exit_reason.value if hasattr(t.exit_reason, "value") else str(t.exit_reason)).lower()]
 
-    # Calculate MFE logic (in-script computation)
+    # Calculate MFE logic and signal context (in-script computation)
     if filtered:
-        print(f"\nCalculating MFE for {len(filtered)} trades...")
+        print(f"\nCalculating MFE and Signal Context for {len(filtered)} trades...")
         by_sym = {}
         for t in filtered:
             by_sym.setdefault(t.symbol, []).append(t)
@@ -86,6 +91,13 @@ def main():
                 res = engine.run()
                 ledger = res.ledger
                 for t in trades:
+                    # Signal was on bar before entry
+                    sig_idx = t.entry_idx - 1
+                    if sig_idx >= 0 and sig_idx < len(ledger):
+                        sig_row = ledger.iloc[sig_idx]
+                        t.signal_date = str(sig_row["date"])[:10]
+                        t.psz_v_signal = sig_row.get("psz_v", 0.0)
+
                     # Trade active from entry_idx to entry_idx + duration
                     # We look for max high from the bar after entry until exit
                     start_idx = t.entry_idx
@@ -95,11 +107,11 @@ def main():
                         max_high = trade_period["high"].max()
                         t.mfe_pct = (max_high / t.entry_price - 1) * 100
             except Exception as e:
-                print(f"  Error calculating MFE for {sym}: {e}")
+                print(f"  Error calculating metrics for {sym}: {e}")
 
     # Sort
     sort_map = {
-        "entry_date": lambda t: t.entry_date,
+        "entry_date": lambda t: t.signal_date,
         "pnl": lambda t: t.pnl_pct,
         "symbol": lambda t: t.symbol,
         "mfe": lambda t: t.mfe_pct,
@@ -112,14 +124,14 @@ def main():
 
     # Print
     print(f"\n--- {label} TRADES: STUDY REPORT ({args.period.upper()}) ---")
-    header = (f"{'#':>3} | {'Symbol':<12} | {'Date':<10} | {'PnL%':>7} | {'MFE%':>7} | "
-              f"{'SCORE':>5} | {'Exit Reason'}")
+    header = (f"{'#':>3} | {'Symbol':<12} | {'Sig Date':<10} | {'PnL%':>7} | {'MFE%':>7} | "
+              f"{'PSZ_v':>7} | {'SCORE':>5} | {'Exit Reason'}")
     print(header)
     print("-" * len(header))
     for i, t in enumerate(filtered, 1):
         reason = t.exit_reason.value if hasattr(t.exit_reason, "value") else str(t.exit_reason)
-        print(f"{i:>3} | {t.symbol:<12} | {t.entry_date:<10} | {t.pnl_pct:>7.2f} | "
-              f"{t.mfe_pct:>7.2f} | {t.conviction_score:>+5} | {reason}")
+        print(f"{i:>3} | {t.symbol:<12} | {t.signal_date:<10} | {t.pnl_pct:>7.2f} | "
+              f"{t.mfe_pct:>7.2f} | {t.psz_v_signal:>7.3f} | {t.conviction_score:>+5} | {reason}")
 
 
 if __name__ == "__main__":

@@ -81,7 +81,13 @@ def check_fas_zero_cross(
         evaluate_gate("Engine Strength", True, "accel is flat (threshold bypassed)")
 
     # Gate 5: Minimum Thrust Guard (Filter sputtering engines)
+    # Even if flat, it must be > 0.01 to be considered 'active'
     evaluate_gate("Minimum Thrust", cts_accel > 0.01, f"cts_accel {cts_accel:.4f} <= 0.01")
+
+    # Gate 5.1: Momentum Guard (Filter distribution)
+    psz_v = row.get("psz_v", np.nan)
+    psz_v_prev = prev_row.get("psz_v", np.nan)
+    evaluate_gate("Momentum Guard", not np.isnan(psz_v) and psz_v > cfg.psz_v_min, f"psz_v {psz_v:.4f} <= {cfg.psz_v_min}")
 
     # Gate 6: Secular Crash Guard (Filter >20% drawdowns)
     dist_high_252 = row.get("dist_high_252", np.nan)
@@ -116,17 +122,20 @@ def check_fas_zero_cross(
     if cwc_slope > 0:
         tracker.add("Cash Coherence", 3.0, f"CWC slope positive ({cwc_slope:.4f})")
 
-    if cts_accel > prev_cts_accel and not accel_flat:
-        tracker.add("Engine Rising", 5.0, "Acceleration improving")
+    if cts_accel > prev_cts_accel:
+        tracker.add("Engine Rising", 5.0, f"Acceleration improving ({prev_cts_accel:.4f} -> {cts_accel:.4f})")
     
-    if abs_cts < prev_abs_cts and not abs_cts_flat:
-        tracker.add("Structural Absorption", 3.0, "Institutions returning to neutral")
+    if abs_cts < prev_abs_cts:
+        tracker.add("Structural Absorption", 3.0, f"Institutions returning to neutral ({prev_abs_cts:.4f} -> {abs_cts:.4f})")
 
     # PSZ Velocity (Rubber-band snapback effect)
-    psz_v = row.get("psz_v", np.nan)
     if not np.isnan(psz_v):
         if psz_v <= -0.05:
-            tracker.add("Deep Snapback", 4.0, f"psz_v deep negative ({psz_v:.3f})")
+            # Only reward if it's rising (reversing from deep exhaustion)
+            if psz_v > psz_v_prev:
+                tracker.add("Deep Snapback", 4.0, f"psz_v deep negative and rising ({psz_v_prev:.3f} -> {psz_v:.3f})")
+            else:
+                tracker.add("Falling Momentum (Penalty)", -4.0, f"psz_v falling in deep exhaustion ({psz_v_prev:.3f} -> {psz_v:.3f})")
         elif psz_v > 0.1:
             tracker.add("Momentum Breakout", 2.0, f"psz_v strong positive ({psz_v:.3f})")
 

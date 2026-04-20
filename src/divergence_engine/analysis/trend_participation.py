@@ -214,6 +214,15 @@ def compute_trend_participation(
             window=psz_threshold_window, min_periods=min_periods
         ).quantile(0.90).fillna(0.0).round(4)
 
+    if "fas" in df.columns:
+        fas_series = df["fas"]
+        df["fas_buy_threshold"] = fas_series.rolling(
+            window=psz_threshold_window, min_periods=min_periods
+        ).quantile(0.10).fillna(0.0).round(4)
+        df["fas_sell_threshold"] = fas_series.rolling(
+            window=psz_threshold_window, min_periods=min_periods
+        ).quantile(0.90).fillna(0.0).round(4)
+
     if "cts_accel" in df.columns:
         df["cts_accel_threshold"] = df["cts_accel"].rolling(
             window=psz_threshold_window, min_periods=min_periods
