@@ -154,5 +154,6 @@ def check_institutional_floor(
         [f"psz={psz:.2f}", f"cwvap_dist={cwvap_dist:.1f}%", f"cts={cts:.2f}"],
     )
     meta["conv_score"] = conv_score
+    meta["score"] = float(intensity_int)
     meta["conv_parts"] = "+".join(conv_parts)
     return True, intensity_int, meta

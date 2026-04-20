@@ -12,9 +12,6 @@ import argparse
 import sys
 from pathlib import Path
 
-import pandas as pd
-import numpy as np
-
 sys.path.append(str(Path(__file__).parent.parent.resolve()))
 
 from scripts.walk_forward import run_period, get_watchlist_symbols, today_str
@@ -27,8 +24,10 @@ ENTRY_ALIASES = {
     "slope-bottom": EntryTag.SLOPE_BOTTOM.value,
     "inst-floor":   EntryTag.INSTITUTIONAL_FLOOR.value,
     "accel-cross":  EntryTag.ACCEL.value,
-    "aceel-0-cross":     EntryTag.ACCEL_ZERO_CROSS.value,
+    "accel-0-cross":     EntryTag.ACCEL_ZERO_CROSS.value,
     "prt-slope-zero-cross": EntryTag.PRT_SLOPE_ZERO_CROSS.value,
+    "fas-zero-cross": EntryTag.FAS_ZERO_CROSS.value,
+    "fas-floor-reversion": EntryTag.FAS_FLOOR_REVERSION.value,
 }
 
 def main():
@@ -74,10 +73,9 @@ def main():
     if args.reason:
         filtered = [t for t in filtered if args.reason.lower() in (t.exit_reason.value if hasattr(t.exit_reason, "value") else str(t.exit_reason)).lower()]
 
-    # Enrich with Signal Day data for study
-    enriched_data = {}
+    # Calculate MFE logic (in-script computation)
     if filtered:
-        print(f"\nEnriching {len(filtered)} trades with Signal Day data...")
+        print(f"\nCalculating MFE for {len(filtered)} trades...")
         by_sym = {}
         for t in filtered:
             by_sym.setdefault(t.symbol, []).append(t)
@@ -88,30 +86,16 @@ def main():
                 res = engine.run()
                 ledger = res.ledger
                 for t in trades:
-                    sig_idx = t.entry_idx - 1
-                    if sig_idx >= 5:
-                        row = ledger.iloc[sig_idx]
-                        prev_row = ledger.iloc[sig_idx - 1]
-                        
-                        is_above_bt = row.get("cts", 0.0) >= row.get("cts_buy_threshold", 0.0)
-                        acc_rise = row.get("cts_accel", 0.0) > prev_row.get("cts_accel", 0.0)
-                        acc_str = row.get("cts_accel", 0.0) > row.get("cts_accel_threshold", 0.0)
-                        slp_rise = row.get("cts_slope", 0.0) > prev_row.get("cts_slope", 0.0)
-                        psz_v = row.get("psz_v", 0.0)
-
-                        # Use actual conviction score instead of calculating a simplified one
-                        score = t.conviction_score
-
-                        enriched_data[id(t)] = {
-                            "study_score": score,
-                            "above_bt": is_above_bt,
-                            "slp_rise": slp_rise,
-                            "acc_rise": acc_rise,
-                            "acc_str": acc_str,
-                            "psz_v": psz_v 
-                        }
+                    # Trade active from entry_idx to entry_idx + duration
+                    # We look for max high from the bar after entry until exit
+                    start_idx = t.entry_idx
+                    end_idx = min(t.entry_idx + t.duration, len(ledger) - 1)
+                    trade_period = ledger.iloc[start_idx : end_idx + 1]
+                    if not trade_period.empty:
+                        max_high = trade_period["high"].max()
+                        t.mfe_pct = (max_high / t.entry_price - 1) * 100
             except Exception as e:
-                print(f"  Error enriching {sym}: {e}")
+                print(f"  Error calculating MFE for {sym}: {e}")
 
     # Sort
     sort_map = {
@@ -121,32 +105,21 @@ def main():
         "mfe": lambda t: t.mfe_pct,
         "mae": lambda t: t.mae_pct,
         "duration": lambda t: t.duration,
-        "score": lambda t: enriched_data.get(id(t), {}).get("study_score", 0),
+        "score": lambda t: t.conviction_score,
     }
     reverse = args.sort in ("pnl", "mfe", "score")
     filtered.sort(key=sort_map[args.sort], reverse=reverse)
 
     # Print
     print(f"\n--- {label} TRADES: STUDY REPORT ({args.period.upper()}) ---")
-    header = (f"{'#':>3} | {'Symbol':<12} | {'Date':<10} | {'PnL%':>7} | "
-              f"{'SCORE':>5} | {'CT>=BT'} | {'SLP^'} | {'ACC^'} | {'STR^'} | {'Exit Reason'}")
+    header = (f"{'#':>3} | {'Symbol':<12} | {'Date':<10} | {'PnL%':>7} | {'MFE%':>7} | "
+              f"{'SCORE':>5} | {'Exit Reason'}")
     print(header)
     print("-" * len(header))
     for i, t in enumerate(filtered, 1):
-        extra = enriched_data.get(id(t), {
-            "study_score": 0, "above_bt": False, "slp_rise": False, 
-            "acc_rise": False, "acc_str": False, "psz_v": 0
-        })
-        
-        above_bt = "YES" if extra["above_bt"] else "no"
-        slp_rise = "YES" if extra["slp_rise"] else "no"
-        acc_rise = "YES" if extra["acc_rise"] else "no"
-        acc_strong = "YES" if extra["acc_str"] else "no"
-        psz_v = extra["psz_v"]
         reason = t.exit_reason.value if hasattr(t.exit_reason, "value") else str(t.exit_reason)
-        
         print(f"{i:>3} | {t.symbol:<12} | {t.entry_date:<10} | {t.pnl_pct:>7.2f} | "
-              f"{extra['study_score']:>+5} | {above_bt:<6} | {slp_rise:<4} | {acc_rise:<4} | {acc_strong:<4} | {reason} | {psz_v}")
+              f"{t.mfe_pct:>7.2f} | {t.conviction_score:>+5} | {reason}")
 
 
 if __name__ == "__main__":

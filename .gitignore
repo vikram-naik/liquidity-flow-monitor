@@ -54,8 +54,6 @@ nesco_final_report.txt
 results_v2.log
 results.log
 scripts/cei_crossing_validation_weekly.json
-.gitignore
-.gitignore
 *analysis.png
 RELIANCE_150_savgol_psz_analysis.png
 output
@@ -113,3 +111,5 @@ scripts/test*.py
 
 wf_output.txt
 STUDY_CTS_ACCEL_SUMMARY.md
+node_modules/
+node_modules/*.*

@@ -75,5 +75,6 @@ def check_accel_zero_cross(
 
     # All gates passed, calculate intensity
     intensity, meta = compute_intensity(row, prev_row, EntryTag.ACCEL_ZERO_CROSS)
+    meta["score"] = float(intensity)
 
     return True, intensity, meta

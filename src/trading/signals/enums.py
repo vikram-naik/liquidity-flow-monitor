@@ -9,6 +9,7 @@ class EntryTag(str, Enum):
     ACCEL_ZERO_CROSS = "SavgolCTS Accel-Zero-Cross"
     PRT_SLOPE_ZERO_CROSS = "SavgolCTS PRT-Slope-Zero-Cross"
     FAS_ZERO_CROSS = "SavgolCTS FAS-Zero-Cross"
+    FAS_FLOOR_REVERSION = "SavgolCTS FAS-Floor-Reversion"
     CTS_BT_FLOOR = "SavgolCTS CTS-BT-Floor"  # Legacy
 
     # Deprecated — retained for historical trade log compatibility.
@@ -39,6 +40,9 @@ class ExitReason(str, Enum):
     SLOPE_CYCLE = "CTS slope cycle complete"
     PNL_CAP = "PnL cap hit"
     FAS_FLOOR = "FAS floor breach"
+    DUAL_ENGINE_FAILURE = "Dual engine failure (CTS & FAS)"
+    FAS_CLIMAX = "FAS climax overextension (> 1.0)"
+    ALPHA_RELEASE_EXIT = "Alpha release (momentum decay post-profit)"
     
     # Universal / Generic
     END_OF_DATA = "End of Data (Open Trade)"

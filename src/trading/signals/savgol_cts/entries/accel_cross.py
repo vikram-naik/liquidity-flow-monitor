@@ -166,5 +166,6 @@ def check_entry_accel_cross(
         extra_parts=extra_parts, 
         override_score=float(intensity_pts)
     )
+    meta["score"] = float(intensity_pts)
     
     return True, intensity_int, meta

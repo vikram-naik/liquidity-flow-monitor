@@ -88,10 +88,25 @@ def check_fas_zero_cross(
     if not np.isnan(dist_high_252):
         evaluate_gate("Secular Crash Guard", dist_high_252 >= -20.0, f"dist_high {dist_high_252:.2f}% < -20%")
 
+    # Gate 7: Coherence Gate (High Thrust Only)
+    is_high_thrust = fas > 0.3
+    if is_high_thrust:
+        coherence = row.get("coherence", np.nan)
+        if not np.isnan(coherence):
+            rounded_coherence = round(coherence, 1)
+            evaluate_gate("Coherence Gate", rounded_coherence >= 0.5, f"high-thrust rounded coherence {rounded_coherence:.1f} ({coherence:.3f}) < 0.5")
+
     if first_fail_reason is not None and not telemetry_enabled:
         return False, 0, {"reason": first_fail_reason}
 
     # Optional Scoring Bonuses & Penalties
+    price_slope_z = row.get("price_slope_z", np.nan)
+    if not np.isnan(price_slope_z):
+        if price_slope_z >= 0:
+            tracker.add("Price Exhaustion (Penalty)", -10.0, f"psz {price_slope_z:.4f} is positive")
+        else:
+            tracker.add("Price Exhaustion (Bonus)", 2.0, f"psz {price_slope_z:.4f} is negative")
+
     abs_cts_res = is_flattish_line_adaptive(abs_cts, prev_abs_cts, prev_abs_cts_1, abs_cts_lb, sensitivity=cfg.sensitivity)
     abs_cts_flat = abs_cts_res["is_valid"]
     
@@ -126,4 +141,5 @@ def check_fas_zero_cross(
 
     intensity, meta = compute_intensity(row, prev_row, EntryTag.FAS_ZERO_CROSS, override_score=tracker.total)
     meta["path_score"] = tracker.total
+    meta["score"] = tracker.total
     return True, intensity, meta

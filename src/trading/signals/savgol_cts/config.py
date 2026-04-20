@@ -20,7 +20,7 @@ from src.trading.signals.enums import ExitReason
 @dataclass
 class SlopeBottomEntryConfig:
     """Path 5: Slope Bottom — cts_slope rising from deep negative in downtrend."""
-    enabled: bool = True
+    enabled: bool = False
     slope_threshold: float = -0.1
     slope_delta_min: float = 0.002
     slope_delta_max: float = 0.02
@@ -157,7 +157,7 @@ class AccelZeroCrossExitConfig:
 @dataclass
 class PrtSlopeZeroCrossEntryConfig:
     """Path: PRT Slope Zero Cross — PRT slope crosses above zero with FAS alignment."""
-    enabled: bool = True
+    enabled: bool = False
     prt_slope_min: float = 0.04
     fas_min: float = -1.5
     fas_max: float = 0.0
@@ -184,16 +184,38 @@ class FasZeroCrossEntryConfig:
     enabled: bool = True
     lookback_size: int = 10
     sensitivity: float = 0.15
-    min_score: float = 10.0
+    min_score: float = 9.9
     telemetry_enabled: bool = False
 
 
 @dataclass
 class FasZeroCrossExitConfig:
-    """FAS Zero Cross exit: Phase-Shift Exit (Anchor + CTS Trail)."""
+    """FAS Zero Cross exit: Persistent Dual-Exhaustion Logic."""
     enabled: bool = True
+    alpha_release_threshold_pct: float = 2.5
+    fas_climax_threshold: float = 1.0
+    fas_climax_tolerance: float = 0.1
+    cts_st_tolerance: float = 0.05
     anchor_bars: int = 5
     anchor_fas_floor: float = -0.3
+
+
+@dataclass
+class FasFloorReversionEntryConfig:
+    """Path 10: FAS Floor Reversion — FAS deep floor with extreme exhaustion."""
+    enabled: bool = True
+    fas_max: float = -1.15
+    prt_slope_min: float = 0.0
+    cts_max: float = -0.99
+    cts_slope_max: float = 0.0
+
+
+@dataclass
+class FasFloorReversionExitConfig:
+    """FAS Floor Reversion exit: CTS trailing (ST-cross down)."""
+    enabled: bool = True
+    hard_stop_enabled: bool = True
+    hard_stop_pct: float = 8.0
 
 
 # ---------------------------------------------------------------------------
@@ -218,6 +240,7 @@ class SavgolCTSEntryConfig(BaseEntryConfig):
     accel_zero_cross: AccelZeroCrossEntryConfig = field(default_factory=AccelZeroCrossEntryConfig)
     prt_slope_zero_cross: PrtSlopeZeroCrossEntryConfig = field(default_factory=PrtSlopeZeroCrossEntryConfig)
     fas_zero_cross: FasZeroCrossEntryConfig = field(default_factory=FasZeroCrossEntryConfig)
+    fas_floor_reversion: FasFloorReversionEntryConfig = field(default_factory=FasFloorReversionEntryConfig)
 
 
 # ---------------------------------------------------------------------------
@@ -248,4 +271,5 @@ class SavgolCTSExitConfig(BaseExitConfig):
     accel_zero_cross: AccelZeroCrossExitConfig = field(default_factory=AccelZeroCrossExitConfig)
     prt_slope_zero_cross: PrtSlopeZeroCrossExitConfig = field(default_factory=PrtSlopeZeroCrossExitConfig)
     fas_zero_cross: FasZeroCrossExitConfig = field(default_factory=FasZeroCrossExitConfig)
+    fas_floor_reversion: FasFloorReversionExitConfig = field(default_factory=FasFloorReversionExitConfig)
     cwvap_guard: CwvapGuardConfig = field(default_factory=CwvapGuardConfig)

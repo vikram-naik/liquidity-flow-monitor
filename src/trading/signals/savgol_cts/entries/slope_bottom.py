@@ -138,4 +138,5 @@ def check_slope_bottom(
         row, prev_row, EntryTag.SLOPE_BOTTOM,
         [f"slope={cs:.4f}", f"delta={slope_delta:.4f}", f"cwvap_dist={cwvap_dist:.1f}%"],
     )
+    meta["score"] = float(intensity_int)
     return True, intensity_int, meta

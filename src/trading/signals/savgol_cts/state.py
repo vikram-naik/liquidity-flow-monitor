@@ -23,6 +23,9 @@ class SavgolCTSExitState:
     prt_exit_suppressed: bool = False  # Track if the prt exit was suppressed.
     fas_crossed_zero: bool = False   # Track if the prt crosses zero
     extreme_bottom_extension: bool = False # Track if trade hit absolute floor (grant 2x timeout)
+    recovery_passed: bool = False  # Track if either indicator has crossed above zero
+    cts_exhausted: bool = False    # Track if CTS has exhausted post-recovery
+    fas_exhausted: bool = False    # Track if FAS has exhausted post-recovery
 
     @classmethod
     def from_int(cls, val: int) -> SavgolCTSExitState:
@@ -37,11 +40,17 @@ class SavgolCTSExitState:
             prt_exit_suppressed=bool((val >> 7) & 1),
             fas_crossed_zero=bool((val >> 8) & 1),
             extreme_bottom_extension=bool((val >> 9) & 1),
+            recovery_passed=bool((val >> 10) & 1),
+            cts_exhausted=bool((val >> 11) & 1),
+            fas_exhausted=bool((val >> 12) & 1),
         )
 
     def to_int(self) -> int:
         return (
-            (int(self.extreme_bottom_extension) << 9)
+            (int(self.fas_exhausted) << 12)
+            | (int(self.cts_exhausted) << 11)
+            | (int(self.recovery_passed) << 10)
+            | (int(self.extreme_bottom_extension) << 9)
             | (int(self.fas_crossed_zero) << 8)
             | (int(self.prt_exit_suppressed) << 7) 
             | (int(self.price_above_cwvap) << 6)

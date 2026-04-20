@@ -103,4 +103,5 @@ def check_range_reversion(
         [f"rp252={rp252:.2f}", f"rw10_atrs={rw10_in_atrs:.2f}", f"cts={cts:.2f}"],
     )
     meta["conv_score"] = score
+    meta["score"] = float(intensity_int)
     return True, intensity_int, meta

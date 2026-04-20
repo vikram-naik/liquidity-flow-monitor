@@ -112,6 +112,21 @@ def compute_intensity(
             # CTS Slope: -0.1 -> 0 pts, -0.2 -> 25 pts
             path_score += _interp(cs, -0.1, -0.2, 0.0, 25.0)
 
+    elif tag == EntryTag.FAS_FLOOR_REVERSION:
+        # FAS Floor Reversion is an extreme bottom signal
+        # 1. Depth of FAS: -1.10 -> 0 pts, -1.5 -> 25 pts
+        fas = row.get("fas", np.nan)
+        if not np.isnan(fas):
+            path_score += _interp(fas, -1.10, -1.50, 0.0, 25.0)
+        
+        # 2. PRT Slope inflection: 0.0 -> 0 pts, 0.05 -> 25 pts
+        prt_s = row.get("prt_slope", np.nan)
+        if not np.isnan(prt_s):
+            path_score += _interp(prt_s, 0.0, 0.05, 0.0, 25.0)
+            
+        # 3. Base intensity: start at 40 (instead of 20) for this high-conviction setup
+        intensity = 40.0
+
     if override_score is None:
         intensity += path_score
     
