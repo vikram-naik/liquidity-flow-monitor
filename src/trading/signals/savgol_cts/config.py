@@ -185,6 +185,8 @@ class FasZeroCrossEntryConfig:
     lookback_size: int = 10
     sensitivity: float = 0.15
     psz_v_min: float = 0.0
+    pdd_min: float = 0.3
+    coherence_min: float = 0.4
     min_score: float = 9.9
     telemetry_enabled: bool = False
 
@@ -194,6 +196,8 @@ class FasZeroCrossExitConfig:
     """FAS Zero Cross exit: Persistent Dual-Exhaustion Logic."""
     enabled: bool = True
     alpha_release_threshold_pct: float = 2.5
+    exhaustion_trail_threshold: float = 5.0
+    fas_floor_breach_threshold: float = 0.0
     fas_climax_threshold: float = 1.0
     fas_climax_tolerance: float = 0.1
     cts_st_tolerance: float = 0.05
@@ -205,7 +209,7 @@ class FasZeroCrossExitConfig:
 class FasFloorReversionEntryConfig:
     """Path 10: FAS Floor Reversion — FAS deep floor with extreme exhaustion."""
     enabled: bool = True
-    fas_max: float = -1.10
+    fas_max: float = -1.15
     prt_slope_min: float = 0.0
     cts_max: float = -0.99
     cts_slope_max: float = 0.0
@@ -214,6 +218,23 @@ class FasFloorReversionEntryConfig:
 @dataclass
 class FasFloorReversionExitConfig:
     """FAS Floor Reversion exit: CTS trailing (ST-cross down)."""
+    enabled: bool = True
+    hard_stop_enabled: bool = True
+    hard_stop_pct: float = 8.0
+
+
+@dataclass
+class FasBuyCrossEntryConfig:
+    """Path 11: FAS Buy Cross — FAS crosses BT while CTS is in deep floor."""
+    enabled: bool = True
+    cts_max: float = -0.98
+    cts_bt_max: float = -0.98
+    min_score: float = 15.0
+
+
+@dataclass
+class FasBuyCrossExitConfig:
+    """FAS Buy Cross exit: Trail CTS or FAS, whichever crosses ST from above first."""
     enabled: bool = True
     hard_stop_enabled: bool = True
     hard_stop_pct: float = 8.0
@@ -242,6 +263,7 @@ class SavgolCTSEntryConfig(BaseEntryConfig):
     prt_slope_zero_cross: PrtSlopeZeroCrossEntryConfig = field(default_factory=PrtSlopeZeroCrossEntryConfig)
     fas_zero_cross: FasZeroCrossEntryConfig = field(default_factory=FasZeroCrossEntryConfig)
     fas_floor_reversion: FasFloorReversionEntryConfig = field(default_factory=FasFloorReversionEntryConfig)
+    fas_buy_cross: FasBuyCrossEntryConfig = field(default_factory=FasBuyCrossEntryConfig)
 
 
 # ---------------------------------------------------------------------------
@@ -273,4 +295,5 @@ class SavgolCTSExitConfig(BaseExitConfig):
     prt_slope_zero_cross: PrtSlopeZeroCrossExitConfig = field(default_factory=PrtSlopeZeroCrossExitConfig)
     fas_zero_cross: FasZeroCrossExitConfig = field(default_factory=FasZeroCrossExitConfig)
     fas_floor_reversion: FasFloorReversionExitConfig = field(default_factory=FasFloorReversionExitConfig)
+    fas_buy_cross: FasBuyCrossExitConfig = field(default_factory=FasBuyCrossExitConfig)
     cwvap_guard: CwvapGuardConfig = field(default_factory=CwvapGuardConfig)

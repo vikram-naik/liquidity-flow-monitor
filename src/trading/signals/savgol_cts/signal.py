@@ -22,6 +22,7 @@ from src.trading.signals.savgol_cts.entries.accel_zero_cross import check_accel_
 from src.trading.signals.savgol_cts.entries.prt_slope_zero_cross import check_prt_slope_zero_cross
 from src.trading.signals.savgol_cts.entries.fas_zero_cross import check_fas_zero_cross
 from src.trading.signals.savgol_cts.entries.fas_floor_reversion import check_fas_floor_reversion
+from src.trading.signals.savgol_cts.entries.fas_buy_cross import check_fas_buy_cross
 
 # Exit path checkers
 from src.trading.signals.savgol_cts.exits.cwvap_guard import apply_cwvap_guard
@@ -33,6 +34,7 @@ from src.trading.signals.savgol_cts.exits.accel_zero_cross import exit_accel_zer
 from src.trading.signals.savgol_cts.exits.prt_slope_zero_cross import exit_prt_slope_zero_cross
 from src.trading.signals.savgol_cts.exits.fas_zero_cross import exit_fas_zero_cross
 from src.trading.signals.savgol_cts.exits.fas_floor_reversion import exit_fas_floor_reversion
+from src.trading.signals.savgol_cts.exits.fas_buy_cross import exit_fas_buy_cross
 
 
 class SavgolCTSSignal(SignalInterface):
@@ -75,6 +77,11 @@ class SavgolCTSSignal(SignalInterface):
         passed, intensity, meta = check_fas_floor_reversion(row, prev_row, cfg.fas_floor_reversion, records, idx)
         if passed: return True, intensity, meta
         if cfg.fas_floor_reversion.enabled: rejections.append(f"FASFloorReversion: {meta.get('reason', 'Failed')}")
+
+        # Path 11: FAS Buy Cross
+        passed, intensity, meta = check_fas_buy_cross(row, prev_row, cfg.fas_buy_cross, records, idx)
+        if passed: return True, intensity, meta
+        if cfg.fas_buy_cross.enabled: rejections.append(f"FASBuyCross: {meta.get('reason', 'Failed')}")
 
         # Accel Cross
         passed, intensity, meta = check_entry_accel_cross(row, prev_row, cfg.accel_cross, records, idx)
@@ -151,6 +158,8 @@ class SavgolCTSSignal(SignalInterface):
             exit_status = exit_fas_zero_cross(row, prev_row, trade, peak_close, bars_held, updated_state_val, cfg.fas_zero_cross, records, idx)
         elif tag == EntryTag.FAS_FLOOR_REVERSION.value:
             exit_status = exit_fas_floor_reversion(row, prev_row, trade, peak_close, bars_held, updated_state_val, cfg.fas_floor_reversion, records, idx)
+        elif tag == EntryTag.FAS_BUY_CROSS.value:
+            exit_status = exit_fas_buy_cross(row, prev_row, trade, peak_close, bars_held, updated_state_val, cfg.fas_buy_cross, records, idx)
         else:
             exit_status = (None, updated_state_val)
 
@@ -164,7 +173,7 @@ class SavgolCTSSignal(SignalInterface):
                     res = ExitReason.ST_CROSS
 
         # Mandatory Exit bypass for bespoke paths
-        bespoke_tags = [EntryTag.SLOPE_BOTTOM, EntryTag.ACCEL, EntryTag.INSTITUTIONAL_FLOOR, EntryTag.RANGE_REVERSION, EntryTag.ACCEL_ZERO_CROSS, EntryTag.PRT_SLOPE_ZERO_CROSS, EntryTag.FAS_ZERO_CROSS, EntryTag.FAS_FLOOR_REVERSION]
+        bespoke_tags = [EntryTag.SLOPE_BOTTOM, EntryTag.ACCEL, EntryTag.INSTITUTIONAL_FLOOR, EntryTag.RANGE_REVERSION, EntryTag.ACCEL_ZERO_CROSS, EntryTag.PRT_SLOPE_ZERO_CROSS, EntryTag.FAS_ZERO_CROSS, EntryTag.FAS_FLOOR_REVERSION, EntryTag.FAS_BUY_CROSS]
         is_bespoke = any(tag == t.value for t in bespoke_tags)
         
         if res == ExitReason.BAR3_STOP or is_bespoke:

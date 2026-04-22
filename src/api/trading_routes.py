@@ -175,6 +175,15 @@ def reject_position(position_id: int, body: RejectRequest = RejectRequest()):
     return {"status": "rejected", "id": position_id}
 
 
+@router.post("/de/api/trading/positions/{position_id}/exit")
+def exit_position(position_id: int):
+    """Mark an open position for manual exit."""
+    ok = repo.mark_manual_exit(position_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Position not found or not in 'open' status")
+    return {"status": "pending_exit", "id": position_id}
+
+
 @router.post("/de/api/trading/positions/approve-all")
 def approve_all_positions():
     """Approve all proposed positions at once."""
@@ -183,6 +192,20 @@ def approve_all_positions():
 
 
 # ── Scan ─────────────────────────────────────────────────────────────────────
+
+@router.post("/de/api/trading/refresh")
+def trigger_refresh():
+    """Trigger a P&L refresh for open positions synchronously."""
+    from src.trading.scanner import Scanner
+    try:
+        scanner = Scanner()
+        scanner.refresh_positions()
+        return {"status": "ok"}
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error("Refresh failed: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @router.post("/de/api/trading/scan")
 def trigger_scan(dry_run: bool = Query(False)):

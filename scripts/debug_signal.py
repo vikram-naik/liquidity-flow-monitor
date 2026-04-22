@@ -28,9 +28,10 @@ def debug_entry(sym, date):
     prev = df.iloc[i-1].to_dict()
     
     print(f"--- Debugging {sym} on {date} ---")
+    print(f"CTS: {row.get('cts')}, CTS_BT: {row.get('cts_buy_threshold')}")
+    print(f"CTS Accel: {row.get('cts_accel')}, Accel Threshold: {row.get('cts_accel_threshold')}")
+    print(f"PSZ V: {row.get('psz_v')}, Prev PSZ V: {prev.get('psz_v')}")
     ok, intensity, meta = signal.check_entry(row, prev, cfg, df.to_dict('records'), i)
     print(f"Result: {ok}, Intensity: {intensity}, Meta: {meta}")
 
-debug_entry("ALKEM", "2026-01-01")
-debug_entry("COLPAL", "2026-01-01")
-debug_entry("HCLTECH", "2026-01-05")
+debug_entry("TRENT", "2025-01-31")

@@ -60,7 +60,7 @@ def exit_fas_zero_cross(
 
     # FAS Exhaustion
     if not st.fas_exhausted:
-        floor_breach = not np.isnan(prev_fas) and not np.isnan(fas) and prev_fas >= -0.1 and fas < -0.1
+        floor_breach = not np.isnan(prev_fas) and not np.isnan(fas) and prev_fas >= cfg.fas_floor_breach_threshold and fas < cfg.fas_floor_breach_threshold
         climax_latch = not np.isnan(fas) and fas >= (cfg.fas_climax_threshold - cfg.fas_climax_tolerance)
         if floor_breach or climax_latch:
             st.fas_exhausted = True
@@ -75,9 +75,13 @@ def exit_fas_zero_cross(
     if trade and trade.entry_price > 0 and not np.isnan(close):
         current_pnl = (close / trade.entry_price - 1) * 100.0
 
-    if current_pnl > 2.5 and (st.cts_exhausted or st.fas_exhausted):
+    if current_pnl > cfg.alpha_release_threshold_pct and (st.cts_exhausted or st.fas_exhausted):
         if not np.isnan(close) and not np.isnan(cwvap) and close < cwvap:
             return ExitReason.ALPHA_RELEASE_EXIT, st.to_int()
+
+    # 4.1 Overextended Engine Failure (Trailing Significant Gains)
+    if current_pnl >= cfg.exhaustion_trail_threshold and (st.cts_exhausted or st.fas_exhausted):
+        return ExitReason.OVEREXTENDED_ENGINE_FAILURE, st.to_int()
 
     # 5. The Union Exit
     if st.cts_exhausted and st.fas_exhausted:

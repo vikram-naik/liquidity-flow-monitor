@@ -21,7 +21,7 @@ def exit_institutional_floor(
     peak_close: float, bars_held: int, state_val: int,
     cfg: SavgolCTSExitConfig, records: list[dict] | None, idx: int,
 ) -> tuple[str | None, int]:
-    """Two-phase exit: PSZ zero-cross cycle → CTS trail to sell threshold."""
+    """Two-phase exit: PSZ zero-cross cycle -> CTS max-trail to sell threshold."""
     st = SavgolCTSExitState.from_int(state_val)
     ecfg = cfg.institutional_floor
 
@@ -49,10 +49,17 @@ def exit_institutional_floor(
     cts = row.get("cts", np.nan)
     cts_st = row.get("cts_sell_threshold", np.nan)
 
-    # Phase 2: CTS trail (psz_was_above repurposed as trailing_cts flag)
+    # Phase 2: CTS max-trail (psz_was_above repurposed as trailing_cts flag)
     if st.psz_was_above:
-        if not np.isnan(cts) and not np.isnan(cts_st) and cts >= cts_st:
-            return ExitReason.ST_CROSS, st.to_int()
+        if not np.isnan(cts) and not np.isnan(cts_st):
+            # Track if we have already reached/exceeded the sell threshold
+            if not st.cts_above_bt:  # repurposed: True if CTS >= ST
+                if cts >= cts_st:
+                    st.cts_above_bt = True
+            else:
+                # Once we are above ST, exit when we cross back BELOW it (max trail)
+                if cts < cts_st:
+                    return ExitReason.ST_CROSS, st.to_int()
         return None, st.to_int()
 
     # Phase 1: PSZ zero-cross cycle
@@ -63,11 +70,11 @@ def exit_institutional_floor(
                 st.price_above_cwvap = True
         else:
             if psz < 0:
-                # PSZ cycle done — check CTS before exiting
-                if not np.isnan(cts) and not np.isnan(cts_st) and cts < cts_st:
-                    # CTS still below sell threshold — switch to Phase 2
-                    st.psz_was_above = True
-                else:
-                    return ExitReason.PSZ_GLIDE, st.to_int()
+                # PSZ cycle done — transition to Phase 2 for CTS trailing
+                st.psz_was_above = True
+                # Pre-check if CTS is already above threshold
+                if not np.isnan(cts) and not np.isnan(cts_st) and cts >= cts_st:
+                    st.cts_above_bt = True
+                return None, st.to_int()
 
     return None, st.to_int()

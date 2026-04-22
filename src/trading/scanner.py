@@ -114,6 +114,17 @@ class Scanner:
 
         print("=== Scanner complete ===")
 
+    def refresh_positions(self):
+        """Quick refresh: update P&L for open positions and take a new snapshot.
+        
+        Skips scanning for new signals. Useful for real-time dashboard updates.
+        """
+        today = datetime.now().strftime("%Y-%m-%d")
+        print(f"=== Position Refresh: {today} ===")
+        self._phase1_check_exits()
+        self._phase3_daily_pnl(today)
+        print("=== Refresh complete ===")
+
     # ── Phase 1: Detect exit signals on open positions ──────────────────
 
     def _phase1_check_exits(self):

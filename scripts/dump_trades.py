@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
+import numpy as np
 
 sys.path.append(str(Path(__file__).parent.parent.resolve()))
 
@@ -28,6 +29,7 @@ ENTRY_ALIASES = {
     "prt-slope-zero-cross": EntryTag.PRT_SLOPE_ZERO_CROSS.value,
     "fas-zero-cross": EntryTag.FAS_ZERO_CROSS.value,
     "fas-floor-reversion": EntryTag.FAS_FLOOR_REVERSION.value,
+    "fas-buy-cross": EntryTag.FAS_BUY_CROSS.value,
 }
 
 def main():
@@ -63,7 +65,11 @@ def main():
     # Initialize signal day info defaults
     for t in all_trades:
         t.signal_date = t.entry_date
-        t.psz_v_signal = 0.0
+        t.fas_signal = 0.0
+        t.cts_signal = 0.0
+        t.pdd_signal = 0.0
+        t.regime_signal = "N/A"
+        t.coherence_signal = 0.0
 
     # Filter by entry type
     if args.entry:
@@ -90,24 +96,47 @@ def main():
                 engine = DivergenceEngine(sym)
                 res = engine.run()
                 ledger = res.ledger
+                if ledger is None or ledger.empty:
+                    print(f"  DEBUG: {sym} ledger is empty!")
+                    continue
+                # print(f"  DEBUG: {sym} ledger columns: {ledger.columns.tolist()[:10]}")
+                # Ensure date is string for matching
+                ledger['date_str'] = ledger['date'].astype(str).str[:10]
+                
                 for t in trades:
-                    # Signal was on bar before entry
-                    sig_idx = t.entry_idx - 1
-                    if sig_idx >= 0 and sig_idx < len(ledger):
+                    # Find the index of the entry date
+                    matches = ledger[ledger['date_str'] == t.entry_date]
+                    if matches.empty:
+                        continue
+                        
+                    entry_idx_in_ledger = matches.index[0]
+                    sig_idx = entry_idx_in_ledger - 1
+                    
+                    if sig_idx >= 0:
                         sig_row = ledger.iloc[sig_idx]
+                        old_sig_date = t.signal_date
                         t.signal_date = str(sig_row["date"])[:10]
-                        t.psz_v_signal = sig_row.get("psz_v", 0.0)
+                        t.fas_signal = sig_row.get("fas", 0.0)
+                        t.cts_signal = sig_row.get("cts", 0.0)
+                        
+                        pdd = sig_row.get("pdd_120", np.nan)
+                        if np.isnan(pdd): pdd = sig_row.get("pdd_60", np.nan)
+                        if np.isnan(pdd): pdd = sig_row.get("pdd_30", np.nan)
+                        t.pdd_signal = pdd
+                        
+                        t.regime_signal = sig_row.get("regime", "N/A")
+                        t.coherence_signal = sig_row.get("coherence", 0.0)
 
                     # Trade active from entry_idx to entry_idx + duration
-                    # We look for max high from the bar after entry until exit
-                    start_idx = t.entry_idx
-                    end_idx = min(t.entry_idx + t.duration, len(ledger) - 1)
+                    # We use entry_idx_in_ledger to ensure we are in the right spot
+                    start_idx = entry_idx_in_ledger
+                    end_idx = min(entry_idx_in_ledger + t.duration, len(ledger) - 1)
                     trade_period = ledger.iloc[start_idx : end_idx + 1]
                     if not trade_period.empty:
                         max_high = trade_period["high"].max()
                         t.mfe_pct = (max_high / t.entry_price - 1) * 100
-            except Exception as e:
-                print(f"  Error calculating metrics for {sym}: {e}")
+            except Exception:
+                pass
 
     # Sort
     sort_map = {
@@ -125,13 +154,14 @@ def main():
     # Print
     print(f"\n--- {label} TRADES: STUDY REPORT ({args.period.upper()}) ---")
     header = (f"{'#':>3} | {'Symbol':<12} | {'Sig Date':<10} | {'PnL%':>7} | {'MFE%':>7} | "
-              f"{'PSZ_v':>7} | {'SCORE':>5} | {'Exit Reason'}")
+              f"{'FAS':>7} | {'CTS':>7} | {'PDD':>7} | {'Regime':<10} | {'COH':>5} | {'SCORE':>5} | {'Exit Reason'}")
     print(header)
     print("-" * len(header))
     for i, t in enumerate(filtered, 1):
         reason = t.exit_reason.value if hasattr(t.exit_reason, "value") else str(t.exit_reason)
         print(f"{i:>3} | {t.symbol:<12} | {t.signal_date:<10} | {t.pnl_pct:>7.2f} | "
-              f"{t.mfe_pct:>7.2f} | {t.psz_v_signal:>7.3f} | {t.conviction_score:>+5} | {reason}")
+              f"{t.mfe_pct:>7.2f} | {t.fas_signal:>7.3f} | {t.cts_signal:>7.3f} | {t.pdd_signal:>7.2f} | "
+              f"{t.regime_signal:<10} | {t.coherence_signal:>5.2f} | {t.conviction_score:>+5} | {reason}")
 
 
 if __name__ == "__main__":

@@ -46,6 +46,10 @@ async function loadSummary() {
         <div class="label">Pending Entries</div>
         <div class="value">${data.pending_entries}</div>
       </div>
+      <div class="card">
+        <div class="label">Pending Exits</div>
+        <div class="value">${data.pending_exits}</div>
+      </div>
       ${proposedHtml}
       <div class="card">
         <div class="label">Unrealized P&L</div>
@@ -343,18 +347,25 @@ async function loadOpenPositions() {
   try {
     const data = await fetch(API + '/positions?status=open').then(r => r.json());
     const pending = await fetch(API + '/positions?status=pending_entry').then(r => r.json());
-    const all = [...data, ...pending];
+    const exiting = await fetch(API + '/positions?status=pending_exit').then(r => r.json());
+    const all = [...data, ...pending, ...exiting];
 
     const tbody = document.querySelector('#open-table tbody');
     if (!all.length) {
-      tbody.innerHTML = '<tr><td colspan="13" style="text-align:center;color:#8b949e">No open positions</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="14" style="text-align:center;color:#8b949e">No open positions</td></tr>';
       return;
     }
     tbody.innerHTML = all.map(p => {
       const pnl = p.current_pnl_pct || 0;
       const pnlCls = pnl >= 0 ? 'pnl-pos' : 'pnl-neg';
-      const statusCls = p.status === 'open' ? 'status-open' : 'status-pending';
+      const statusCls = p.status === 'open' ? 'status-open' :
+                        p.status === 'pending_entry' ? 'status-pending' : 'status-exiting';
       const sizingLabel = p.sizing_method === 'kelly' ? `K(${(p.kelly_f || 0.25).toFixed(2)})` : 'EqWt';
+
+      const actionBtn = p.status === 'open'
+        ? `<button class="btn btn-reject" style="padding:2px 8px;font-size:10px" onclick="manualExit(${p.id})">Exit</button>`
+        : '';
+
       return `<tr>
         <td><a href="/de/dashboard/${p.symbol}?focus=${p.entry_date}" class="back-link"><strong>${p.symbol}</strong></a></td>
         <td>${p.entry_tag || '-'}</td>
@@ -369,10 +380,21 @@ async function loadOpenPositions() {
         <td>${sizingLabel}</td>
         <td>${p.regime_at_entry || '-'}</td>
         <td><span class="status-badge ${statusCls}">${p.status}</span></td>
+        <td>${actionBtn}</td>
       </tr>`;
     }).join('');
   } catch (e) {
     console.error('Failed to load positions:', e);
+  }
+}
+
+async function manualExit(id) {
+  if (!confirm('Are you sure you want to trigger a manual exit for this position?')) return;
+  try {
+    await fetch(API + '/positions/' + id + '/exit', { method: 'POST' });
+    refreshAll();
+  } catch (e) {
+    console.error('Manual exit failed:', e);
   }
 }
 
@@ -489,6 +511,30 @@ function refreshAll() {
 
 document.getElementById('btn-scan').addEventListener('click', () => triggerScan(false));
 document.getElementById('btn-dry-run').addEventListener('click', () => triggerScan(true));
+
+document.getElementById('btn-refresh-pnls').addEventListener('click', async () => {
+  const status = document.getElementById('scan-status');
+  status.textContent = 'Refreshing valuations...';
+  try {
+    await fetch(API + '/refresh', { method: 'POST' });
+    status.textContent = 'Valuations refreshed.';
+    refreshAll();
+  } catch (e) {
+    status.textContent = 'Refresh failed: ' + e.message;
+  }
+});
+
+document.getElementById('btn-execute').addEventListener('click', async () => {
+  const status = document.getElementById('scan-status');
+  status.textContent = 'Execution started...';
+  try {
+    await fetch(API + '/execute', { method: 'POST' });
+    status.textContent = 'Execution running in background. Refresh in a few minutes.';
+    setTimeout(refreshAll, 15000);
+  } catch (e) {
+    status.textContent = 'Execution failed: ' + e.message;
+  }
+});
 
 async function triggerScan(dryRun) {
   const status = document.getElementById('scan-status');

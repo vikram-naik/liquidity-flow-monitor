@@ -96,7 +96,19 @@ class DeliveryRepository:
         """
         # --- Cache lookup ---
         cache = get_cache()
-        cache_key = f"de:adjusted:{symbol}:{start_date or 'all'}:{end_date or 'all'}"
+        
+        # Get latest record date to ensure cache freshness if data was recently synced
+        conn = get_db_connection()
+        try:
+            last_row = conn.execute(
+                "SELECT MAX(record_date) FROM nse_delivery_log WHERE symbol = ?", 
+                (symbol,)
+            ).fetchone()
+            last_date = last_row[0] if last_row and last_row[0] else "none"
+        finally:
+            conn.close()
+
+        cache_key = f"de:adjusted:{symbol}:{start_date or 'all'}:{end_date or 'all'}:{last_date}"
 
         cached = cache.get(cache_key)
         if cached is not None:

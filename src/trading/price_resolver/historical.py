@@ -24,6 +24,12 @@ class HistoricalResolver(PriceResolver):
                 limit_price=round(ctx.close, 2),
                 rationale="Historical: execution-day close",
             )
+        # SELL — manual exit uses close price
+        if ctx.exit_reason == "manual_exit":
+            return OrderPrice(
+                limit_price=round(ctx.close, 2),
+                rationale="Historical: manual exit at close",
+            )
         # SELL — prefer open, fall back to close
         if ctx.open > 0:
             return OrderPrice(

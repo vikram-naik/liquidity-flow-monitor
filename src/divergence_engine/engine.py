@@ -214,11 +214,23 @@ class DivergenceEngine:
         cache_key = None
         if use_cache:
             cache = get_cache()
-            cache_key = f"de:result:{self.ticker}:{self._start_date or 'all'}:{self._end_date or 'all'}:{self._agg_mode}"
+            
+            # Get latest record date to ensure cache freshness if data was recently synced
+            from src.database import get_db_connection
+            conn = get_db_connection()
+            try:
+                last_row = conn.execute(
+                    "SELECT MAX(record_date) FROM nse_delivery_log WHERE symbol = ?", 
+                    (self.ticker,)
+                ).fetchone()
+                last_date = last_row[0] if last_row and last_row[0] else "none"
+            finally:
+                conn.close()
+
+            cache_key = f"de:result:{self.ticker}:{self._start_date or 'all'}:{self._end_date or 'all'}:{self._agg_mode}:{last_date}"
             cached_df = cache.get(cache_key)
             if cached_df is not None:
                 logger.info("Engine cache HIT for %s", cache_key)
-                
                 return self._build_result(cached_df)
 
         # --- Full pipeline ---

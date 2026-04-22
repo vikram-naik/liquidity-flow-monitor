@@ -97,6 +97,20 @@ class TradingRepository:
         finally:
             conn.close()
 
+    def mark_manual_exit(self, position_id: int) -> bool:
+        """Mark open position as pending_exit for manual reason. Returns True if updated."""
+        conn = get_db_connection()
+        try:
+            cursor = conn.execute(
+                "UPDATE trading_positions SET status = 'pending_exit', exit_reason = 'manual_exit', updated_at = ? "
+                "WHERE id = ? AND status = 'open'",
+                (datetime.now().isoformat(), position_id),
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+        finally:
+            conn.close()
+
     def count_open_positions(self) -> int:
         conn = get_db_connection()
         try:

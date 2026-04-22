@@ -94,6 +94,18 @@ def check_fas_zero_cross(
     if not np.isnan(dist_high_252):
         evaluate_gate("Secular Crash Guard", dist_high_252 >= -20.0, f"dist_high {dist_high_252:.2f}% < -20%")
 
+    # Gate 6.1: PDD Guard (Filter signals without divergence distance)
+    # Use fallback chain for warming-up indicators
+    pdd = row.get("pdd_120", np.nan)
+    if np.isnan(pdd): pdd = row.get("pdd_60", np.nan)
+    if np.isnan(pdd): pdd = row.get("pdd_30", np.nan)
+    
+    if not np.isnan(pdd):
+        evaluate_gate("PDD Guard", pdd >= cfg.pdd_min, f"pdd {pdd:.2f} < {cfg.pdd_min}")
+    else:
+        # If even pdd_30 is nan, skip gate but log it
+        tracker.add_gate("PDD Guard", True, "PDD not available (warming up)")
+
     # Gate 7: Coherence Gate (High Thrust Only)
     is_high_thrust = fas > 0.3
     if is_high_thrust:
@@ -117,7 +129,7 @@ def check_fas_zero_cross(
     abs_cts_flat = abs_cts_res["is_valid"]
     
     if abs_cts_flat:
-        tracker.add("Inst. Interest (Stalled)", -5.0, f"abs_cts stalled ({abs_cts:.3f})")
+        tracker.add("Inst. Interest (Stalled)", -15.0, f"abs_cts stalled ({abs_cts:.3f})")
 
     if cwc_slope > 0:
         tracker.add("Cash Coherence", 3.0, f"CWC slope positive ({cwc_slope:.4f})")
@@ -127,6 +139,10 @@ def check_fas_zero_cross(
     
     if abs_cts < prev_abs_cts:
         tracker.add("Structural Absorption", 3.0, f"Institutions returning to neutral ({prev_abs_cts:.4f} -> {abs_cts:.4f})")
+
+    # Stalled Thrust Range (Penalty for 0.16 - 0.23 range found in distribution analysis)
+    if 0.16 <= fas <= 0.23:
+        tracker.add("Stalled Thrust Range (Penalty)", -5.0, f"fas {fas:.3f} in underperforming 0.16-0.23 range")
 
     # PSZ Velocity (Rubber-band snapback effect)
     if not np.isnan(psz_v):

@@ -201,6 +201,7 @@ table.data-table tr:hover td { background: #161b22 }
 }
 .status-open { background: #0d419d; color: #58a6ff }
 .status-pending { background: #3d2e00; color: #d29922 }
+.status-exiting { background: #3d1b00; color: #ff8c00 }
 .status-proposed { background: #2a1f3d; color: #bc8cff }
 .status-rejected { background: #3d2020; color: #f85149 }
 .status-closed { background: #272c20; color: #8b949e }
