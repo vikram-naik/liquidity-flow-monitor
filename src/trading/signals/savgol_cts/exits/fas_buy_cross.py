@@ -48,6 +48,16 @@ def exit_fas_buy_cross(
     fas = row.get("fas", np.nan)
     prev_fas = prev_row.get("fas", np.nan)
     fas_st = row.get("fas_sell_threshold", np.nan)
+    
+    # 2. CWVAP Fail Count (CWF) Guard
+    # Check High > CWVAP and Close < CWVAP
+    cwvap = row.get("cwvap", np.nan)
+    high = row.get("high", np.nan)
+    if not any(np.isnan(x) for x in [cwvap, high, close_now]):
+        if high > cwvap and close_now < cwvap:
+            st.cwf_count += 1
+            if st.cwf_count >= cfg.cwvap_fail_threshold:
+                return ExitReason.RECLAIM_TIMEOUT, st.to_int()
 
     # Check CTS crossing ST from above
     if not any(np.isnan(x) for x in [cts, prev_cts, cts_st]):

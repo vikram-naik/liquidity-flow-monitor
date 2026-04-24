@@ -46,6 +46,8 @@ class ExitReason(str, Enum):
     ALPHA_RELEASE_EXIT = "Alpha release (momentum decay post-profit)"
     OVEREXTENDED_ENGINE_FAILURE = "Overextended engine failure (trailing gain)"
     NEGATIVE_PNL_ENGINE_FAILURE = "Negative PnL engine failure (loss prevention)"
+    CANDLE_REJECTION = "Candlestick structural rejection at CWVAP"
+    INSIDE_BAR_REJECTION = "Inside bar on extreme volume at CWVAP"
     
     # Universal / Generic
     END_OF_DATA = "End of Data (Open Trade)"

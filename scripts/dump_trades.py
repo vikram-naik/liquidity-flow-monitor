@@ -67,9 +67,10 @@ def main():
         t.signal_date = t.entry_date
         t.fas_signal = 0.0
         t.cts_signal = 0.0
-        t.pdd_signal = 0.0
+        t.cwvap_dist_signal = 0.0
+        t.psz_v_signal = 0.0
+        t.above_va_high = "no"
         t.regime_signal = "N/A"
-        t.coherence_signal = 0.0
 
     # Filter by entry type
     if args.entry:
@@ -119,13 +120,22 @@ def main():
                         t.fas_signal = sig_row.get("fas", 0.0)
                         t.cts_signal = sig_row.get("cts", 0.0)
                         
-                        pdd = sig_row.get("pdd_120", np.nan)
-                        if np.isnan(pdd): pdd = sig_row.get("pdd_60", np.nan)
-                        if np.isnan(pdd): pdd = sig_row.get("pdd_30", np.nan)
-                        t.pdd_signal = pdd
+                        cwvap = sig_row.get("cwvap", np.nan)
+                        close = sig_row.get("close", np.nan)
+                        if not np.isnan(cwvap) and cwvap > 0:
+                            t.cwvap_dist_signal = (close / cwvap - 1.0) * 100.0
+                        else:
+                            t.cwvap_dist_signal = 0.0
+                        
+                        t.psz_v_signal = sig_row.get("psz_v", 0.0)
+                        
+                        va_high = sig_row.get("va_high", np.nan)
+                        if not np.isnan(va_high) and close > va_high:
+                            t.above_va_high = "yes"
+                        else:
+                            t.above_va_high = "no"
                         
                         t.regime_signal = sig_row.get("regime", "N/A")
-                        t.coherence_signal = sig_row.get("coherence", 0.0)
 
                     # Trade active from entry_idx to entry_idx + duration
                     # We use entry_idx_in_ledger to ensure we are in the right spot
@@ -135,6 +145,9 @@ def main():
                     if not trade_period.empty:
                         max_high = trade_period["high"].max()
                         t.mfe_pct = (max_high / t.entry_price - 1) * 100
+                        
+                        # Count bars where High > CWVAP (crossed) but Close < CWVAP (failed to hold)
+                        t.cwvap_fail_count = int(((trade_period["high"] > trade_period["cwvap"]) & (trade_period["close"] < trade_period["cwvap"])).sum())
             except Exception:
                 pass
 
@@ -154,14 +167,16 @@ def main():
     # Print
     print(f"\n--- {label} TRADES: STUDY REPORT ({args.period.upper()}) ---")
     header = (f"{'#':>3} | {'Symbol':<12} | {'Sig Date':<10} | {'PnL%':>7} | {'MFE%':>7} | "
-              f"{'FAS':>7} | {'CTS':>7} | {'PDD':>7} | {'Regime':<10} | {'COH':>5} | {'SCORE':>5} | {'Exit Reason'}")
+              f"{'FAS':>7} | {'CTS':>7} | {'CWD%':>7} | {'PSZv':>7} | {'>VAH':>4} | {'Bars':>4} | {'CWF':>3} | {'SCORE':>5} | {'Exit Reason'}")
     print(header)
     print("-" * len(header))
     for i, t in enumerate(filtered, 1):
         reason = t.exit_reason.value if hasattr(t.exit_reason, "value") else str(t.exit_reason)
+        cwf = getattr(t, "cwvap_fail_count", 0)
         print(f"{i:>3} | {t.symbol:<12} | {t.signal_date:<10} | {t.pnl_pct:>7.2f} | "
-              f"{t.mfe_pct:>7.2f} | {t.fas_signal:>7.3f} | {t.cts_signal:>7.3f} | {t.pdd_signal:>7.2f} | "
-              f"{t.regime_signal:<10} | {t.coherence_signal:>5.2f} | {t.conviction_score:>+5} | {reason}")
+              f"{t.mfe_pct:>7.2f} | {t.fas_signal:>7.3f} | {t.cts_signal:>7.3f} | {t.cwvap_dist_signal:>7.2f} | "
+              f"{t.psz_v_signal:>7.4f} | {t.above_va_high:>4} | {t.duration:>4} | {cwf:>3} | {t.conviction_score:>+5} | {reason}")
+
 
 
 if __name__ == "__main__":

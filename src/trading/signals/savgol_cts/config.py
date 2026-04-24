@@ -238,8 +238,9 @@ class FasBuyCrossEntryConfig:
 class FasBuyCrossExitConfig:
     """FAS Buy Cross exit: Trail CTS or FAS, whichever crosses ST from above first."""
     enabled: bool = True
-    hard_stop_enabled: bool = True
+    hard_stop_enabled: bool = False
     hard_stop_pct: float = 8.0
+    cwvap_fail_threshold: int = 13
 
 
 # ---------------------------------------------------------------------------
@@ -277,6 +278,12 @@ class CwvapGuardConfig:
     """CWVAP price guard logic."""
     tolerance_pct: float = 0.50
     tolerance_bars: int = 1
+    candle_guard_enabled: bool = True
+    max_upper_wick_pct: float = 0.65  # Max wick size relative to full range before rejection exit
+    min_ibs_rejection: float = 0.15   # IBS floor for rejection
+    vol_lookback: int = 20            # Lookback for average volume
+    inside_bar_guard_enabled: bool = True
+    inside_bar_vol_mult: float = 1.5  # Volume multiplier for inside bar rejection
 
 
 # ---------------------------------------------------------------------------

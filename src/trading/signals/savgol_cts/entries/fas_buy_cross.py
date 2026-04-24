@@ -75,7 +75,22 @@ def check_fas_buy_cross(
     if low_px > prev_high:
         return False, 0, {"reason": f"True Gap up detected (low {low_px:.2f} > prev_high {prev_high:.2f})"}
 
+    # 6. Safety gates based on price slope and volume velocity
+    price_slope_z = row.get("price_slope_z", np.nan)
+    if not np.isnan(price_slope_z):
+        if price_slope_z > -0.15:
+            return False, 0, {"reason": f"price_slope_z ({price_slope_z:.3f}) > -0.15"}
+        if price_slope_z < -0.34:
+            return False, 0, {"reason": f"price_slope_z ({price_slope_z:.3f}) < -0.34"}
+
+    rsz_v = row.get("rsz_v", np.nan)
+    if not np.isnan(rsz_v) and rsz_v < -0.13:
+        return False, 0, {"reason": f"rsz_v ({rsz_v:.3f}) < -0.13"}
+
     base_score = 20.0
+    if cts > -1.0:
+        base_score -= 5.0
+
     if cts_bt <= cfg.cts_bt_max:
         base_score += 5.0
     elif cts_bt > cfg.cts_bt_max:

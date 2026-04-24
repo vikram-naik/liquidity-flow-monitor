@@ -173,13 +173,13 @@ class SavgolCTSSignal(SignalInterface):
                     res = ExitReason.ST_CROSS
 
         # Mandatory Exit bypass for bespoke paths
-        bespoke_tags = [EntryTag.SLOPE_BOTTOM, EntryTag.ACCEL, EntryTag.INSTITUTIONAL_FLOOR, EntryTag.RANGE_REVERSION, EntryTag.ACCEL_ZERO_CROSS, EntryTag.PRT_SLOPE_ZERO_CROSS, EntryTag.FAS_ZERO_CROSS, EntryTag.FAS_FLOOR_REVERSION, EntryTag.FAS_BUY_CROSS]
+        bespoke_tags = [EntryTag.SLOPE_BOTTOM, EntryTag.ACCEL, EntryTag.INSTITUTIONAL_FLOOR, EntryTag.RANGE_REVERSION, EntryTag.ACCEL_ZERO_CROSS, EntryTag.PRT_SLOPE_ZERO_CROSS, EntryTag.FAS_ZERO_CROSS, EntryTag.FAS_FLOOR_REVERSION]
         is_bespoke = any(tag == t.value for t in bespoke_tags)
         
         if res == ExitReason.BAR3_STOP or is_bespoke:
             final_state = state_returned
         else:
-            res, final_state = apply_cwvap_guard(row, trade, res, state_returned, cfg, records, idx)
+            res, final_state = apply_cwvap_guard(row, trade, res, state_returned, cfg, records, idx, tag)
 
         if res is not None:
             self._last_exit_idx, self._last_exit_reason = idx, res

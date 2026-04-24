@@ -13,7 +13,7 @@ from __future__ import annotations
 import numpy as np
 
 from src.trading.signals.base import Trade
-from src.trading.signals.enums import ExitReason
+from src.trading.signals.enums import ExitReason, EntryTag
 from src.trading.signals.savgol_cts.config import SavgolCTSExitConfig
 from src.trading.signals.savgol_cts.state import SavgolCTSExitState
 
@@ -23,6 +23,7 @@ def apply_cwvap_guard(
     res: str | None, state_val: int,
     cfg: SavgolCTSExitConfig,
     records: list[dict] | None, idx: int,
+    tag: str = "",
 ) -> tuple[str | None, int]:
     """Apply CWVAP suppression / release to a proposed exit result.
 
@@ -53,6 +54,54 @@ def apply_cwvap_guard(
 
     # --- Above CWVAP ---
     if close > cwvap:
+        gc = cfg.cwvap_guard
+        
+        # Rule PREEMPT: Candlestick Rejection Guard (Only for specific tags for now)
+        if getattr(gc, "candle_guard_enabled", False) and tag == EntryTag.FAS_BUY_CROSS.value:
+            open_px = row.get("open", np.nan)
+            high_px = row.get("high", np.nan)
+            low_px = row.get("low", np.nan)
+            volume = row.get("volume", np.nan)
+            
+            if not any(np.isnan(x) for x in [open_px, high_px, low_px, volume]):
+                rng = high_px - low_px
+                if rng > 0:
+                    upper_wick = high_px - max(open_px, close)
+                    upper_wick_pct = upper_wick / rng
+                    ibs = (close - low_px) / rng
+                    
+                    # Calculate rolling average volume excluding current bar
+                    avg_vol = np.nan
+                    if records is not None and idx > 0:
+                        vol_lb = getattr(gc, "vol_lookback", 20)
+                        start_i = max(0, idx - vol_lb)
+                        vols = [records[i].get("volume", np.nan) for i in range(start_i, idx)]
+                        valid_vols = [v for v in vols if not np.isnan(v)]
+                        if valid_vols:
+                            avg_vol = sum(valid_vols) / len(valid_vols)
+                            
+                    is_high_volume = volume > (avg_vol * 1.5) if not np.isnan(avg_vol) else True
+                    is_red_day = close < open_px
+                    
+                    if is_high_volume and is_red_day:
+                        if upper_wick_pct > getattr(gc, "max_upper_wick_pct", 0.65):
+                            return ExitReason.CANDLE_REJECTION, st.to_int()
+                        if ibs < getattr(gc, "min_ibs_rejection", 0.15):
+                            return ExitReason.CANDLE_REJECTION, st.to_int()
+                            
+                        if getattr(gc, "inside_bar_guard_enabled", True):
+                            if records is not None and idx > 0:
+                                prev_high = records[idx-1].get("high", np.nan)
+                                prev_low = records[idx-1].get("low", np.nan)
+                                if not any(np.isnan(x) for x in [prev_high, prev_low]):
+                                    if high_px <= prev_high and low_px >= prev_low:
+                                        # Check if volume is high enough based on inside bar mult
+                                        ib_mult = getattr(gc, "inside_bar_vol_mult", 1.5)
+                                        if not np.isnan(avg_vol) and volume > (avg_vol * ib_mult):
+                                            return ExitReason.INSIDE_BAR_REJECTION, st.to_int()
+                                        elif np.isnan(avg_vol):
+                                            return ExitReason.INSIDE_BAR_REJECTION, st.to_int()
+
         # Rule A: Suppress exit while momentum positive above CWVAP.
         psz_strong = not np.isnan(psz_raw) and psz_raw > 0.00
         cts_strong = not np.isnan(cts) and cts > 0.00
