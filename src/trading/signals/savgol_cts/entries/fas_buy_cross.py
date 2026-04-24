@@ -35,10 +35,10 @@ def check_fas_buy_cross(
     prev2_cts_accel = records[idx-2].get("cts_accel", np.nan)
     cts_accel_threshold = row.get("cts_accel_threshold", np.nan)
     
-    open_px = row.get("open", np.nan)
+    low_px = row.get("low", np.nan)
     prev_high = prev_row.get("high", np.nan)
     
-    if any(np.isnan(x) for x in [fas, prev_fas, fas_bt, prev_fas_bt, cts, cts_bt, cts_accel, prev_cts_accel, prev2_cts_accel, cts_accel_threshold, open_px, prev_high]):
+    if any(np.isnan(x) for x in [fas, prev_fas, fas_bt, prev_fas_bt, cts, cts_bt, cts_accel, prev_cts_accel, prev2_cts_accel, cts_accel_threshold, low_px, prev_high]):
         return False, 0, {"reason": "Missing data for FAS Buy Cross"}
 
     # 1. fas crosses fas_bt
@@ -71,9 +71,9 @@ def check_fas_buy_cross(
     if cts_accel <= cts_accel_threshold:
         return False, 0, {"reason": f"cts_accel ({cts_accel:.3f}) <= threshold ({cts_accel_threshold:.3f})"}
 
-    # 5. no gap ups between current and prev candle
-    if open_px > prev_high:
-        return False, 0, {"reason": f"Gap up detected (open {open_px:.2f} > prev_high {prev_high:.2f})"}
+    # 5. no gap ups between current and prev candle (True Gap: Low > Prev High)
+    if low_px > prev_high:
+        return False, 0, {"reason": f"True Gap up detected (low {low_px:.2f} > prev_high {prev_high:.2f})"}
 
     base_score = 20.0
     if cts_bt <= cfg.cts_bt_max:

@@ -187,7 +187,9 @@ class FasZeroCrossEntryConfig:
     psz_v_min: float = 0.0
     pdd_min: float = 0.3
     coherence_min: float = 0.4
-    min_score: float = 9.9
+    gap_pct_max: float = 1.0
+    cts_max: float = 0.0
+    min_score: float = 15.0
     telemetry_enabled: bool = False
 
 

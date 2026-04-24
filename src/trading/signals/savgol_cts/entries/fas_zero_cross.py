@@ -62,10 +62,27 @@ def check_fas_zero_cross(
     # Gate 1: FAS Zero Cross
     evaluate_gate("FAS Zero Cross", prev_fas < 0 and fas >= 0, f"({prev_fas:.3f} -> {fas:.3f})")
 
+    # Gate 1.1: Gap-Up Guard (Filter news-driven liquidity gaps)
+    # A True Gap Up (Low > Prev High) indicates excessive momentum/exhaustion
+    prev_high = prev_row.get("high", np.nan)
+    low_val = row.get("low", np.nan)
+    if not np.isnan(prev_high) and not np.isnan(low_val) and low_val > prev_high:
+        gap_pct = (low_val / prev_high - 1) * 100
+        evaluate_gate("Gap-Up Guard", gap_pct <= cfg.gap_pct_max, f"true gap {gap_pct:.2f}% > {cfg.gap_pct_max}%")
+
+    # Gate 1.2: CTS Guard (Filter signals where institutions are already positive/chasing)
+    evaluate_gate("CTS Guard", cts <= cfg.cts_max, f"cts {cts:.3f} > {cfg.cts_max}")
+
     # Gate 2: Structural Base (Filter Falling Value)
     fas_5_ago = records[idx-5].get("fas", np.nan)
     fas_5_delta = fas - fas_5_ago
     evaluate_gate("Structural Base", fas_5_delta > 0, f"FAS 5-bar delta {fas_5_delta:.3f}")
+
+    # Gate 2.1: Angle Gate (Filter weak/fizzle crosses)
+    # Require 3-bar FAS momentum to be positive
+    fas_3_ago = records[idx-3].get("fas", np.nan)
+    fas_3_delta = fas - fas_3_ago
+    evaluate_gate("Angle Gate", fas_3_delta > 0.0, f"FAS 3-bar delta {fas_3_delta:.3f} <= 0.0")
 
     # Gate 3 & 4: Engine Dynamics (Active & Strong)
     # Research shows if accel is flat, the setup is safe. If it's not flat, it MUST be > threshold.
@@ -77,6 +94,12 @@ def check_fas_zero_cross(
     
     if not accel_flat:
         evaluate_gate("Engine Strength", not np.isnan(cts_accel_threshold) and cts_accel > cts_accel_threshold, f"accel {cts_accel:.3f} > threshold {cts_accel_threshold:.3f}")
+        
+        # Conviction Check: Penalty for barely crossing (sputtering engine)
+        if not np.isnan(cts_accel_threshold) and cts_accel_threshold > 0:
+            conviction = cts_accel / cts_accel_threshold
+            if conviction < 1.1:
+                tracker.add("Low Accel Conviction (Penalty)", -10.0, f"conviction {conviction:.2f} < 1.1")
     else:
         evaluate_gate("Engine Strength", True, "accel is flat (threshold bypassed)")
 
