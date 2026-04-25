@@ -1,7 +1,7 @@
 # SavgolCTS Signal — Entry / Exit Flow
 
 **Package**: `src/trading/signals/savgol_cts/`
-**Last updated**: 2026-04-05
+**Last updated**: 2026-04-25
 
 ## Package Structure
 
@@ -12,23 +12,15 @@ savgol_cts/
   state.py             # SavgolCTSExitState bitfield helper
   scoring.py           # compute_intensity() — shared intensity scoring
   signal.py            # SavgolCTSSignal orchestrator (cooldown, ST exit, dispatch)
-  entries/
-    slope_bottom.py    # Path 1: cts_slope rising from P5 bottom in downtrend
-    accel_cross.py     # Path 2: Triple-trend momentum cross with inst alignment
-    institutional_floor.py # Path 3: Sustained PSZ recovery + Inst alignment
-    bayesian.py        # Path 8: Massive 90th percentile PSZ delta jump with Deep Reversion
-  exits/
-    slope_bottom.py    # Slope Bottom exit: pure slope zero-cross cycle
-    accel_cross.py     # Accel Cross exit: Two-Phase PSZ/CTS Glide (mirrors IF)
-    institutional_floor.py # Inst-Floor exit: Two-Phase PSZ/CTS Glide
-    cwvap_guard.py     # CWVAP suppression / release logic (post-exit)
+  entries/             # 10 entry path implementations
+  exits/               # 10 exit path implementations
 ```
 
 ---
 
 ## Entry Flow
 
-Three entry paths evaluated in priority order. First match wins.
+The `SavgolCTSSignal` orchestrates multiple entry paths, evaluated in priority order. First match wins.
 
 ```
 check_entry(row, prev_row, cfg, records, idx)       [signal.py]
@@ -40,49 +32,89 @@ check_entry(row, prev_row, cfg, records, idx)       [signal.py]
   |
   |-- [Guard] CTS is NaN? --> REJECT "Missing CTS data"
   |
-  |-- PATH 8: Bayesian High-Conviction                   [entries/bayesian.py]
-  |     |-- [Gate]  cfg.bayesian.enabled?
-  |     |-- [Prior] psz_t1 < 0 (Negative floor)
-  |     |-- [Prior] psz_t1 < psz_t (Inflection)
-  |     |-- [Prior] psz_delta > 252-day 90th percentile (Massive Anomaly)
-  |     |-- [Prior] close < cwvap (Deep Reversion)
-  |     |-- [Score] Naive Bayes calculation (CTS >= -0.5, RP252 >= 0.5, RSZ > 0)
-  |     |-- [Score Gate] Calculated Score % in {89, 88, 83, 80, 62} (Profit Factor > 1.5)
-  |     +-- PASS --> EntryTag.BAYESIAN
+  |-- PATH 12: CTS Floor Reversion                       [entries/cts_floor_reversion.py]
+  |     |-- [Gate] CTS AND CTS Buy Threshold stuck at floor (<= -0.999) for 5 days.
+  |     |-- [Guard] Day 6 must NOT have met the floor condition (only enter exactly on day 5).
+  |     |-- [Guard] Momentum must be turning positive (psz_v_0 > psz_v_1).
+  |     |-- [Guard] Structural exhaustion: price_slope_z <= -0.15.
+  |     |-- [Score] Multi-factor Score >= 9.0 (Rewards deep PRT, violent PSZ_V; penalizes noise/flatness).
+  |     +-- PASS --> EntryTag.CTS_FLOOR_REVERSION
+  |
+  |-- PATH 9: FAS Zero Cross                             [entries/fas_zero_cross.py]
+  |     |-- [Gate] prev_fas < 0 AND fas >= 0
+  |     |-- [Guard] Gap-Up Guard (true gap pct <= max)
+  |     |-- [Guard] CTS Guard (cts <= cts_max)
+  |     |-- [Guard] Structural Base (fas 5-bar delta > 0)
+  |     |-- [Guard] Angle Gate (fas 3-bar delta > 0)
+  |     |-- [Guard] Engine Dynamics (cts_accel not falling; > threshold if not flat)
+  |     |-- [Guard] Momentum Guard (psz_v > psz_v_min)
+  |     |-- [Guard] Secular Crash Guard (dist_high_252 >= -20%)
+  |     |-- [Guard] PDD Guard (pdd >= pdd_min)
+  |     |-- [Score] Multi-factor Score >= min_score (15.0)
+  |     +-- PASS --> EntryTag.FAS_ZERO_CROSS
+  |
+  |-- PATH 10: FAS Floor Reversion                       [entries/fas_floor_reversion.py]
+  |     |-- [Gate] FAS Deep Floor (fas < fas_max e.g. -1.15)
+  |     |-- [Guard] PRT Slope Inflection (prt_slope > prt_slope_min)
+  |     |-- [Guard] CTS Extreme Floor (cts <= cts_max e.g. -0.99)
+  |     |-- [Guard] CTS Slope Guard (cts_slope < cts_slope_max e.g. 0.0)
+  |     +-- PASS --> EntryTag.FAS_FLOOR_REVERSION
+  |
+  |-- PATH 11: FAS Buy Cross                             [entries/fas_buy_cross.py]
+  |     |-- [Gate] FAS crosses above fas_buy_threshold
+  |     |-- [Guard] CTS <= cts_max AND cts <= cts_buy_threshold
+  |     |-- [Guard] CTS Accel not flat, 3-bar rising, and > threshold
+  |     |-- [Guard] No True Gap Up
+  |     |-- [Guard] Price slope and RSZ_V bounds
+  |     |-- [Score] Multi-factor Score >= min_score (15.0)
+  |     +-- PASS --> EntryTag.FAS_BUY_CROSS
   |
   |-- PATH 2: Accel Cross                                [entries/accel_cross.py]
-  |     |-- [Gate]  cfg.accel_cross.enabled?
-  |     |-- [Guard] Slope Inflection: cts_slope crosses above zero
-  |     |-- [Guard] Accel Conviction: cts_accel rising AND > adaptive threshold
-  |     |-- [Guard] Price Pivot: PSZ in (0.0, 0.2]
-  |     |-- [Guard] Inst Guard: CTS in (0.0, 0.5]
-  |     |-- [Guard] Inst Alignment: cwc_slope > 0
-  |     |-- [Guard] Distance Guard: cwvap_dist% <= 8.0%
-  |     |-- [Score] Study Score 20-29 (BOOM/TREND production gates)
+  |     |-- [Gate] Slope Inflection (cts_slope crosses above zero)
+  |     |-- [Guard] Accel Momentum (cts_accel rising AND > threshold)
+  |     |-- [Guard] Price Pivot (psz in (0.0, 0.2])
+  |     |-- [Guard] Inst Guard (cts in (0.0, 0.5])
+  |     |-- [Guard] Distance Guard (cwvap_dist% <= 8.0%)
+  |     |-- [Guard] Inst Alignment (cwc_slope > 0)
+  |     |-- [Score] Multi-factor Score >= score_min (20) AND Boom/Trend constraints
   |     +-- PASS --> EntryTag.ACCEL
   |
   |-- PATH 1: Slope Bottom                               [entries/slope_bottom.py]
-  |     |-- [Gate]  cfg.slope_bottom.enabled?
-  |     |-- [Guard] cts_slope <= slope_threshold (-0.10, P5 empirical bottom)
+  |     |-- [Gate] cts_slope <= threshold (-0.10) AND >= exhaustion_min (-0.22)
   |     |-- [Guard] cts_slope rising (slope > prev_slope)
   |     |-- [Guard] regime in ["downtrend", "notrend"]
-  |     |-- [Guard] slope_delta <= slope_delta_max (0.02, reject dead-cat bounces)
-  |     |-- [Guard] cwvap_dist% in range [-3.0, 0.5]
+  |     |-- [Guard] slope_delta in [0.002, 0.02] (reject violent/weak bounces)
+  |     |-- [Guard] cwvap_dist in [-3.0%, 0.5%]
+  |     |-- [Guard] cts_accel > threshold AND (optionally) rising
+  |     |-- [Guard] Pure Bear Guard & PDD Guard
   |     +-- PASS --> EntryTag.SLOPE_BOTTOM
   |
   |-- PATH 3: Institutional Floor                        [entries/institutional_floor.py]
-  |     |-- [Gate]  cfg.institutional_floor.enabled?
-  |     |-- [Guard] PSZ Sustained: psz <= -0.30 for 3 bars
-  |     |-- [Guard] PSZ Inflection: psz >= -0.29 AND prev_psz <= -0.30
-  |     |-- [Guard] Displacement: close < CWVAP
-  |     |-- [Guard] Acceleration: psz_v strictly increasing 3-bar (delta 0.01)
-  |     |-- [Guard] Inst Dislocation: cts <= cts_buy_threshold
-  |     |-- [Guard] Inst Improvement: cts_slope > prev_cts_slope
-  |     |-- [Guard] Accel Rising: cts_accel > prev_cts_accel (avoid fading pops)
-  |     |-- [Guard] Contrarian: cts_slope < 0
-  |     |-- [Guard] Alignment: cwc_slope > 0
-  |     |-- [Score] Conviction >= 5 (multi-factor soft gate)
+  |     |-- [Gate] PSZ Sustained (<= -0.30 for 3 bars) AND Inflection
+  |     |-- [Guard] cwvap_dist <= max
+  |     |-- [Guard] Acceleration (psz_v strictly increasing 3-bar)
+  |     |-- [Guard] Inst Dislocation (cts <= cts_buy_threshold)
+  |     |-- [Guard] Inst Improvement (cts_slope accelerating AND cts_accel rising)
+  |     |-- [Guard] Contrarian (cts_slope < 0)
+  |     |-- [Guard] Alignment (cwc_slope > 0)
+  |     |-- [Score] Conviction Score >= min_score (5)
   |     +-- PASS --> EntryTag.INSTITUTIONAL_FLOOR
+  |
+  |-- PATH 6: Range Reversion                            [entries/range_reversion.py]
+  |     +-- PASS --> EntryTag.RANGE_REVERSION
+  |
+  |-- PATH 7: Accel Zero Cross                           [entries/accel_zero_cross.py]
+  |     +-- PASS --> EntryTag.ACCEL_ZERO_CROSS
+  |
+  |-- PATH 4: PRT Slope Zero Cross                       [entries/prt_slope_zero_cross.py]
+  |     |-- [Gate] PRT Slope crosses above zero AND >= min
+  |     |-- [Guard] PRT Not Flat (adaptive lookback)
+  |     |-- [Guard] FAS in [min, max]
+  |     |-- [Guard] PSZ < threshold
+  |     |-- [Guard] CTS < 0
+  |     |-- [Guard] PRT Accel <= max
+  |     |-- [Score] Multi-factor Score >= min_score (8.0)
+  |     +-- PASS --> EntryTag.PRT_SLOPE_ZERO_CROSS
   |
   +-- No path matched --> REJECT (last meta from final path)
 ```
@@ -91,116 +123,44 @@ check_entry(row, prev_row, cfg, records, idx)       [signal.py]
 
 ## Exit Flow
 
-Exit is branched by entry tag. `check_exit` (in `signal.py`) dispatches to
-the path-specific exit, then applies the CWVAP guard.
+Exit checks are dispatched to path-specific modules based on the `trade.entry_tag`.
 
 ```
 check_exit(row, prev_row, trade, ...)                [signal.py]
   |
-  |-- tag == ACCEL
-  |     --> check_exit_accel_cross()                 [exits/accel_cross.py]
+  |-- Dispatch to path-specific exit (e.g., exit_cts_floor_reversion, exit_accel_cross, exit_institutional_floor, etc.)
   |
-  |-- tag == SLOPE_BOTTOM
-  |     --> exit_slope_bottom()                      [exits/slope_bottom.py]
-  |
-  |-- tag == INSTITUTIONAL_FLOOR or BAYESIAN
-  |     --> exit_institutional_floor()               [exits/institutional_floor.py]
-  |
-  |-- [Optional] ST exit (cfg.st_exit_enabled, default False)
+  |-- [Optional] ST exit (cfg.st_exit_enabled)
   |
   +-- apply_cwvap_guard()                            [exits/cwvap_guard.py]
-      (skipped for hard exits, ACCEL, and INSTITUTIONAL_FLOOR)
+      (Applied after indicator exits, skipped for bespoke path hard exits like BAR3_STOP)
 ```
 
-### State Bitfield (`delivery_bad_count` repurposed — `state.py`)
+### State Bitfield (`SavgolCTSExitState` — `state.py`)
 
-```
-bit 1 (& 0x02): psz_was_above      — (IF/ACCEL: repurposed as trailing_cts — Phase 2 active)
-bit 3 (& 0x08): exit_suppressed   — An indicator exit was suppressed by CWVAP Rule A
-bit 4 (& 0x10): suppressed_this_bar — Exit was suppressed on this specific bar
-bit 5 (& 0x20): slope_crossed_zero — Phase 1 complete: cts_slope > 0 reached
-bit 6 (& 0x40): price_above_cwvap — (IF/ACCEL: repurposed as psz_was_positive — PSZ crossed above zero)
-```
+The state is packed into a 14-bit integer, stored in `delivery_bad_count`.
 
----
+| Bit | Mask   | Name                       | Description |
+|---|---|---|---|
+| 0 | 0x0001 | `cts_rose`                 | - |
+| 1 | 0x0002 | `psz_was_above`            | Phase 2 active tracking (varies by path) |
+| 2 | 0x0004 | `cts_above_bt`             | - |
+| 3 | 0x0008 | `exit_suppressed`          | Exit suppressed by CWVAP rule |
+| 4 | 0x0010 | `suppressed_this_bar`      | Suppressed on current bar |
+| 5 | 0x0020 | `slope_crossed_zero`       | Phase 1 complete (cts_slope > 0) |
+| 6 | 0x0040 | `price_above_cwvap`        | Price crossed above CWVAP |
+| 7 | 0x0080 | `prt_exit_suppressed`      | PRT exit was suppressed |
+| 8 | 0x0100 | `fas_crossed_zero`         | PRT/FAS crossed zero |
+| 9 | 0x0200 | `extreme_bottom_extension` | Trade hit absolute floor |
+|10 | 0x0400 | `recovery_passed`          | Indicator crossed above zero |
+|11 | 0x0800 | `cts_exhausted`            | CTS exhausted post-recovery |
+|12 | 0x1000 | `fas_exhausted`            | FAS exhausted post-recovery |
+|13+| 0xE000 | `cwf_count`                | High > CWVAP and Close < CWVAP |
 
-### Exit: Accel Cross, Institutional Floor, & Bayesian paths
+## Exit Logic Classes
 
-Tags: `ACCEL`, `INSTITUTIONAL_FLOOR`, `BAYESIAN`
+The exit strategy relies heavily on path-specific logic located in `src/trading/signals/savgol_cts/exits/`. Paths like Accel Cross and Institutional Floor often implement multi-phase glides, PnL caps, trailing stops, and hard stops (usually 8%). Recent paths like FAS Zero Cross employ persistent Dual-Exhaustion Logic.
 
-Two-Phase Glide — momentum cycling exit strategy.
+## CWVAP Guard (`exits/cwvap_guard.py`)
 
-```
-check_exit_accel_cross / exit_institutional_floor
-  |-- [Guard] Hard Stop: exit if PnL% <= -8.0%
-  |-- [Override] PnL Cap: exit if PnL% >= 8.0% (active in both phases)
-  |
-  |-- Phase 2 active? (bit 1: psz_was_above)
-  |     YES --> CTS trail: exit when CTS >= cts_sell_threshold
-  |             --> ExitReason.ST_CROSS
-  |
-  |-- Phase 1: PSZ zero-cross cycle (bit 6: price_above_cwvap)
-  |     |-- wait for PSZ to cross above exit_threshold (0.0)
-  |     +-- PSZ drops back below exit_threshold:
-  |           |-- CTS < cts_sell_threshold? → switch to Phase 2 (Institutional Floor holds)
-  |           +-- CTS >= cts_sell_threshold? → exit now
-  |                 --> ExitReason.PSZ_GLIDE
-  +-- None --> HOLD
-```
-
----
-
-### CWVAP Guard (`exits/cwvap_guard.py`)
-
-Applied **after** all exit paths. Never generates standalone exits — only
-suppresses or releases exits proposed by indicator logic.
-
-```
-apply_cwvap_guard(row, trade, res, state, cfg, records, idx)
-  |
-  |-- close > CWVAP?
-  |     |-- Rule A: PSZ > 0 OR CTS > 0 → SUPPRESS (hold while momentum strong)
-  |     +-- Rule B: momentum faded + (exit_suppressed or res) → RELEASE
-  |
-  |-- close <= CWVAP AND exit_suppressed?
-  |     |-- Within tolerance (dist% >= -tolerance_pct)?
-  |     |     |-- bars_below > tolerance_bars → RELEASE (time stop)
-  |     |     +-- else → SUPPRESS (give chance)
-  |     +-- Below tolerance → RELEASE (SUPPRESSED_EXIT)
-  |
-  +-- else → pass through
-```
-
----
-
-## Config Reference
-
-### Entry (`SavgolCTSEntryConfig` — `config.py`)
-
-**Path 2 — Accel Cross (`cfg.accel_cross`):**
-
-| Parameter | Default | Description |
-|---|---|---|
-| `enabled` | True | Enable/disable path |
-| `cts_min` | 0.0 | Institutional floor lower bound |
-| `score_min` | 20 | Minimum study score (BOOM/TREND) |
-| `cwvap_dist_max`| 8.0 | Max distance from CWVAP (momentum cap) |
-
-**Path 1 — Slope Bottom (`cfg.slope_bottom`):**
-
-| Parameter | Default | Description |
-|---|---|---|
-| `enabled` | True | Enable/disable path |
-| `slope_threshold` | -0.10 | cts_slope must be at or below |
-| `cts_max` | -0.85 | Max CTS (require deep exhaustion) |
-
-### Exit (`SavgolCTSExitConfig` — `config.py`)
-
-**Accel Cross & Inst Floor (`cfg.accel_cross`, `cfg.institutional_floor`):**
-
-| Parameter | Default | Description |
-|---|---|---|
-| `pnl_cap_pct` | 8.0 | Take profit cap (both phases) |
-| `hard_stop_pct` | 8.0 | Max acceptable loss |
-| `psz_peak_threshold`| 0.25 | PSZ must reach this to start cycle |
-| `psz_exit_threshold`| 0.0 | PSZ drops below this → transition or exit |
+Applied **after** indicator-generated exit signals. It acts as a gatekeeper to either suppress or release exits based on momentum strength (PSZ/CTS levels) relative to CWVAP. It includes logic like the Inside Bar Guard and Candle Guard to prevent premature exiting of strong trends.

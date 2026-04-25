@@ -243,6 +243,22 @@ class FasBuyCrossExitConfig:
     cwvap_fail_threshold: int = 13
 
 
+@dataclass
+class CtsFloorReversionEntryConfig:
+    """Path 12: CTS Floor Reversion — CTS and BT stuck at floor for 5 days, followed by snapback."""
+    enabled: bool = True
+    min_score: float = 9.0
+    telemetry_enabled: bool = False
+
+
+@dataclass
+class CtsFloorReversionExitConfig:
+    """CTS Floor Reversion exit: CTS trailing (ST-cross down)."""
+    enabled: bool = True
+    hard_stop_enabled: bool = True
+    hard_stop_pct: float = 8.0
+
+
 # ---------------------------------------------------------------------------
 # Composite entry config
 # ---------------------------------------------------------------------------
@@ -258,6 +274,7 @@ class SavgolCTSEntryConfig(BaseEntryConfig):
         ExitReason.BAR5_STOP,
     )
 
+    cts_floor_reversion: CtsFloorReversionEntryConfig = field(default_factory=CtsFloorReversionEntryConfig)
     slope_bottom: SlopeBottomEntryConfig = field(default_factory=SlopeBottomEntryConfig)
     accel_cross: AccelCrossEntryConfig = field(default_factory=AccelCrossEntryConfig)
     institutional_floor: InstitutionalFloorEntryConfig = field(default_factory=InstitutionalFloorEntryConfig)
@@ -296,6 +313,7 @@ class SavgolCTSExitConfig(BaseExitConfig):
     st_exit_enabled: bool = False
     st_crossover_tolerance: float = 0.03
 
+    cts_floor_reversion: CtsFloorReversionExitConfig = field(default_factory=CtsFloorReversionExitConfig)
     slope_bottom: SlopeBottomExitConfig = field(default_factory=SlopeBottomExitConfig)
     accel_cross: AccelCrossExitConfig = field(default_factory=AccelCrossExitConfig)
     institutional_floor: InstitutionalFloorExitConfig = field(default_factory=InstitutionalFloorExitConfig)

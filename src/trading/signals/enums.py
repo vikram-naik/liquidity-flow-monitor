@@ -2,6 +2,7 @@ from enum import Enum
 
 class EntryTag(str, Enum):
     """Strongly typed entry tags with presentation-friendly strings."""
+    CTS_FLOOR_REVERSION = "SavgolCTS CTS-Floor-Reversion"
     SLOPE_BOTTOM = "SavgolCTS Slope-Bottom"
     INSTITUTIONAL_FLOOR = "SavgolCTS Institutional-Floor"
     ACCEL = "SavgolCTS Accel-Cross"
