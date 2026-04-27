@@ -73,6 +73,12 @@ def check_fas_zero_cross(
     # Gate 1.2: CTS Guard (Filter signals where institutions are already positive/chasing)
     evaluate_gate("CTS Guard", cts <= cfg.cts_max, f"cts {cts:.3f} > {cfg.cts_max}")
 
+    # Gate 1.3: VA High Guard (Reject if price is already above Value Area High)
+    close_val = row.get("close", np.nan)
+    va_high = row.get("va_high", np.nan)
+    if not np.isnan(close_val) and not np.isnan(va_high):
+        evaluate_gate("VA High Guard", close_val <= va_high, f"close {close_val:.2f} > va_high {va_high:.2f}")
+
     # Gate 2: Structural Base (Filter Falling Value)
     fas_5_ago = records[idx-5].get("fas", np.nan)
     fas_5_delta = fas - fas_5_ago
