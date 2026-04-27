@@ -45,14 +45,13 @@ def check_fas_buy_cross(
     if not (prev_fas <= prev_fas_bt and fas > fas_bt):
         return False, 0, {"reason": f"fas did not cross fas_bt ({prev_fas:.3f} -> {fas:.3f})"}
 
-    # 2. cts <= cfg.cts_max and cts <= cts_bt
-    # if not (cts <= cfg.cts_max and cts_bt <= cfg.cts_bt_max and cts <= cts_bt):
-    if not (cts <= cfg.cts_max and cts <= cts_bt):
-        return False, 0, {"reason": f"cts ({cts:.3f}) or cts_bt ({cts_bt:.3f}) condition failed"}
+    # 2. cts <= cfg.cts_max (BT check moved to scoring)
+    if not (cts <= cfg.cts_max):
+        return False, 0, {"reason": f"cts ({cts:.3f}) above max ({cfg.cts_max:.3f})"}
 
-    # 3. cts_accel should be rising and not flat
-    if not (cts_accel > prev_cts_accel > prev2_cts_accel):
-        return False, 0, {"reason": f"cts_accel not 3-bar rising"}
+    # 3. cts_accel should be rising and not flat (MOVED TO SCORING)
+    # if not (cts_accel > prev_cts_accel):
+    #     return False, 0, {"reason": f"cts_accel not rising ({prev_cts_accel:.4f} -> {cts_accel:.4f})"}
         
     lookback_size = 10
     cts_accel_lookback = np.array([
@@ -67,12 +66,12 @@ def check_fas_buy_cross(
     if flat_check["is_valid"]:
         return False, 0, {"reason": "cts_accel is flat"}
 
-    # 4. cts_accel > cts_accel_threshold
-    if cts_accel <= cts_accel_threshold:
-        return False, 0, {"reason": f"cts_accel ({cts_accel:.3f}) <= threshold ({cts_accel_threshold:.3f})"}
+    # 4. cts_accel > cts_accel_threshold (MOVED TO SCORING)
+    # if cts_accel <= cts_accel_threshold:
+    #     return False, 0, {"reason": f"cts_accel ({cts_accel:.3f}) <= threshold ({cts_accel_threshold:.3f})"}
 
     # 5. no gap ups between current and prev candle (True Gap: Low > Prev High)
-    if low_px > prev_high:
+    if low_px > prev_high * 1.001: # Added 0.1% tolerance for tiny gaps
         return False, 0, {"reason": f"True Gap up detected (low {low_px:.2f} > prev_high {prev_high:.2f})"}
 
     # 6. Safety gates based on price slope and volume velocity
@@ -87,20 +86,40 @@ def check_fas_buy_cross(
     if not np.isnan(rsz_v) and rsz_v < -0.13:
         return False, 0, {"reason": f"rsz_v ({rsz_v:.3f}) < -0.13"}
 
-    base_score = 20.0
-    if cts > -1.0:
-        base_score -= 5.0
+    base_score = 15.0
+    
+    # 1. Rising Acceleration (Score-based guard)
+    if cts_accel > prev_cts_accel > prev2_cts_accel:
+        base_score += 10.0 # Strong 3-bar rise
+    elif cts_accel > prev_cts_accel:
+        base_score += 5.0  # 2-bar rise
+    else:
+        base_score -= 5.0  # Falling acceleration
 
-    if cts_bt <= cfg.cts_bt_max:
+    # 2. CTS Floor alignment
+    if cts <= -0.99:
         base_score += 5.0
-    elif cts_bt > cfg.cts_bt_max:
+    elif cts > -0.90:
         base_score -= 5.0
 
-    delta = cts_accel - cts_accel_threshold
-    if delta < 0.001:
-        base_score -= 15.0
-    elif delta < 0.002:
+    # 3. CTS Buy Threshold alignment
+    if cts <= cts_bt:
+        base_score += 5.0
+    else:
         base_score -= 5.0
+
+    # 4. Acceleration Threshold alignment
+    delta = cts_accel - cts_accel_threshold
+    if delta >= 0:
+        base_score += 5.0
+    else:
+        # Scale penalty based on how far below threshold
+        if delta < -0.05:
+            base_score -= 21.0
+        elif delta < -0.01:
+            base_score -= 11.0
+        else:
+            base_score -= 5.0
 
     psz_v = row.get("psz_v", np.nan)
     prev_psz_v = prev_row.get("psz_v", np.nan)
