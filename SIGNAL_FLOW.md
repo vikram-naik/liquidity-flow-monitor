@@ -1,7 +1,7 @@
 # SavgolCTS Signal — Entry / Exit Flow
 
 **Package**: `src/trading/signals/savgol_cts/`
-**Last updated**: 2026-04-25
+**Last updated**: 2026-04-29
 
 ## Package Structure
 
@@ -12,8 +12,8 @@ savgol_cts/
   state.py             # SavgolCTSExitState bitfield helper
   scoring.py           # compute_intensity() — shared intensity scoring
   signal.py            # SavgolCTSSignal orchestrator (cooldown, ST exit, dispatch)
-  entries/             # 10 entry path implementations
-  exits/               # 10 exit path implementations
+  entries/             # 7 active entry path implementations
+  exits/               # 7 active exit path implementations
 ```
 
 ---
@@ -79,16 +79,6 @@ check_entry(row, prev_row, cfg, records, idx)       [signal.py]
   |     |-- [Score] Multi-factor Score >= score_min (20) AND Boom/Trend constraints
   |     +-- PASS --> EntryTag.ACCEL
   |
-  |-- PATH 1: Slope Bottom                               [entries/slope_bottom.py]
-  |     |-- [Gate] cts_slope <= threshold (-0.10) AND >= exhaustion_min (-0.22)
-  |     |-- [Guard] cts_slope rising (slope > prev_slope)
-  |     |-- [Guard] regime in ["downtrend", "notrend"]
-  |     |-- [Guard] slope_delta in [0.002, 0.02] (reject violent/weak bounces)
-  |     |-- [Guard] cwvap_dist in [-3.0%, 0.5%]
-  |     |-- [Guard] cts_accel > threshold AND (optionally) rising
-  |     |-- [Guard] Pure Bear Guard & PDD Guard
-  |     +-- PASS --> EntryTag.SLOPE_BOTTOM
-  |
   |-- PATH 3: Institutional Floor                        [entries/institutional_floor.py]
   |     |-- [Gate] PSZ Sustained (<= -0.30 for 3 bars) AND Inflection
   |     |-- [Guard] cwvap_dist <= max
@@ -101,20 +91,14 @@ check_entry(row, prev_row, cfg, records, idx)       [signal.py]
   |     +-- PASS --> EntryTag.INSTITUTIONAL_FLOOR
   |
   |-- PATH 6: Range Reversion                            [entries/range_reversion.py]
+  |     |-- [Gate] Annual & Quarterly Oversold (RP_252 < max, RP_63 < max)
+  |     |-- [Guard] Short-term inflecting (RP_10 <= prev_RP_10)
+  |     |-- [Guard] Green candle
+  |     |-- [Guard] Base formed (bars_at_base >= min)
+  |     |-- [Guard] ATR-relative range tight
+  |     |-- [Guard] Institutional capitulation (cts > max)
+  |     |-- [Guard] Momentum velocity improving (psz_v > 0)
   |     +-- PASS --> EntryTag.RANGE_REVERSION
-  |
-  |-- PATH 7: Accel Zero Cross                           [entries/accel_zero_cross.py]
-  |     +-- PASS --> EntryTag.ACCEL_ZERO_CROSS
-  |
-  |-- PATH 4: PRT Slope Zero Cross                       [entries/prt_slope_zero_cross.py]
-  |     |-- [Gate] PRT Slope crosses above zero AND >= min
-  |     |-- [Guard] PRT Not Flat (adaptive lookback)
-  |     |-- [Guard] FAS in [min, max]
-  |     |-- [Guard] PSZ < threshold
-  |     |-- [Guard] CTS < 0
-  |     |-- [Guard] PRT Accel <= max
-  |     |-- [Score] Multi-factor Score >= min_score (8.0)
-  |     +-- PASS --> EntryTag.PRT_SLOPE_ZERO_CROSS
   |
   +-- No path matched --> REJECT (last meta from final path)
 ```
@@ -138,24 +122,25 @@ check_exit(row, prev_row, trade, ...)                [signal.py]
 
 ### State Bitfield (`SavgolCTSExitState` — `state.py`)
 
-The state is packed into a 14-bit integer, stored in `delivery_bad_count`.
+The state is packed into a 18-bit integer, stored in `delivery_bad_count`.
 
 | Bit | Mask   | Name                       | Description |
 |---|---|---|---|
-| 0 | 0x0001 | `cts_rose`                 | - |
-| 1 | 0x0002 | `psz_was_above`            | Phase 2 active tracking (varies by path) |
-| 2 | 0x0004 | `cts_above_bt`             | - |
-| 3 | 0x0008 | `exit_suppressed`          | Exit suppressed by CWVAP rule |
-| 4 | 0x0010 | `suppressed_this_bar`      | Suppressed on current bar |
-| 5 | 0x0020 | `slope_crossed_zero`       | Phase 1 complete (cts_slope > 0) |
-| 6 | 0x0040 | `price_above_cwvap`        | Price crossed above CWVAP |
-| 7 | 0x0080 | `prt_exit_suppressed`      | PRT exit was suppressed |
-| 8 | 0x0100 | `fas_crossed_zero`         | PRT/FAS crossed zero |
-| 9 | 0x0200 | `extreme_bottom_extension` | Trade hit absolute floor |
-|10 | 0x0400 | `recovery_passed`          | Indicator crossed above zero |
-|11 | 0x0800 | `cts_exhausted`            | CTS exhausted post-recovery |
-|12 | 0x1000 | `fas_exhausted`            | FAS exhausted post-recovery |
-|13+| 0xE000 | `cwf_count`                | High > CWVAP and Close < CWVAP |
+| 0 | 0x00001 | `cts_rose`                 | - |
+| 1 | 0x00002 | `psz_was_above`            | Phase 2 active tracking (varies by path) |
+| 2 | 0x00004 | `cts_above_bt`             | - |
+| 3 | 0x00008 | `exit_suppressed`          | Exit suppressed by CWVAP rule |
+| 4 | 0x00010 | `suppressed_this_bar`      | Suppressed on current bar |
+| 5 | 0x00020 | `slope_crossed_zero`       | (Legacy) Track Phase 1 complete |
+| 6 | 0x00040 | `price_above_cwvap`        | Price crossed above CWVAP |
+| 7 | 0x00080 | `prt_exit_suppressed`      | (Legacy) PRT exit was suppressed |
+| 8 | 0x00100 | `fas_crossed_zero`         | (Legacy) PRT/FAS crossed zero |
+| 9 | 0x00200 | `extreme_bottom_extension` | (Legacy) Trade hit absolute floor |
+|10 | 0x00400 | `recovery_passed`          | Indicator crossed above zero |
+|11 | 0x00800 | `cts_exhausted`            | CTS exhausted post-recovery |
+|12 | 0x01000 | `fas_exhausted`            | FAS exhausted post-recovery |
+|13-| 0x1E000 | `cwf_count`                | High > CWVAP and Close < CWVAP (4 bits) |
+|17 | 0x20000 | `climax_hit_above_va`      | Structural Climax hit while price > VA_High |
 
 ## Exit Logic Classes
 
@@ -163,4 +148,8 @@ The exit strategy relies heavily on path-specific logic located in `src/trading/
 
 ## CWVAP Guard (`exits/cwvap_guard.py`)
 
-Applied **after** indicator-generated exit signals. It acts as a gatekeeper to either suppress or release exits based on momentum strength (PSZ/CTS levels) relative to CWVAP. It includes logic like the Inside Bar Guard and Candle Guard to prevent premature exiting of strong trends.
+Applied **after** indicator-generated exit signals. It acts as a gatekeeper to either suppress or release exits based on momentum strength relative to CWVAP. It includes:
+
+1. **Candle Rejection Guard**: Preemptively exits on violent inside bars or long upper wicks at resistance.
+2. **Structural Climax Guard**: Preemptively exits when price stretches to historical ceilings (`RP_63 > 0.95` AND `RP_252 > 0.95`) while dangerously overextended from VWAP (`CWVAP_Dist% > 10%` OR `FAS > 1.0`). If price is above `VA_High` when climax hits, it suppresses the exit and converts to a strict trailing stop based on the `VA_High` level.
+3. **Momentum Suppression**: Suppresses normal cycle exits as long as structural momentum (PSZ > 0 or CTS > 0) is holding above the Custom VWAP.
