@@ -5,7 +5,7 @@ import numpy as np
 from src.trading.signals.enums import EntryTag
 from src.trading.signals.savgol_cts.config import FasBuyCrossEntryConfig
 from src.trading.signals.savgol_cts.scoring import compute_intensity
-from src.trading.signals.savgol_cts.entries.prt_slope_zero_cross import is_flattish_line_adaptive
+from src.trading.signals.savgol_cts.entries.utils import is_flattish_line_adaptive
 
 
 def check_fas_buy_cross(

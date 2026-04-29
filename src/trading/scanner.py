@@ -112,6 +112,9 @@ class Scanner:
         self._phase2_scan_new_signals(today)
         self._phase3_daily_pnl(today)
 
+        if not self.dry_run:
+            self.repo.sync_positions_watchlist()
+
         print("=== Scanner complete ===")
 
     def refresh_positions(self):
@@ -123,6 +126,10 @@ class Scanner:
         print(f"=== Position Refresh: {today} ===")
         self._phase1_check_exits()
         self._phase3_daily_pnl(today)
+
+        if getattr(self, 'dry_run', False) is False:
+            self.repo.sync_positions_watchlist()
+
         print("=== Refresh complete ===")
 
     # ── Phase 1: Detect exit signals on open positions ──────────────────

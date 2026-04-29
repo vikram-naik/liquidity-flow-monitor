@@ -102,6 +102,38 @@ def apply_cwvap_guard(
                                         elif np.isnan(avg_vol):
                                             return ExitReason.INSIDE_BAR_REJECTION, st.to_int()
 
+        # Rule PREEMPT 2: Structural Climax Guard (Range Exhaustion + Overextension)
+        if getattr(gc, "climax_guard_enabled", True):
+            rp63 = row.get("range_pos_63", np.nan)
+            rp252 = row.get("range_pos_252", np.nan)
+            fas = row.get("fas", np.nan)
+            cwvap_dist = (close - cwvap) / cwvap * 100.0 if not np.isnan(cwvap) and cwvap > 0 else 0.0
+            va_high = row.get("va_high", np.nan)
+            
+            if not any(np.isnan(x) for x in [rp63, rp252]):
+                rp_thr = getattr(gc, "climax_rp_threshold", 0.95)
+                dist_thr = getattr(gc, "climax_cwvap_dist", 10.0)
+                fas_thr = getattr(gc, "climax_fas_threshold", 1.0)
+                
+                is_structural_top = (rp63 >= rp_thr) and (rp252 >= rp_thr)
+                is_overextended = (cwvap_dist >= dist_thr) or (not np.isnan(fas) and fas >= fas_thr)
+                
+                if is_structural_top and is_overextended:
+                    if not np.isnan(va_high) and close > va_high:
+                        st.climax_hit_above_va = True
+                        # Mark it and let it trail, skipping the immediate exit
+                    else:
+                        # Clear any suppression state and exit immediately
+                        st.suppressed_this_bar = False
+                        st.exit_suppressed = False
+                        return ExitReason.STRUCTURAL_CLIMAX, st.to_int()
+
+            # VA High Trail for marked climax exits
+            if st.climax_hit_above_va and not np.isnan(va_high) and close < va_high:
+                st.suppressed_this_bar = False
+                st.exit_suppressed = False
+                return ExitReason.STRUCTURAL_CLIMAX, st.to_int()
+
         # Rule A: Suppress exit while momentum positive above CWVAP.
         psz_strong = not np.isnan(psz_raw) and psz_raw > 0.00
         cts_strong = not np.isnan(cts) and cts > 0.00

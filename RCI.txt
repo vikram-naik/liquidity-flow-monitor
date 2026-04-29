@@ -1,0 +1,173 @@
+
+
+//@version=6
+indicator("RCI Ribbon", "RCI Ribbon", precision = 2, timeframe = "", timeframe_gaps = true , overlay = false )
+
+source 		 = input.source(close, title = "Source")
+shortLength  = input.int(10, title = "Short RCI Length", minval = 1)
+middleLength = input.int(30, title = "Middle RCI Length", minval = 1)
+longLength 	 = input.int(50, title = "Long RCI Length", minval = 1)
+bgColorSelected = input.color(color.new(color.gray,95), title = "BG Color in Mid Channel")
+
+
+shortRCI = ta.rci(source, shortLength)
+midRCI = ta.rci(source, middleLength)
+longRCI = ta.rci(source, longLength)
+
+// Function to calculate the angle (in degrees) between two consecutive RCI points
+// Uses arctangent of the difference to derive the slope angle
+calcAngle(float currentVal, float prevVal) =>
+    math.todegrees(math.atan(currentVal - prevVal))
+
+// Calculate angle series for each RCI
+shortRCIAngle = calcAngle(shortRCI, shortRCI[1])
+midRCIAngle   = calcAngle(midRCI, midRCI[1])
+longRCIAngle  = calcAngle(longRCI, longRCI[1])
+
+//angle of rise is 80 or more.
+shortAngleFlip = ta.crossover(shortRCIAngle,80)
+midAngleFlip = ta.crossover(midRCIAngle,80)
+
+
+plot(shortRCI, title = "Short RCI", color =shortRCI < shortRCI[1] ? color.black : color.blue, linewidth = 2)
+plot(midRCI, title = "Middle RCI", color = midRCI < midRCI[1] ? color.black : color.blue, linewidth = 3)
+plot(longRCI, title = "Long RCI", color = longRCI < longRCI[1] ? color.black : color.orange, linewidth = 6)
+plot(longRCI, title = "Long RCI Embeded", color = longRCI > -80 ? color.black : color.orange, linewidth = 1)
+
+// Angle plots (hidden by default — enable from Style tab)
+//plot(shortRCIAngle, title = "Short RCI Angle", color = color.new(color.blue, 0), linewidth = 1, display = display.none)
+//plot(midRCIAngle,   title = "Mid RCI Angle",   color = color.new(color.purple, 0), linewidth = 1, display = display.none)
+//plot(longRCIAngle,  title = "Long RCI Angle",  color = color.new(color.orange, 0), linewidth = 1, display = display.none)
+
+// Angle plots (hidden by default — enable from Style tab)
+plot(shortRCIAngle, title = "Short RCI Angle", color = shortRCIAngle >=80 or shortRCIAngle <= -80  ? color.new(color.blue, 0) :  color.new(color.white, 0), linewidth = 1, display = display.none)
+plot(midRCIAngle,   title = "Mid RCI Angle",   color = midRCIAngle >= 80 or midRCIAngle <= -80 ? color.new(color.purple, 0) :  color.new(color.white, 0), linewidth = 1, display = display.none)
+plot(longRCIAngle,  title = "Long RCI Angle",  color =  longRCIAngle >= 80 or longRCIAngle<= -80? color.new(color.orange, 0) :  color.new(color.white, 0), linewidth = 1, display = display.none)
+
+plot(longRCI, title = "Long RCI Embeded", color = longRCI < longRCI[1] and longRCIAngle < -80  ? color.white : na, linewidth = 1)
+
+hline(0, "Middle band")
+upper = hline(80, "Upper band")
+lower = hline(-80, "Lower band")
+
+sCross = ta.crossover(shortRCI,-80)
+mCross = ta.crossover(midRCI,-80)
+lCross = ta.crossover(longRCI,-80)
+
+midRCIFlag92 = false
+sRCIFlag92 = false
+
+if midRCI[1] >= 92
+    midRCIFlag92 := true
+
+if shortRCI[1] >= 92
+    sRCIFlag92 := true
+
+bgcolor(midRCIFlag92 or sRCIFlag92 == true ? color.new(color.aqua,90) : na , title = "Mid Short Cross 92")
+
+bgcolor(  sCross or mCross or lCross  ? color.new(color.blue,90) : na , title = "Cross -80")
+
+currentMidDiff = midRCI - midRCI[1]
+prevMidDiff = midRCI[1] - midRCI[2]
+
+midFlipDown = prevMidDiff > 0 and currentMidDiff < 0
+midFlipUp = prevMidDiff < 0 and currentMidDiff > 0
+
+
+sCrossUp80 = ta.crossover(shortRCI,-80)
+mCrossUp80 = ta.crossover(midRCI,-80)
+lCrossUp80 = ta.crossover(longRCI,-80)
+
+sCrossDown80 = ta.crossunder(shortRCI,80)
+mCrossDown80 = ta.crossunder(midRCI,80)
+lCrossDown80 = ta.crossunder(longRCI,80)
+
+negativeLong = longRCI < longRCI[1]
+negativeMid = midRCI < midRCI[1]
+negativeShort = shortRCI < shortRCI[1]
+
+
+long1 = longRCI > longRCI[1]
+long2 = longRCI[1] < longRCI[2]
+long = long1 and long2
+
+lTick1 = longRCI[1] < -80 and longRCI > -80
+lTick2 = longRCI[1] > 80 and longRCI < 80
+lTick = lTick1 or lTick2
+
+
+mlong1 = midRCI > midRCI[1]
+mlong2 = midRCI[1] < midRCI[2]
+mlong = mlong1 and mlong2
+
+mTick1 = midRCI[1] < -80 and midRCI > -80
+mTick2 = midRCI[1] > 80 and midRCI < 80
+mTick = mTick1 or mTick2
+
+slong1 = shortRCI > shortRCI[1]
+slong2 = shortRCI[1] < shortRCI[2]
+slong = slong1 and slong2
+
+
+sTick1 = shortRCI[1] < -80 and shortRCI > -80
+sTick2 = shortRCI[1] > 80 and shortRCI < 80
+sTick = sTick1 or sTick2
+
+lmsCrossUp = sCrossUp80 or mCrossUp80 or lCrossUp80
+lmsCrossDown = sCrossDown80 or mCrossDown80 or lCrossDown80
+
+alertPosNeg = long or mlong or slong or lTick or mTick or sTick 
+alertCrossing = lmsCrossDown or lmsCrossUp
+alertConditions = long or mlong or slong or lTick or mTick or sTick or lmsCrossDown or lmsCrossUp
+
+sCrossUp = ta.crossover(shortRCI,-80)
+mCrossUp = ta.crossover(midRCI,-80)
+lCrossup = ta.crossover(longRCI,-80)
+
+checkMidPos = midRCI > midRCI[1]
+checkSmallPos = shortRCI > shortRCI[1]
+checkLongPos = longRCI > longRCI[1]
+
+checkMidNeg = midRCI < midRCI[1]
+checkSmallNeg = shortRCI < shortRCI[1]
+checkLongNeg = longRCI < longRCI[1]
+
+
+// Alert setup
+alertcondition(alertCrossing, title = "LMS CrossUp CrossDown", message = "RCI Crossing")
+alertcondition(alertPosNeg, title = "RCI Positive / Negative", message = "RCI Trend Change")
+alertcondition(alertConditions, title = "RCI all condition", message = "RCI All Condition")
+
+
+//For Pine Screener
+alertcondition(long1, title = "Flip Positive Long", message = "Flip to Positive Long")
+alertcondition(mlong1, title = "Flip Positive Mid", message = "Flip to Positive Mid")
+alertcondition(slong1, title = "Flip Positive Short", message = "Flip to Positive Short")
+
+alertcondition(negativeLong, title = "Flip Negative Long", message = "Flip to Negative Long")
+alertcondition(negativeMid, title = "Flip Negative Mid", message = "Flip to Negative Mid")
+alertcondition(negativeShort, title = "Flip Negative Short", message = "Flip to Negative Short")
+
+alertcondition(sCrossUp, title = "Small Cross Above -80", message = "Small Crossing Above -80")
+alertcondition(mCrossUp, title = "Mid Cross Above -80", message = "Mid  Crossing Above -80")
+alertcondition(lCrossup, title = "Long Cross Above -80", message = "Long  Crossing Above -80")
+
+
+alertcondition(checkSmallPos, title = "Small Currently Positive", message = "Small Currently is Positive")
+alertcondition(checkMidPos, title = "Mid Currently Positive", message = "Mid  Currently is Positive")
+alertcondition(checkLongPos, title = "Long CCurrently Positive", message = "Long  Currently is Positive")
+
+alertcondition(checkSmallNeg, title = "Small Currently Negative", message = "Small Currently is Negative")
+alertcondition(checkMidNeg, title = "Mid Currently Negative", message = "Mid  Currently is Negative")
+alertcondition(checkLongNeg, title = "Long CCurrently Negative", message = "Long  Currently is Negative")
+
+
+alertcondition(midFlipUp, title = "Mid Flip To Buy", message = "Mid Flip To Buy")
+alertcondition(midFlipDown, title = "Mid Flip To Sell", message = "Mid Flip To Sell")
+
+alertcondition(shortAngleFlip,title = "Short Angle Bullish Flip",message = "Short Angle Bullish Flip")
+alertcondition(midAngleFlip,title = "Mid Angle Bullish Flip",message = "Mid Angle Bullish Flip")
+
+
+============================================================================
+

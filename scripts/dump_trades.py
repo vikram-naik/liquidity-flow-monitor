@@ -22,11 +22,8 @@ from src.trading.signals.savgol_cts.config import SavgolCTSEntryConfig, SavgolCT
 from src.trading.signals.enums import EntryTag
 
 ENTRY_ALIASES = {
-    "slope-bottom": EntryTag.SLOPE_BOTTOM.value,
     "inst-floor":   EntryTag.INSTITUTIONAL_FLOOR.value,
     "accel-cross":  EntryTag.ACCEL.value,
-    "accel-0-cross":     EntryTag.ACCEL_ZERO_CROSS.value,
-    "prt-slope-zero-cross": EntryTag.PRT_SLOPE_ZERO_CROSS.value,
     "fas-zero-cross": EntryTag.FAS_ZERO_CROSS.value,
     "fas-floor-reversion": EntryTag.FAS_FLOOR_REVERSION.value,
     "fas-buy-cross": EntryTag.FAS_BUY_CROSS.value,
@@ -67,6 +64,8 @@ def main():
         t.signal_date = t.entry_date
         t.fas_signal = 0.0
         t.cts_signal = 0.0
+        t.cts_buy = "no"
+        t.accel_above_bt = "no"
         t.cwvap_dist_signal = 0.0
         t.psz_v_signal = 0.0
         t.above_va_high = "no"
@@ -120,6 +119,19 @@ def main():
                         t.fas_signal = sig_row.get("fas", 0.0)
                         t.cts_signal = sig_row.get("cts", 0.0)
                         
+                        cts_bt = sig_row.get("cts_buy_threshold", np.nan)
+                        if not np.isnan(cts_bt) and t.cts_signal <= cts_bt:
+                            t.cts_buy = "yes"
+                        else:
+                            t.cts_buy = "no"
+                        
+                        cts_accel = sig_row.get("cts_accel", np.nan)
+                        cts_accel_bt = sig_row.get("cts_accel_threshold", np.nan)
+                        if not any(np.isnan([cts_accel, cts_accel_bt])) and cts_accel > cts_accel_bt:
+                            t.accel_above_bt = "yes"
+                        else:
+                            t.accel_above_bt = "no"
+                        
                         cwvap = sig_row.get("cwvap", np.nan)
                         close = sig_row.get("close", np.nan)
                         if not np.isnan(cwvap) and cwvap > 0:
@@ -167,14 +179,14 @@ def main():
     # Print
     print(f"\n--- {label} TRADES: STUDY REPORT ({args.period.upper()}) ---")
     header = (f"{'#':>3} | {'Symbol':<12} | {'Sig Date':<10} | {'PnL%':>7} | {'MFE%':>7} | "
-              f"{'FAS':>7} | {'CTS':>7} | {'CWD%':>7} | {'PSZv':>7} | {'>VAH':>4} | {'Bars':>4} | {'CWF':>3} | {'SCORE':>5} | {'Exit Reason'}")
+              f"{'FAS':>7} | {'CTS':>7} | {'Buy':>3} | {'Acc>BT':>6} | {'CWD%':>7} | {'PSZv':>7} | {'>VAH':>4} | {'Bars':>4} | {'CWF':>3} | {'SCORE':>5} | {'Exit Reason'}")
     print(header)
     print("-" * len(header))
     for i, t in enumerate(filtered, 1):
         reason = t.exit_reason.value if hasattr(t.exit_reason, "value") else str(t.exit_reason)
         cwf = getattr(t, "cwvap_fail_count", 0)
         print(f"{i:>3} | {t.symbol:<12} | {t.signal_date:<10} | {t.pnl_pct:>7.2f} | "
-              f"{t.mfe_pct:>7.2f} | {t.fas_signal:>7.3f} | {t.cts_signal:>7.3f} | {t.cwvap_dist_signal:>7.2f} | "
+              f"{t.mfe_pct:>7.2f} | {t.fas_signal:>7.3f} | {t.cts_signal:>7.3f} | {t.cts_buy:>3} | {t.accel_above_bt:>6} | {t.cwvap_dist_signal:>7.2f} | "
               f"{t.psz_v_signal:>7.4f} | {t.above_va_high:>4} | {t.duration:>4} | {cwf:>3} | {t.conviction_score:>+5} | {reason}")
 
 

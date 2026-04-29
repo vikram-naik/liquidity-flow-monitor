@@ -3,12 +3,9 @@ from enum import Enum
 class EntryTag(str, Enum):
     """Strongly typed entry tags with presentation-friendly strings."""
     CTS_FLOOR_REVERSION = "SavgolCTS CTS-Floor-Reversion"
-    SLOPE_BOTTOM = "SavgolCTS Slope-Bottom"
     INSTITUTIONAL_FLOOR = "SavgolCTS Institutional-Floor"
     ACCEL = "SavgolCTS Accel-Cross"
     RANGE_REVERSION = "SavgolCTS Range-Reversion"
-    ACCEL_ZERO_CROSS = "SavgolCTS Accel-Zero-Cross"
-    PRT_SLOPE_ZERO_CROSS = "SavgolCTS PRT-Slope-Zero-Cross"
     FAS_ZERO_CROSS = "SavgolCTS FAS-Zero-Cross"
     FAS_FLOOR_REVERSION = "SavgolCTS FAS-Floor-Reversion"
     FAS_BUY_CROSS = "SavgolCTS FAS-Buy-Cross"
@@ -49,6 +46,7 @@ class ExitReason(str, Enum):
     NEGATIVE_PNL_ENGINE_FAILURE = "Negative PnL engine failure (loss prevention)"
     CANDLE_REJECTION = "Candlestick structural rejection at CWVAP"
     INSIDE_BAR_REJECTION = "Inside bar on extreme volume at CWVAP"
+    STRUCTURAL_CLIMAX = "Structural climax (Range exhaustion + Overextension)"
     
     # Universal / Generic
     END_OF_DATA = "End of Data (Open Trade)"

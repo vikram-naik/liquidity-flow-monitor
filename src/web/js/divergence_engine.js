@@ -331,7 +331,13 @@
             { api: cs, label: "Price", col: "price", color: "#e6edf3" },
             { api: sCwvap, label: "CWVAP", col: "cwvap", color: "#00bfa5" },
             { api: sVaHigh, label: "VA High", col: "va_high", color: "#7c4dff", dashed: true },
-            { api: sVaLow, label: "VA Low", col: "va_low", color: "#7c4dff", dashed: true }
+            { api: sVaLow, label: "VA Low", col: "va_low", color: "#7c4dff", dashed: true },
+            { type: "separator" },
+            { label: "pw", col: "range_pos_10", color: "#8b949e" },
+            { label: "pm", col: "range_pos_22", color: "#8b949e" },
+            { label: "pq", col: "range_pos_63", color: "#8b949e" },
+            { label: "py", col: "range_pos_252", color: "#8b949e" },
+            { label: "ath", col: "is_ath", color: "#f1c40f" }
         ];
         allLegConfigs.push({ id: "leg1", config: leg1Config });
 
@@ -599,9 +605,15 @@
             var currentLedger = ledgerIn || ledger;
             var html = "";
             config.forEach(function (s) {
-                if (!s.api.options().visible) return;
+                // Support separators (no label, no col)
+                if (s.type === "separator") {
+                    html += `<div class="legend-sep" style="width:1px; height:12px; background:#30363d; margin:0 4px"></div>`;
+                    return;
+                }
+
+                if (s.api && !s.api.options().visible) return;
                 var val = null;
-                if (param && param.seriesData && param.seriesData.has(s.api)) {
+                if (s.api && param && param.seriesData && param.seriesData.has(s.api)) {
                     val = param.seriesData.get(s.api);
                 } else if (currentLedger && currentLedger[targetIdx]) {
                     var row = currentLedger[targetIdx];
@@ -609,11 +621,23 @@
                     else if (row[s.col] != null) val = { value: row[s.col] };
                 }
                 var price = val ? (val.value !== undefined ? val.value : val.close) : null;
-                var display = (price != null) ? price.toFixed(price > 10 ? 2 : 4) : "\u2014";
+                var display = "\u2014";
+                if (price !== null) {
+                    if (typeof price === "boolean") {
+                        display = price ? "y" : "n";
+                    } else if (typeof price === "number") {
+                        display = price.toFixed(price > 10 ? 2 : 4);
+                    } else {
+                        display = price;
+                    }
+                }
                 var dotStyle = s.dashed
                     ? `background: repeating-linear-gradient(90deg, ${s.color}, ${s.color} 2px, transparent 2px, transparent 4px)`
-                    : `background:${s.color}`;
-                html += `<div class="legend-item"><span class="legend-dot" style="${dotStyle}"></span><span>${s.label}: ${display}</span></div>`;
+                    : (s.color ? `background:${s.color}` : "display:none");
+                
+                var dotHtml = s.color ? `<span class="legend-dot" style="${dotStyle}"></span>` : "";
+
+                html += `<div class="legend-item">${dotHtml}<span>${s.label}: ${display}</span></div>`;
             });
             container.innerHTML = html;
         }

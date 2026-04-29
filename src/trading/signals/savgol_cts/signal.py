@@ -15,12 +15,9 @@ from src.trading.signals.savgol_cts.config import SavgolCTSEntryConfig, SavgolCT
 
 # Entry path checkers
 from src.trading.signals.savgol_cts.entries.cts_floor_reversion import check_cts_floor_reversion
-from src.trading.signals.savgol_cts.entries.slope_bottom import check_slope_bottom
 from src.trading.signals.savgol_cts.entries.accel_cross import check_entry_accel_cross
 from src.trading.signals.savgol_cts.entries.institutional_floor import check_institutional_floor
 from src.trading.signals.savgol_cts.entries.range_reversion import check_range_reversion
-from src.trading.signals.savgol_cts.entries.accel_zero_cross import check_accel_zero_cross
-from src.trading.signals.savgol_cts.entries.prt_slope_zero_cross import check_prt_slope_zero_cross
 from src.trading.signals.savgol_cts.entries.fas_zero_cross import check_fas_zero_cross
 from src.trading.signals.savgol_cts.entries.fas_floor_reversion import check_fas_floor_reversion
 from src.trading.signals.savgol_cts.entries.fas_buy_cross import check_fas_buy_cross
@@ -28,12 +25,9 @@ from src.trading.signals.savgol_cts.entries.fas_buy_cross import check_fas_buy_c
 # Exit path checkers
 from src.trading.signals.savgol_cts.exits.cwvap_guard import apply_cwvap_guard
 from src.trading.signals.savgol_cts.exits.cts_floor_reversion import exit_cts_floor_reversion
-from src.trading.signals.savgol_cts.exits.slope_bottom import exit_slope_bottom
 from src.trading.signals.savgol_cts.exits.accel_cross import check_exit_accel_cross
 from src.trading.signals.savgol_cts.exits.institutional_floor import exit_institutional_floor
 from src.trading.signals.savgol_cts.exits.range_reversion import exit_range_reversion
-from src.trading.signals.savgol_cts.exits.accel_zero_cross import exit_accel_zero_cross
-from src.trading.signals.savgol_cts.exits.prt_slope_zero_cross import exit_prt_slope_zero_cross
 from src.trading.signals.savgol_cts.exits.fas_zero_cross import exit_fas_zero_cross
 from src.trading.signals.savgol_cts.exits.fas_floor_reversion import exit_fas_floor_reversion
 from src.trading.signals.savgol_cts.exits.fas_buy_cross import exit_fas_buy_cross
@@ -95,11 +89,6 @@ class SavgolCTSSignal(SignalInterface):
         if passed: return True, intensity, meta
         if cfg.accel_cross.enabled: rejections.append(f"Accel: {meta.get('reason', 'Failed')}")
 
-        # Slope Bottom
-        passed, intensity, meta = check_slope_bottom(row, prev_row, cfg)
-        if passed: return True, intensity, meta
-        if cfg.slope_bottom.enabled: rejections.append(f"Slope: {meta.get('reason', 'Failed')}")
-
         # Institutional Floor
         passed, intensity, meta = check_institutional_floor(row, prev_row, cfg, records, idx)
         if passed: return True, intensity, meta
@@ -109,16 +98,6 @@ class SavgolCTSSignal(SignalInterface):
         passed, intensity, meta = check_range_reversion(row, prev_row, cfg, records, idx)
         if passed: return True, intensity, meta
         if cfg.range_reversion.enabled: rejections.append(f"Range: {meta.get('reason', 'Failed')}")
-
-        # Accel Zero Cross
-        passed, intensity, meta = check_accel_zero_cross(row, prev_row, cfg.accel_zero_cross, records, idx)
-        if passed: return True, intensity, meta
-        if cfg.accel_zero_cross.enabled: rejections.append(f"AccelZero: {meta.get('reason', 'Failed')}")
-
-        # PRT Slope Zero Cross
-        passed, intensity, meta = check_prt_slope_zero_cross(row, prev_row, cfg.prt_slope_zero_cross, records, idx)
-        if passed: return True, intensity, meta
-        if cfg.prt_slope_zero_cross.enabled: rejections.append(f"PRTSlopeZero: {meta.get('reason', 'Failed')}")
 
         return False, 0, {"reason": " | ".join(rejections)}
 
@@ -151,18 +130,12 @@ class SavgolCTSSignal(SignalInterface):
 
         if tag == EntryTag.CTS_FLOOR_REVERSION.value:
             exit_status = exit_cts_floor_reversion(row, prev_row, trade, peak_close, bars_held, updated_state_val, cfg.cts_floor_reversion, records, idx)
-        elif tag == EntryTag.SLOPE_BOTTOM.value:
-            exit_status = exit_slope_bottom(row, prev_row, trade, peak_close, bars_held, updated_state_val, cfg, records, idx)
         elif tag == EntryTag.ACCEL.value:
             exit_status = check_exit_accel_cross(records, idx, trade, updated_state_val, cfg.accel_cross, cfg.cwvap_guard, cfg)
         elif tag == EntryTag.INSTITUTIONAL_FLOOR.value:
             exit_status = exit_institutional_floor(row, prev_row, trade, peak_close, bars_held, updated_state_val, cfg, records, idx)
         elif tag == EntryTag.RANGE_REVERSION.value:
             exit_status = exit_range_reversion(row, prev_row, trade, peak_close, bars_held, updated_state_val, cfg, records, idx)
-        elif tag == EntryTag.ACCEL_ZERO_CROSS.value:
-            exit_status = exit_accel_zero_cross(row, prev_row, trade, peak_close, bars_held, updated_state_val, cfg.accel_zero_cross, records, idx)
-        elif tag == EntryTag.PRT_SLOPE_ZERO_CROSS.value:
-            exit_status = exit_prt_slope_zero_cross(row, prev_row, trade, peak_close, bars_held, updated_state_val, cfg.prt_slope_zero_cross, records, idx)
         elif tag == EntryTag.FAS_ZERO_CROSS.value:
             exit_status = exit_fas_zero_cross(row, prev_row, trade, peak_close, bars_held, updated_state_val, cfg.fas_zero_cross, records, idx)
         elif tag == EntryTag.FAS_FLOOR_REVERSION.value:
@@ -182,7 +155,7 @@ class SavgolCTSSignal(SignalInterface):
                     res = ExitReason.ST_CROSS
 
         # Mandatory Exit bypass for bespoke paths
-        bespoke_tags = [EntryTag.CTS_FLOOR_REVERSION, EntryTag.SLOPE_BOTTOM, EntryTag.ACCEL, EntryTag.INSTITUTIONAL_FLOOR, EntryTag.RANGE_REVERSION, EntryTag.ACCEL_ZERO_CROSS, EntryTag.PRT_SLOPE_ZERO_CROSS, EntryTag.FAS_ZERO_CROSS, EntryTag.FAS_FLOOR_REVERSION]
+        bespoke_tags = [EntryTag.CTS_FLOOR_REVERSION, EntryTag.INSTITUTIONAL_FLOOR, EntryTag.RANGE_REVERSION, EntryTag.FAS_ZERO_CROSS, EntryTag.FAS_FLOOR_REVERSION]
         is_bespoke = any(tag == t.value for t in bespoke_tags)
         
         if res == ExitReason.BAR3_STOP or is_bespoke:

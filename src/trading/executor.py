@@ -94,6 +94,9 @@ class OrderExecutor:
         entry_results = self.execute_entries()
         exit_results = self.execute_exits()
 
+        if not self.dry_run:
+            self.repo.sync_positions_watchlist()
+
         print(f"=== Executor complete: {len(entry_results)} entries, {len(exit_results)} exits ===")
         return {"entries": entry_results, "exits": exit_results}
 

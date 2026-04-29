@@ -29,6 +29,7 @@ UI_COLUMNS = [
     "regime",
     # Delivery metrics
     "cwvap_dist", "rdv", "cwc", "cdvl", "gradient_shape", "pdd_30", "pdd_120", "mcs_composite", "prt", "prt_slope", "prt_accel",
+    "range_pos_10", "range_pos_22", "range_pos_63", "range_pos_252", "is_ath",
     "cts", "cts_slope", "cts_accel",
     "velocity_60_norm", "vel_dp5",
     # PSZ (price slope z) raw + thresholds

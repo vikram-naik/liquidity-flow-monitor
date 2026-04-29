@@ -18,37 +18,6 @@ from src.trading.signals.enums import ExitReason
 # ---------------------------------------------------------------------------
 
 @dataclass
-class SlopeBottomEntryConfig:
-    """Path 5: Slope Bottom — cts_slope rising from deep negative in downtrend."""
-    enabled: bool = False
-    slope_threshold: float = -0.1
-    slope_delta_min: float = 0.002
-    slope_delta_max: float = 0.02
-    cwvap_dist_min: float = -3.0
-    cwvap_dist_max: float = 0.5
-    slope_exhaustion_min: float = -0.22
-    open_cwvap_guard: bool = True
-    accel_rising_guard: bool = True
-    cts_max: float = -0.85
-    pdd_guard: bool = True
-    pdd_max: float = 0.0
-    pure_bear_guard: bool = True
-    shallow_guard_enabled: bool = True
-    shallow_slope_min: float = -0.12
-    shallow_dist_max: float = -1.0
-
-
-@dataclass
-class SlopeBottomExitConfig:
-    """Slope Bottom exit: pure slope zero-cross cycle."""
-    pnl_cap_enabled: bool = True
-    pnl_cap_pct: float = 8.0
-    trail_enabled: bool = False
-    trail_activation_pct: float = 3.0
-    trail_lock_ratio: float = 0.50
-
-
-@dataclass
 class InstitutionalFloorEntryConfig:
     """Path 3: Institutional Floor — Sustained PSZ recovery with institutional alignment."""
     enabled: bool = True
@@ -105,7 +74,7 @@ class AccelCrossEntryConfig:
 class AccelCrossExitConfig:
     """Accel Cross exit: Two-Phase PSZ/CTS Glide."""
     enabled: bool = True
-    pnl_cap_enabled: bool = True
+    pnl_cap_enabled: bool = False
     pnl_cap_pct: float = 8.0
     hard_stop_enabled: bool = True
     hard_stop_pct: float = 8.0
@@ -131,51 +100,6 @@ class RangeReversionExitConfig:
     enabled: bool = True
     patience_bars: int = 8
     hard_stop_pct: float = 8.0
-
-
-@dataclass
-class AccelZeroCrossEntryConfig:
-    """Path 7: Accel Zero Cross — cts_accel crosses zero."""
-    enabled: bool = False
-
-
-@dataclass
-class AccelZeroCrossExitConfig:
-    """Accel Zero Cross exit: Two-Phase PSZ/CTS Glide with Trailing Stop."""
-    enabled: bool = True
-    pnl_cap_enabled: bool = False
-    pnl_cap_pct: float = 15.0
-    hard_stop_enabled: bool = False
-    hard_stop_pct: float = 6.0
-    trail_enabled: bool = True
-    trail_activation_pct: float = 5.0
-    trail_lock_ratio: float = 0.50
-    psz_peak_threshold: float = 0.25
-    psz_exit_threshold: float = 0.0
-
-
-@dataclass
-class PrtSlopeZeroCrossEntryConfig:
-    """Path: PRT Slope Zero Cross — PRT slope crosses above zero with FAS alignment."""
-    enabled: bool = False
-    prt_slope_min: float = 0.04
-    fas_min: float = -1.5
-    fas_max: float = 0.0
-    psz_threshold: float = -0.1
-    psz_v_min: float = 0.00
-    prt_accel_max: float = 0.1
-    cts_accel_delta_min: float = 0.01
-    min_score: float = 8.0
-    telemetry_enabled: bool = False
-
-
-@dataclass
-class PrtSlopeZeroCrossExitConfig:
-    """PRT Slope Zero Cross exit: CWVAP reclaim + FAS trailing."""
-    enabled: bool = True
-    cwvap_timeout_bars: int = 8
-    fas_exit_min: float = -0.1
-    fas_exit_max: float = 1.0
 
 
 @dataclass
@@ -275,12 +199,9 @@ class SavgolCTSEntryConfig(BaseEntryConfig):
     )
 
     cts_floor_reversion: CtsFloorReversionEntryConfig = field(default_factory=CtsFloorReversionEntryConfig)
-    slope_bottom: SlopeBottomEntryConfig = field(default_factory=SlopeBottomEntryConfig)
     accel_cross: AccelCrossEntryConfig = field(default_factory=AccelCrossEntryConfig)
     institutional_floor: InstitutionalFloorEntryConfig = field(default_factory=InstitutionalFloorEntryConfig)
     range_reversion: RangeReversionEntryConfig = field(default_factory=RangeReversionEntryConfig)
-    accel_zero_cross: AccelZeroCrossEntryConfig = field(default_factory=AccelZeroCrossEntryConfig)
-    prt_slope_zero_cross: PrtSlopeZeroCrossEntryConfig = field(default_factory=PrtSlopeZeroCrossEntryConfig)
     fas_zero_cross: FasZeroCrossEntryConfig = field(default_factory=FasZeroCrossEntryConfig)
     fas_floor_reversion: FasFloorReversionEntryConfig = field(default_factory=FasFloorReversionEntryConfig)
     fas_buy_cross: FasBuyCrossEntryConfig = field(default_factory=FasBuyCrossEntryConfig)
@@ -301,6 +222,10 @@ class CwvapGuardConfig:
     vol_lookback: int = 20            # Lookback for average volume
     inside_bar_guard_enabled: bool = True
     inside_bar_vol_mult: float = 1.5  # Volume multiplier for inside bar rejection
+    climax_guard_enabled: bool = True
+    climax_rp_threshold: float = 0.95    # Requires RP_63 and RP_252 > 0.95
+    climax_cwvap_dist: float = 10.0      # Requires distance > 10%
+    climax_fas_threshold: float = 1.11    # OR FAS > 1.0
 
 
 # ---------------------------------------------------------------------------
@@ -314,12 +239,9 @@ class SavgolCTSExitConfig(BaseExitConfig):
     st_crossover_tolerance: float = 0.03
 
     cts_floor_reversion: CtsFloorReversionExitConfig = field(default_factory=CtsFloorReversionExitConfig)
-    slope_bottom: SlopeBottomExitConfig = field(default_factory=SlopeBottomExitConfig)
     accel_cross: AccelCrossExitConfig = field(default_factory=AccelCrossExitConfig)
     institutional_floor: InstitutionalFloorExitConfig = field(default_factory=InstitutionalFloorExitConfig)
     range_reversion: RangeReversionExitConfig = field(default_factory=RangeReversionExitConfig)
-    accel_zero_cross: AccelZeroCrossExitConfig = field(default_factory=AccelZeroCrossExitConfig)
-    prt_slope_zero_cross: PrtSlopeZeroCrossExitConfig = field(default_factory=PrtSlopeZeroCrossExitConfig)
     fas_zero_cross: FasZeroCrossExitConfig = field(default_factory=FasZeroCrossExitConfig)
     fas_floor_reversion: FasFloorReversionExitConfig = field(default_factory=FasFloorReversionExitConfig)
     fas_buy_cross: FasBuyCrossExitConfig = field(default_factory=FasBuyCrossExitConfig)

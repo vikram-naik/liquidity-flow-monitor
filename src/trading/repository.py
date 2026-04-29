@@ -649,3 +649,40 @@ class TradingRepository:
             }
         finally:
             conn.close()
+
+    # ── Watchlists ───────────────────────────────────────────────────────
+
+    def sync_positions_watchlist(self) -> None:
+        """Keep a 'POSITIONS' watchlist synced with currently held positions."""
+        conn = get_db_connection()
+        try:
+            # Check if POSITIONS watchlist exists, create if not
+            row = conn.execute("SELECT id FROM watchlists WHERE name = 'POSITIONS'").fetchone()
+            if row:
+                wl_id = row[0]
+            else:
+                cursor = conn.execute(
+                    "INSERT INTO watchlists (name, description) VALUES (?, ?)",
+                    ("POSITIONS", "Auto-managed watchlist of active positions")
+                )
+                wl_id = cursor.lastrowid
+
+            # Get distinct symbols of held positions
+            rows = conn.execute(
+                "SELECT DISTINCT symbol FROM trading_positions WHERE status IN ('open', 'pending_exit')"
+            ).fetchall()
+            symbols = [r[0] for r in rows]
+
+            # Clear existing items for this watchlist
+            conn.execute("DELETE FROM watchlist_items WHERE watchlist_id = ?", (wl_id,))
+
+            # Insert current symbols
+            for i, sym in enumerate(symbols):
+                conn.execute(
+                    "INSERT INTO watchlist_items (watchlist_id, symbol, display_order) VALUES (?, ?, ?)",
+                    (wl_id, sym, i + 1)
+                )
+
+            conn.commit()
+        finally:
+            conn.close()

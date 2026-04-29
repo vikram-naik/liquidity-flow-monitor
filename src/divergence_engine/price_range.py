@@ -118,10 +118,11 @@ class PriceRange:
 
     @staticmethod
     def _compute_ath(df: pd.DataFrame) -> pd.DataFrame:
-        """Set ``is_ath`` = True when close equals the expanding all-time high."""
+        """Set ``is_ath`` = True when either high or close hits the expanding all-time high."""
         ath = df["high"].expanding(min_periods=1).max()
         df["ath"] = ath
-        df["is_ath"] = df["close"] >= ath
+        # True if today's high reached the historical high OR today's close is >= previous ath
+        df["is_ath"] = df["high"] >= ath
         return df
 
     # ------------------------------------------------------------------

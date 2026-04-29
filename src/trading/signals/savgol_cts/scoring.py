@@ -62,27 +62,7 @@ def compute_intensity(
     # Path-Specific Scoring (Max 70 points)
     path_score = 0.0
     
-    if tag == EntryTag.SLOPE_BOTTOM:
-        # For Slope Bottom, PDD is positively correlated (+0.09)
-        # Closer to 0.0 gets more points
-        if not np.isnan(pdd):
-            path_score += _interp(pdd, -10.0, 0.0, 0.0, 10.0)
-            
-        # 1. Depth of Exhaustion (CTS): -0.85 -> 0 pts, -1.0 -> 20 pts
-        path_score += _interp(cts, -0.85, -1.0, 0.0, 20.0)
-        
-        # 2. Structural Location (CWVAP Dist): Deeper is better
-        if not np.isnan(cwvap_dist):
-            path_score += _interp(cwvap_dist, -0.5, -4.0, 0.0, 20.0)
-            
-        # 3. Inflection Sharpness (Slope Delta)
-        cs = row.get("cts_slope", np.nan)
-        pcs = prev_row.get("cts_slope", np.nan)
-        if not np.isnan(cs) and not np.isnan(pcs):
-            slope_delta = cs - pcs
-            path_score += _interp(slope_delta, 0.002, 0.02, 0.0, 20.0)
-            
-    elif tag == EntryTag.INSTITUTIONAL_FLOOR:
+    if tag == EntryTag.INSTITUTIONAL_FLOOR:
         # 1. Depth of Price Exhaustion (PSZ): -0.30 -> 0 pts, -0.60 -> 25 pts
         psz = row.get("price_slope_z", np.nan)
         if not np.isnan(psz):
@@ -100,17 +80,6 @@ def compute_intensity(
     elif tag == EntryTag.ACCEL:
         # Score is passed via override_score from the study-logic module
         pass
-
-    elif tag == EntryTag.ACCEL_ZERO_CROSS:
-        # Score based on how deep cts and cts_slope are.
-        if not np.isnan(cts):
-            # CTS: -0.85 -> 0 pts, -1.0 -> 25 pts
-            path_score += _interp(cts, -0.85, -1.0, 0.0, 25.0)
-        
-        cs = row.get("cts_slope", np.nan)
-        if not np.isnan(cs):
-            # CTS Slope: -0.1 -> 0 pts, -0.2 -> 25 pts
-            path_score += _interp(cs, -0.1, -0.2, 0.0, 25.0)
 
     elif tag == EntryTag.FAS_FLOOR_REVERSION:
         # FAS Floor Reversion is an extreme bottom signal

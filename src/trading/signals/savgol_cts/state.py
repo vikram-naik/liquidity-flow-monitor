@@ -27,6 +27,7 @@ class SavgolCTSExitState:
     cts_exhausted: bool = False    # Track if CTS has exhausted post-recovery
     fas_exhausted: bool = False    # Track if FAS has exhausted post-recovery
     cwf_count: int = 0            # Counter for High > CWVAP and Close < CWVAP (4 bits: 0-15)
+    climax_hit_above_va: bool = False # Track if structural climax hit while price > va_high
 
     @classmethod
     def from_int(cls, val: int) -> SavgolCTSExitState:
@@ -45,11 +46,13 @@ class SavgolCTSExitState:
             cts_exhausted=bool((val >> 11) & 1),
             fas_exhausted=bool((val >> 12) & 1),
             cwf_count=int((val >> 13) & 0xF),
+            climax_hit_above_va=bool((val >> 17) & 1),
         )
 
     def to_int(self) -> int:
         return (
-            ((self.cwf_count & 0xF) << 13)
+            (int(self.climax_hit_above_va) << 17)
+            | ((self.cwf_count & 0xF) << 13)
             | (int(self.fas_exhausted) << 12)
             | (int(self.cts_exhausted) << 11)
             | (int(self.recovery_passed) << 10)
