@@ -86,41 +86,45 @@ def check_fas_buy_cross(
     if not np.isnan(rsz_v) and rsz_v < -0.13:
         return False, 0, {"reason": f"rsz_v ({rsz_v:.3f}) < -0.13"}
 
+    # -----------------------------------------------------------------------
+    # Multi-Factor Scoring (Strength & Weakness)
+    # -----------------------------------------------------------------------
     base_score = 15.0
     
-    # 1. Rising Acceleration (Score-based guard)
-    if cts_accel > prev_cts_accel > prev2_cts_accel:
-        base_score += 10.0 # Strong 3-bar rise
-    elif cts_accel > prev_cts_accel:
-        base_score += 5.0  # 2-bar rise
+    # 1. Institutional Acceleration Quality (Adaptive)
+    accel_delta = cts_accel - prev_cts_accel
+    dynamic_tol_accel = flat_check.get("dynamic_tolerance_used", 0.005)
+    
+    if cts_accel > prev_cts_accel:
+        if accel_delta > dynamic_tol_accel:
+            base_score += 10.0 # Strong Thrust
+        else:
+            base_score -= 10.0 # Anemic Rise (Frizzling)
     else:
-        base_score -= 5.0  # Falling acceleration
+        base_score -= 10.0 # Falling Acceleration
 
-    # 2. CTS Floor alignment
-    if cts <= -0.99:
-        base_score += 5.0
-    elif cts > -0.90:
-        base_score -= 5.0
+    # 2. Institutional Cash Alignment
+    cwc_slope = row.get("cwc_slope", np.nan)
+    if not np.isnan(cwc_slope):
+        if cwc_slope > 0.05:
+            base_score += 10.0 # Strong cash alignment
+        elif cwc_slope < 0.01:
+            base_score -= 10.0 # No cash backing (anemic)
 
-    # 3. CTS Buy Threshold alignment
-    if cts <= cts_bt:
-        base_score += 5.0
-    else:
-        base_score -= 5.0
-
-    # 4. Acceleration Threshold alignment
-    delta = cts_accel - cts_accel_threshold
-    if delta >= 0:
+    # 3. Acceleration Threshold alignment
+    delta_at = cts_accel - cts_accel_threshold
+    if delta_at >= 0:
         base_score += 5.0
     else:
         # Scale penalty based on how far below threshold
-        if delta < -0.05:
+        if delta_at < -0.05:
             base_score -= 21.0
-        elif delta < -0.01:
+        elif delta_at < -0.01:
             base_score -= 11.0
         else:
-            base_score -= 5.0
+            base_score -= 6.0
 
+    # 4. Momentum Quality (Adaptive psz_v)
     psz_v = row.get("psz_v", np.nan)
     prev_psz_v = prev_row.get("psz_v", np.nan)
     prev2_psz_v = records[idx-2].get("psz_v", np.nan)
@@ -152,13 +156,21 @@ def check_fas_buy_cross(
         )
         if velocity_was_flat_results["is_valid"]:
             return False, 0, {"reason": "psz_v spiked from flat base"}
-            
-        if psz_v < 0:
-            base_score += 5.0
+        
+        # Magnitude-based reward for rising momentum
+        psz_v_delta = psz_v - prev_psz_v
+        dynamic_tol_psz = flat_check_psz_v.get("dynamic_tolerance_used", 0.01)
+        
+        if psz_v > prev_psz_v:
+            if psz_v_delta > dynamic_tol_psz:
+                base_score += 5.0  # meaningful momentum turn
+            else:
+                base_score -= 10.0 # anemic momentum turn
+        # No bonus or penalty for falling psz_v, just zeroing out the old negative bonus
 
-    min_score = getattr(cfg, "min_score", 15.0)
+    min_score = getattr(cfg, "min_score", 20.0)
     if base_score < min_score:
-        return False, 0, {"reason": f"Score {base_score} < min {min_score} (delta={delta:.4f})"}
+        return False, 0, {"reason": f"Score {base_score} < min {min_score} (delta_at={delta_at:.4f})"}
 
     intensity, meta = compute_intensity(row, prev_row, EntryTag.FAS_BUY_CROSS, override_score=base_score)
     meta["score"] = float(intensity)

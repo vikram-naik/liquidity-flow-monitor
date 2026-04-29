@@ -119,6 +119,11 @@ def main():
                         t.fas_signal = sig_row.get("fas", 0.0)
                         t.cts_signal = sig_row.get("cts", 0.0)
                         
+                        t.rp_10 = f"{sig_row.get('range_pos_10', np.nan):.2f}"
+                        t.rp_22 = f"{sig_row.get('range_pos_22', np.nan):.2f}"
+                        t.rp_63 = f"{sig_row.get('range_pos_63', np.nan):.2f}"
+                        t.rp_252 = f"{sig_row.get('range_pos_252', np.nan):.2f}"
+
                         cts_bt = sig_row.get("cts_buy_threshold", np.nan)
                         if not np.isnan(cts_bt) and t.cts_signal <= cts_bt:
                             t.cts_buy = "yes"
@@ -179,7 +184,7 @@ def main():
     # Print
     print(f"\n--- {label} TRADES: STUDY REPORT ({args.period.upper()}) ---")
     header = (f"{'#':>3} | {'Symbol':<12} | {'Sig Date':<10} | {'PnL%':>7} | {'MFE%':>7} | "
-              f"{'FAS':>7} | {'CTS':>7} | {'Buy':>3} | {'Acc>BT':>6} | {'CWD%':>7} | {'PSZv':>7} | {'>VAH':>4} | {'Bars':>4} | {'CWF':>3} | {'SCORE':>5} | {'Exit Reason'}")
+              f"{'FAS':>7} | {'CTS':>7} | {'Buy':>3} | {'Acc>BT':>6} | {'CWD%':>7} | {'PSZv':>7} | {'>VAH':>4} | {'Bars':>4} | {'CWF':>3} | {'SCORE':>5} |  {'RP10':>4} | {'RP22':>4} | {'RP63':>4} | {'RP252':>4} | {'Exit Reason'}")
     print(header)
     print("-" * len(header))
     for i, t in enumerate(filtered, 1):
@@ -187,7 +192,7 @@ def main():
         cwf = getattr(t, "cwvap_fail_count", 0)
         print(f"{i:>3} | {t.symbol:<12} | {t.signal_date:<10} | {t.pnl_pct:>7.2f} | "
               f"{t.mfe_pct:>7.2f} | {t.fas_signal:>7.3f} | {t.cts_signal:>7.3f} | {t.cts_buy:>3} | {t.accel_above_bt:>6} | {t.cwvap_dist_signal:>7.2f} | "
-              f"{t.psz_v_signal:>7.4f} | {t.above_va_high:>4} | {t.duration:>4} | {cwf:>3} | {t.conviction_score:>+5} | {reason}")
+              f"{t.psz_v_signal:>7.4f} | {t.above_va_high:>4} | {t.duration:>4} | {cwf:>3} | {t.conviction_score:>+5} | {t.rp_10:>4} | {t.rp_22:>4} | {t.rp_63:>4} | {t.rp_252:>4} | {reason}")
 
 
 

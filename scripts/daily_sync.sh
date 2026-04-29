@@ -24,8 +24,8 @@ echo "Date: $(date)"
 echo "========================================"
 
 echo ""
-echo "[1/4] Downloading Corporate Actions..."
-python scripts/sync_ca.py
+echo "[1/4] Downloading Corporate Actions from NSE..."
+python scripts/sync_nse_ca.py --all --yes
 
 echo ""
 echo "[2/4] Flushing Redis Cache..."
@@ -38,6 +38,10 @@ python src/agents/nse_agent.py --sync
 echo ""
 echo "[4/4] Syncing NSE Indices Data..."
 python src/agents/nse_indices_agent.py --sync
+
+echo ""
+echo "[5/5] Validating Data Integrity & Reconciliation..."
+python scripts/validate_data_integrity.py --watchlist "NIFTY 50" --auto-fix --auto-patch
 
 echo ""
 echo "========================================"

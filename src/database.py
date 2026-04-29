@@ -135,6 +135,18 @@ def init_db():
     """)
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_ca_symbol ON corporate_actions(symbol);")
 
+    # Table: ca_overrides (Manual/Internet-verified overrides)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS ca_overrides (
+        symbol TEXT,
+        ex_date DATE,
+        ratio_factor REAL,
+        notes TEXT,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (symbol, ex_date)
+    );
+    """)
+
     # Table: user_settings (key-value store for configurable parameters)
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS user_settings (

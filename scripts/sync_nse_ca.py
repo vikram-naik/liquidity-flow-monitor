@@ -7,10 +7,32 @@ from tabulate import tabulate
 from datetime import datetime, timedelta
 import re
 import argparse
+import json
 
 # Add project root to sys.path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.database import get_db_connection
+
+def load_local_overrides():
+    """Load overrides from the ca_overrides database table."""
+    conn = get_db_connection()
+    try:
+        # Fetch all overrides
+        df = pd.read_sql_query("SELECT symbol, ex_date, ratio_factor FROM ca_overrides", conn)
+        overrides = {}
+        for _, row in df.iterrows():
+            sym = row['symbol'].upper()
+            if sym not in overrides:
+                overrides[sym] = {}
+            # Ensure ex_date is string YYYY-MM-DD
+            dt_str = str(row['ex_date'])[:10]
+            overrides[sym][dt_str] = row['ratio_factor']
+        return overrides
+    except Exception as e:
+        print(f"Warning: Could not load overrides from DB: {e}")
+        return {}
+    finally:
+        conn.close()
 
 def parse_nse_description(subject):
     """
@@ -90,6 +112,11 @@ def get_nse_data(symbol, overrides=None):
     if overrides is None:
         overrides = {}
         
+    # Load file-based overrides and merge with CLI overrides
+    file_overrides = load_local_overrides().get(symbol.upper(), {})
+    # CLI overrides take precedence over file-based overrides
+    merged_overrides = {**file_overrides, **overrides}
+
     headers = {
         'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Accept': '*/*',
@@ -125,10 +152,10 @@ def get_nse_data(symbol, overrides=None):
                 final_factor = 1.0
                 source = ""
                 
-                # Check for CLI overrides first
-                if iso_date in overrides:
-                    final_factor = overrides[iso_date]
-                    source = "(CLI Override)"
+                # Check for merged overrides first
+                if iso_date in merged_overrides:
+                    final_factor = merged_overrides[iso_date]
+                    source = "(Manual Override)"
                 elif factor == 'ESTIMATE_RATIO':
                     final_factor = estimate_ratio_factor(symbol, iso_date)
                     source = "(DB Estimate)"
@@ -198,7 +225,11 @@ def sync_symbol(symbol, ca_overrides=None):
         print("\nNo changes needed.")
         return
 
-    confirm = input(f"\nProceed with OVERWRITING corporate actions for {symbol}? [y/N]: ")
+    if getattr(args, 'yes', False):
+        confirm = 'y'
+    else:
+        confirm = input(f"\nProceed with OVERWRITING corporate actions for {symbol}? [y/N]: ")
+        
     if confirm.lower() == 'y':
         conn = get_db_connection()
         try:
@@ -236,10 +267,49 @@ def parse_overrides(override_str):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Sync corporate actions from NSE")
-    parser.add_argument("symbol", type=str, help="Stock symbol (e.g., ABFRL)")
-    parser.add_argument("--ca-override", type=str, help="Manual ratio factor overrides in format 'YYYY-MM-DD:FACTOR,YYYY-MM-DD:FACTOR'")
+    parser.add_argument("symbol", type=str, nargs="?", help="Stock symbol (e.g., ABFRL)")
+    parser.add_argument("--watchlist", type=str, help="Sync all symbols in a specific watchlist")
+    parser.add_argument("--all", action="store_true", help="Sync all symbols found in the delivery log")
+    parser.add_argument("--ca-override", type=str, help="Manual ratio factor overrides in format 'YYYY-MM-DD:FACTOR,YYYY-MM-DD:FACTOR' (Only for single symbol sync)")
+    parser.add_argument("--yes", action="store_true", help="Automatically confirm updates")
     
     args = parser.parse_args()
-    overrides = parse_overrides(args.ca_override)
     
-    sync_symbol(args.symbol, ca_overrides=overrides)
+    symbols = []
+    if args.symbol:
+        symbols.append(args.symbol.upper())
+    elif args.watchlist:
+        conn = get_db_connection()
+        try:
+            query = """
+                SELECT symbol FROM watchlist_items 
+                JOIN watchlists ON watchlists.id = watchlist_items.watchlist_id
+                WHERE watchlists.name = ?
+            """
+            symbols = [row[0] for row in conn.execute(query, (args.watchlist,)).fetchall()]
+        finally:
+            conn.close()
+    elif args.all:
+        conn = get_db_connection()
+        try:
+            # Sync symbols that are in ANY watchlist first
+            query = "SELECT DISTINCT symbol FROM watchlist_items"
+            symbols = [row[0] for row in conn.execute(query).fetchall()]
+        finally:
+            conn.close()
+    else:
+        parser.print_help()
+        sys.exit(1)
+
+    if not symbols:
+        print("No symbols found to sync.")
+        sys.exit(0)
+
+    overrides = parse_overrides(args.ca_override) if args.symbol else {}
+    
+    for symbol in symbols:
+        try:
+            sync_symbol(symbol, ca_overrides=overrides)
+        except Exception as e:
+            print(f"Error syncing {symbol}: {e}")
+

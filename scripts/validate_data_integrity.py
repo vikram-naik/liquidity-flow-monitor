@@ -1,0 +1,360 @@
+#!/usr/bin/env python3
+"""
+Data Integrity Validation Script.
+
+Identifies large price whip-saws (unexplained drops/rises) that might indicate
+missed corporate actions. Automatically triggers CA sync and reports persistent issues.
+
+Usage:
+    python scripts/validate_data_integrity.py --watchlist "NIFTY 50"
+    python scripts/validate_data_integrity.py --symbol RELIANCE
+"""
+
+import sys
+import os
+import argparse
+import logging
+import subprocess
+from datetime import datetime
+from pathlib import Path
+import pandas as pd
+import numpy as np
+import yfinance as yf
+import json
+
+# Add project root to sys.path
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
+
+from src.divergence_engine.engine import DivergenceEngine
+from src.database import get_db_connection
+from src.cache.factory import get_cache
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+# Default threshold for a "whip-saw" (e.g., 10% change in one day)
+DEFAULT_THRESHOLD = 10.0
+# Tolerance for reconciliation with external source (percentage)
+RECONCILE_TOLERANCE = 1.0
+
+def get_symbols(watchlist_name=None):
+    """Fetch symbols from watchlist or all symbols from delivery log."""
+    conn = get_db_connection()
+    try:
+        if watchlist_name:
+            query = """
+                SELECT symbol FROM watchlist_items 
+                JOIN watchlists ON watchlists.id = watchlist_items.watchlist_id
+                WHERE watchlists.name = ?
+                ORDER BY display_order
+            """
+            symbols = [row[0] for row in conn.execute(query, (watchlist_name,)).fetchall()]
+        else:
+            query = "SELECT DISTINCT symbol FROM nse_delivery_log"
+            symbols = [row[0] for row in conn.execute(query).fetchall()]
+        return symbols
+    finally:
+        conn.close()
+
+def detect_whip_saws(symbol, threshold):
+    """Detect price jumps/drops exceeding threshold %."""
+    try:
+        engine = DivergenceEngine(symbol)
+        result = engine.run()
+        df = result.ledger
+
+        if df.empty or len(df) < 2:
+            return []
+
+        # Calculate daily returns
+        df['prev_close'] = df['close'].shift(1)
+        df['daily_ret'] = (df['close'] / df['prev_close'] - 1) * 100.0
+        
+        # Filter for whip-saws
+        whip_saws = df[abs(df['daily_ret']) >= threshold].copy()
+        
+        issues = []
+        for _, row in whip_saws.iterrows():
+            issues.append({
+                'date': str(row['date'])[:10],
+                'price': round(row['close'], 2),
+                'prev_price': round(row['prev_close'], 2),
+                'change_pct': round(row['daily_ret'], 2),
+                'local_ohlc': f"O:{round(row['open'], 2)} H:{round(row['high'], 2)} L:{round(row['low'], 2)} C:{round(row['close'], 2)}"
+            })
+        return issues
+    except Exception as e:
+        logger.error(f"Error processing {symbol}: {e}")
+        return []
+
+def reconcile_with_internet(symbol, date, local_close, local_ret):
+    """
+    Reconciles local adjusted data with yfinance adjusted data.
+    Compares the daily return to verify the move. 
+    Returns (match_status, external_ohlc_dict, ext_close)
+    """
+    yf_symbol = f"{symbol.upper()}.NS"
+    logger.info(f"Reconciling {symbol} on {date} with yfinance...")
+    try:
+        dt = pd.to_datetime(date)
+        # Fetch a small window around the date to get previous close
+        start_str = (dt - pd.Timedelta(days=10)).strftime('%Y-%m-%d')
+        end_str = (dt + pd.Timedelta(days=5)).strftime('%Y-%m-%d')
+        
+        df = yf.download(yf_symbol, start=start_str, end=end_str, progress=False, auto_adjust=True)
+        if df.empty:
+            return "No External Data", None, None
+            
+        # Handle multi-index columns from newer yfinance versions
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = df.columns.droplevel(1)
+            
+        # Handle yfinance index which might have timezones
+        df.index = df.index.tz_localize(None)
+        
+        # Calculate daily returns in yfinance
+        df['prev_close'] = df['Close'].shift(1)
+        df['daily_ret'] = (df['Close'] / df['prev_close'] - 1) * 100.0
+        
+        date_iso = dt.strftime('%Y-%m-%d')
+        if date_iso in df.index.strftime('%Y-%m-%d'):
+            ext_row = df.loc[df.index.strftime('%Y-%m-%d') == date_iso].iloc[0]
+            
+            def _get_val(col):
+                val = ext_row[col]
+                return float(val.iloc[0]) if isinstance(val, pd.Series) else float(val)
+
+            ext_close = _get_val('Close')
+            ext_ret = _get_val('daily_ret')
+            
+            ext_ohlc = {
+                'o': round(_get_val('Open'), 2),
+                'h': round(_get_val('High'), 2),
+                'l': round(_get_val('Low'), 2),
+                'c': round(ext_close, 2)
+            }
+            
+            # Compare returns instead of absolute prices
+            if pd.isna(ext_ret):
+                return "External Return N/A", ext_ohlc, ext_close
+                
+            delta_ret = abs(local_ret - ext_ret)
+            
+            if delta_ret <= RECONCILE_TOLERANCE:
+                return "Match", ext_ohlc, ext_close
+            else:
+                # Calculate absolute price drift for reporting/patching
+                drift_pct = abs(local_close - ext_close) / ext_close * 100.0
+                return f"Mismatch (Ret diff: {delta_ret:.2f}%, Drift: {drift_pct:.2f}%)", ext_ohlc, ext_close
+        else:
+            return "Date Not Found Externally", None, None
+            
+    except Exception as e:
+        logger.error(f"Reconciliation error for {symbol} on {date}: {e}")
+        return f"Recon Error", None, None
+
+def patch_override(symbol, date, local_price, ext_price):
+    """
+    Calculates the correction factor and updates ca_overrides table in DB.
+    """
+    # 1. Find if there's an existing CA on or before this date
+    conn = get_db_connection()
+    try:
+        query = "SELECT ex_date, ratio_factor FROM corporate_actions WHERE symbol = ? AND ex_date <= ? ORDER BY ex_date DESC LIMIT 1"
+        row = conn.execute(query, (symbol, date)).fetchone()
+        
+        current_factor = 1.0
+        target_date = date
+        
+        if row:
+            target_date = row[0]
+            current_factor = row[1]
+            logger.info(f"Found existing CA for {symbol} on {target_date} with factor {current_factor}")
+        else:
+            logger.info(f"No existing CA found for {symbol} on or before {date}. Creating new override.")
+
+        # Calculate correction
+        correction_delta = local_price / ext_price
+        new_factor = round(current_factor * correction_delta, 4)
+        
+        # Only apply patch if drift is significant (>3%) to avoid corrupting ratios with dividend drift
+        if abs(correction_delta - 1.0) < 0.03:
+            logger.info(f"Correction delta too small ({correction_delta:.6f}), likely dividend drift. Skipping patch.")
+            return False
+
+        # Insert or Replace in DB
+        conn.execute("""
+            INSERT OR REPLACE INTO ca_overrides (symbol, ex_date, ratio_factor, notes)
+            VALUES (?, ?, ?, ?)
+        """, (symbol, target_date, new_factor, f"Auto-patched from internet recon on {datetime.now().strftime('%Y-%m-%d')}"))
+        conn.commit()
+            
+        logger.info(f"Successfully patched {symbol} {target_date} in DB with factor {new_factor}")
+        return True
+    finally:
+        conn.close()
+
+def sync_corporate_actions(symbol):
+    """Run sync_nse_ca.py for the symbol non-interactively."""
+    logger.info(f"Syncing corporate actions for {symbol}...")
+    try:
+        cmd = [sys.executable, str(PROJECT_ROOT / "scripts" / "sync_nse_ca.py"), symbol, "--yes"]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            logger.error(f"Sync failed for {symbol}: {result.stderr}")
+            return False
+        return True
+    except Exception as e:
+        logger.error(f"Error running sync script for {symbol}: {e}")
+        return False
+
+def flush_cache_for_symbol(symbol):
+    """Flush Redis cache for the given symbol."""
+    cache = get_cache()
+    if cache:
+        # de:adjusted:<symbol>:*
+        # de:result:<symbol>:*
+        pattern_adj = f"de:adjusted:{symbol}:*"
+        pattern_res = f"de:result:{symbol}:*"
+        cache.delete_pattern(pattern_adj)
+        cache.delete_pattern(pattern_res)
+        logger.info(f"Flushed cache for {symbol}")
+
+def main():
+    parser = argparse.ArgumentParser(description="Validate data integrity and corporate actions")
+    parser.add_argument("--watchlist", help="Watchlist name to check")
+    parser.add_argument("--symbol", help="Specific symbol to check")
+    parser.add_argument("--threshold", type=float, default=DEFAULT_THRESHOLD, 
+                        help=f"Percentage change threshold for whip-saw (default: {DEFAULT_THRESHOLD}%)")
+    parser.add_argument("--auto-fix", action="store_true", help="Automatically trigger CA sync on whip-saw")
+    parser.add_argument("--auto-patch", action="store_true", help="Automatically update ca_overrides.json on mismatch")
+    
+    args = parser.parse_args()
+
+    if args.symbol:
+        symbols = [args.symbol.upper()]
+    else:
+        symbols = get_symbols(args.watchlist)
+
+    if not symbols:
+        logger.error("No symbols found.")
+        sys.exit(1)
+
+    logger.info(f"Starting validation for {len(symbols)} symbols with threshold {args.threshold}%")
+
+    failures = []
+    verified_moves = []
+    
+    for symbol in symbols:
+        logger.info(f"Checking {symbol}...")
+        issues = detect_whip_saws(symbol, args.threshold)
+        
+        if issues:
+            logger.warning(f"Found {len(issues)} whip-saws for {symbol}")
+            
+            # 1. Try Auto-Fix (CA Sync)
+            if args.auto_fix:
+                if sync_corporate_actions(symbol):
+                    flush_cache_for_symbol(symbol)
+                    # Refresh issues
+                    issues = detect_whip_saws(symbol, args.threshold)
+                else:
+                    logger.error(f"Sync failed for {symbol}")
+
+            if not issues:
+                logger.info(f"All whip-saws resolved for {symbol} after CA sync")
+                continue
+
+            # 2. Process remaining issues (Reconcile)
+            patches_applied = False
+            for issue in issues:
+                issue['symbol'] = symbol
+                status, ext_ohlc, ext_close = reconcile_with_internet(symbol, issue['date'], issue['price'], issue['change_pct'])
+                
+                if status == "Match":
+                    issue['status'] = 'Verified (Real Market Event)'
+                    issue['ext_ohlc'] = f"O:{ext_ohlc['o']} H:{ext_ohlc['h']} L:{ext_ohlc['l']} C:{ext_ohlc['c']}"
+                    verified_moves.append(issue)
+                else:
+                    issue['status'] = f'Failure ({status})'
+                    if ext_ohlc:
+                        issue['ext_ohlc'] = f"O:{ext_ohlc['o']} H:{ext_ohlc['h']} L:{ext_ohlc['l']} C:{ext_ohlc['c']}"
+                        # 3. Try Auto-Patch
+                        if args.auto_patch and ext_close is not None:
+                            if patch_override(symbol, issue['date'], issue['price'], ext_close):
+                                issue['status'] += ' -> Patched'
+                                patches_applied = True
+                    else:
+                        issue['ext_ohlc'] = "N/A"
+                    failures.append(issue)
+
+            # 4. If patches were applied, re-sync and re-verify in one pass
+            if patches_applied:
+                logger.info(f"Patches applied for {symbol}. Re-syncing and re-verifying...")
+                if sync_corporate_actions(symbol):
+                    flush_cache_for_symbol(symbol)
+                    
+                    # Clear previous failures for this symbol as we are re-evaluating
+                    failures = [f for f in failures if f.get('symbol') != symbol]
+                    verified_moves = [v for v in verified_moves if v.get('symbol') != symbol]
+                    
+                    final_issues = detect_whip_saws(symbol, args.threshold)
+                    for issue in final_issues:
+                        issue['symbol'] = symbol
+                        status, ext_ohlc, ext_close = reconcile_with_internet(symbol, issue['date'], issue['price'], issue['change_pct'])
+                        if status == "Match":
+                            issue['status'] = 'Verified (Real Market Event)'
+                            issue['ext_ohlc'] = f"O:{ext_ohlc['o']} H:{ext_ohlc['h']} L:{ext_ohlc['l']} C:{ext_ohlc['c']}"
+                            verified_moves.append(issue)
+                        else:
+                            issue['status'] = f'Failure ({status}) -> Persistent after patch'
+                            if ext_ohlc:
+                                issue['ext_ohlc'] = f"O:{ext_ohlc['o']} H:{ext_ohlc['h']} L:{ext_ohlc['l']} C:{ext_ohlc['c']}"
+                            else:
+                                issue['ext_ohlc'] = "N/A"
+                            failures.append(issue)
+
+    # Output report
+    if failures or verified_moves:
+        print("\n" + "="*140)
+        print(f"DATA INTEGRITY REPORT - {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+        print("="*140)
+        
+        if failures:
+            print(f"\n[!!!] INTEGRITY FAILURES ({len(failures)})")
+            df_fail = pd.DataFrame(failures)
+            cols = ['symbol', 'date', 'change_pct', 'status', 'local_ohlc', 'ext_ohlc']
+            print(df_fail[cols].to_string(index=False))
+            
+        if verified_moves:
+            print(f"\n[OK] VERIFIED MARKET EVENTS ({len(verified_moves)})")
+            df_ver = pd.DataFrame(verified_moves)
+            cols = ['symbol', 'date', 'change_pct', 'status', 'local_ohlc']
+            print(df_ver[cols].to_string(index=False))
+
+        print("\n" + "="*140)
+        
+        # Save report to output directory
+        output_dir = PROJECT_ROOT / "output"
+        output_dir.mkdir(exist_ok=True)
+        report_file = output_dir / f"integrity_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+        with open(report_file, 'w') as f:
+            f.write(f"DATA INTEGRITY REPORT - {datetime.now().strftime('%Y-%m-%d %H:%M')}\n")
+            if failures:
+                f.write(f"\nINTEGRITY FAILURES\n" + df_fail[cols].to_string(index=False) + "\n")
+            if verified_moves:
+                f.write(f"\nVERIFIED MARKET EVENTS\n" + df_ver[cols].to_string(index=False) + "\n")
+        logger.info(f"Report saved to {report_file}")
+        
+        if args.auto_patch and failures:
+            print("\n[TIP] Auto-patches applied. Please re-run with --auto-fix to refresh data.")
+    else:
+        logger.info("No data integrity issues found.")
+
+if __name__ == "__main__":
+    main()

@@ -23,4 +23,10 @@
   ```bash
   ./venv/bin/python scripts/flush_cache.py --all
   ```
+- **Data Integrity Validation**: To identify and fix unexplained price whip-saws (potential missed corporate actions), run the validation script. It will automatically trigger `sync_nse_ca.py` if `--auto-fix` is provided. If whip-saws persist after sync, it performs an automated reconciliation with `yfinance` to verify if the move was a real market event by comparing daily percentage returns (to ignore historical dividend drift). This check is part of the daily EOD sync.
+- **Corporate Action Overrides**: If a specific demerger or corporate action ratio is inaccurate, the system uses a permanent override stored in the `ca_overrides` database table. `sync_nse_ca.py` prioritizes these over its own estimates. Use `--auto-patch` in the integrity script to automatically calculate and apply these from internet data in a single automated loop (detect -> fix -> reconcile -> patch -> re-sync -> verify):
+  ```bash
+  # Manual sync with one-pass auto-patching and recovery
+  ./venv/bin/python scripts/validate_data_integrity.py --watchlist "NIFTY 50" --auto-fix --auto-patch
+  ```
 
