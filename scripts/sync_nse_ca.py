@@ -154,7 +154,7 @@ def get_nse_data(symbol, overrides=None):
                 
                 # Check for merged overrides first
                 if iso_date in merged_overrides:
-                    final_factor = merged_overrides[iso_date]
+                    final_factor = merged_overrides.pop(iso_date)
                     source = "(Manual Override)"
                 elif factor == 'ESTIMATE_RATIO':
                     final_factor = estimate_ratio_factor(symbol, iso_date)
@@ -172,6 +172,16 @@ def get_nse_data(symbol, overrides=None):
                     'subject': subject
                 })
                 
+        # Add any remaining overrides that weren't in the NSE response
+        for iso_date, factor in merged_overrides.items():
+            parsed_actions.append({
+                'ex_date': iso_date,
+                'factor': factor,
+                'type': 'MANUAL_OVERRIDE',
+                'subject': 'Inserted via auto-patch or manual override'
+            })
+            print(f"Added manual override on {iso_date}: Factor {factor} (Standalone Override)")
+
         return parsed_actions
     except Exception as e:
         print(f"Exception during NSE fetch: {e}")

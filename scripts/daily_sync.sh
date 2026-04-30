@@ -40,7 +40,11 @@ echo "[4/4] Syncing NSE Indices Data..."
 python src/agents/nse_indices_agent.py --sync
 
 echo ""
-echo "[5/5] Validating Data Integrity & Reconciliation..."
+echo "[5/6] Syncing Index Watchlists..."
+python scripts/sync_index_watchlists.py
+
+echo ""
+echo "[6/6] Validating Data Integrity & Reconciliation..."
 python scripts/validate_data_integrity.py --watchlist "NIFTY 50" --auto-fix --auto-patch
 
 echo ""

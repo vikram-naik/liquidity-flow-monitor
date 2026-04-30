@@ -141,16 +141,16 @@ def reconcile_with_internet(symbol, date, local_close, local_ret):
             
             # Compare returns instead of absolute prices
             if pd.isna(ext_ret):
-                return "External Return N/A", ext_ohlc, ext_close
+                return "External Return N/A", ext_ohlc, ext_ret
                 
             delta_ret = abs(local_ret - ext_ret)
             
             if delta_ret <= RECONCILE_TOLERANCE:
-                return "Match", ext_ohlc, ext_close
+                return "Match", ext_ohlc, ext_ret
             else:
                 # Calculate absolute price drift for reporting/patching
                 drift_pct = abs(local_close - ext_close) / ext_close * 100.0
-                return f"Mismatch (Ret diff: {delta_ret:.2f}%, Drift: {drift_pct:.2f}%)", ext_ohlc, ext_close
+                return f"Mismatch (Ret diff: {delta_ret:.2f}%, Drift: {drift_pct:.2f}%)", ext_ohlc, ext_ret
         else:
             return "Date Not Found Externally", None, None
             
@@ -158,7 +158,7 @@ def reconcile_with_internet(symbol, date, local_close, local_ret):
         logger.error(f"Reconciliation error for {symbol} on {date}: {e}")
         return f"Recon Error", None, None
 
-def patch_override(symbol, date, local_price, ext_price):
+def patch_override(symbol, date, local_ret, ext_ret):
     """
     Calculates the correction factor and updates ca_overrides table in DB.
     """
@@ -179,7 +179,7 @@ def patch_override(symbol, date, local_price, ext_price):
             logger.info(f"No existing CA found for {symbol} on or before {date}. Creating new override.")
 
         # Calculate correction
-        correction_delta = local_price / ext_price
+        correction_delta = (1 + ext_ret / 100.0) / (1 + local_ret / 100.0)
         new_factor = round(current_factor * correction_delta, 4)
         
         # Only apply patch if drift is significant (>3%) to avoid corrupting ratios with dividend drift
@@ -274,7 +274,7 @@ def main():
             patches_applied = False
             for issue in issues:
                 issue['symbol'] = symbol
-                status, ext_ohlc, ext_close = reconcile_with_internet(symbol, issue['date'], issue['price'], issue['change_pct'])
+                status, ext_ohlc, ext_ret = reconcile_with_internet(symbol, issue['date'], issue['price'], issue['change_pct'])
                 
                 if status == "Match":
                     issue['status'] = 'Verified (Real Market Event)'
@@ -285,8 +285,8 @@ def main():
                     if ext_ohlc:
                         issue['ext_ohlc'] = f"O:{ext_ohlc['o']} H:{ext_ohlc['h']} L:{ext_ohlc['l']} C:{ext_ohlc['c']}"
                         # 3. Try Auto-Patch
-                        if args.auto_patch and ext_close is not None:
-                            if patch_override(symbol, issue['date'], issue['price'], ext_close):
+                        if args.auto_patch and ext_ret is not None:
+                            if patch_override(symbol, issue['date'], issue['change_pct'], ext_ret):
                                 issue['status'] += ' -> Patched'
                                 patches_applied = True
                     else:
@@ -306,7 +306,7 @@ def main():
                     final_issues = detect_whip_saws(symbol, args.threshold)
                     for issue in final_issues:
                         issue['symbol'] = symbol
-                        status, ext_ohlc, ext_close = reconcile_with_internet(symbol, issue['date'], issue['price'], issue['change_pct'])
+                        status, ext_ohlc, ext_ret = reconcile_with_internet(symbol, issue['date'], issue['price'], issue['change_pct'])
                         if status == "Match":
                             issue['status'] = 'Verified (Real Market Event)'
                             issue['ext_ohlc'] = f"O:{ext_ohlc['o']} H:{ext_ohlc['h']} L:{ext_ohlc['l']} C:{ext_ohlc['c']}"
