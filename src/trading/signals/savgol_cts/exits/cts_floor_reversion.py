@@ -37,7 +37,11 @@ def exit_cts_floor_reversion(
 
     pnl_pct = (close_now / trade.entry_price - 1) * 100.0
 
-    # 1. Hard Stop
+    # 1. PnL Cap
+    if getattr(cfg, "pnl_cap_enabled", False) and pnl_pct >= cfg.pnl_cap_pct:
+        return ExitReason.PNL_CAP, st.to_int()
+
+    # 2. Hard Stop
     if getattr(cfg, "hard_stop_enabled", False) and pnl_pct <= -cfg.hard_stop_pct:
         return ExitReason.HARD_STOP, st.to_int()
 

@@ -34,10 +34,9 @@ check_entry(row, prev_row, cfg, records, idx)       [signal.py]
   |
   |-- PATH 12: CTS Floor Reversion                       [entries/cts_floor_reversion.py]
   |     |-- [Gate] CTS AND CTS Buy Threshold stuck at floor (<= -0.999) for 5 days.
-  |     |-- [Guard] Day 6 must NOT have met the floor condition (only enter exactly on day 5).
   |     |-- [Guard] Momentum must be turning positive (psz_v_0 > psz_v_1).
   |     |-- [Guard] Structural exhaustion: price_slope_z <= -0.15.
-  |     |-- [Score] Multi-factor Score >= 9.0 (Rewards deep PRT, violent PSZ_V; penalizes noise/flatness).
+  |     |-- [Score] Multi-factor Score >= 9.0 (Rewards deep PRT, adaptive PSZ_V turn; penalizes flat velocity base and weak CTS acceleration).
   |     +-- PASS --> EntryTag.CTS_FLOOR_REVERSION
   |
   |-- PATH 9: FAS Zero Cross                             [entries/fas_zero_cross.py]
@@ -144,7 +143,7 @@ The state is packed into a 18-bit integer, stored in `delivery_bad_count`.
 
 ## Exit Logic Classes
 
-The exit strategy relies heavily on path-specific logic located in `src/trading/signals/savgol_cts/exits/`. Paths like Accel Cross and Institutional Floor often implement multi-phase glides, PnL caps, trailing stops, and hard stops (usually 8%). Recent paths like FAS Zero Cross employ persistent Dual-Exhaustion Logic.
+The exit strategy relies heavily on path-specific logic located in `src/trading/signals/savgol_cts/exits/`. Paths like Accel Cross, Institutional Floor, and CTS Floor Reversion often implement multi-phase glides, PnL caps, trailing stops, and hard stops (usually 8%). Recent paths like FAS Zero Cross employ persistent Dual-Exhaustion Logic.
 
 ## CWVAP Guard (`exits/cwvap_guard.py`)
 

@@ -38,3 +38,51 @@ def is_flattish_line_adaptive(y1, y2, y3, lookback_window_data, sensitivity=0.05
         "range_spread": round(range_spread, 5),
         "midpoint_deviation": round(midpoint_deviation, 5)
     }
+
+
+def calculate_slope_angle(y_values):
+    """
+    Calculates the slope angle of the line of best fit for a given array of y-values.
+    Assumes x-values are evenly spaced integers starting from 0 (0, 1, 2... n-1).
+    Returns the angle in degrees as a float rounded to two decimal places.
+    """
+    y = np.array(y_values)
+    
+    # Generate evenly spaced x-values from 0 to len(y) - 1
+    x = np.arange(len(y))
+    
+    # Calculate the slope (m) and intercept (c) using linear regression (degree 1 polynomial)
+    slope, intercept = np.polyfit(x, y, 1)
+    
+    # Convert the slope to an angle in radians using arctangent
+    angle_rad = np.arctan(slope)
+    
+    # Convert radians to degrees
+    angle_deg = np.degrees(angle_rad)
+    
+    # Return the angle rounded to two decimal places
+    return round(angle_deg, 2)
+
+
+import scipy.stats as stats
+
+def evaluate_spearman_trend(y_values: list[float]) -> float:
+    """
+    Evaluates trend consistency using Spearman's Rank Correlation.
+    Returns a value between -1.0 (perfect downtrend) and 1.0 (perfect uptrend).
+
+    How to interpret the threshold: * > 0.80: A visually obvious, strong rising trend.
+
+        0.50 to 0.80: A choppy but generally rising trend.
+        < 0.50: Weak, sideways, or heavily reverting data.
+    """
+    if len(y_values) < 2:
+        return 0.0
+        
+    # Generate sequential x-values (time/intervals)
+    x_values = list(range(len(y_values)))
+    
+    # Calculate Spearman correlation
+    spearman_coeff, _ = stats.spearmanr(x_values, y_values)
+    
+    return round(float(spearman_coeff), 4)

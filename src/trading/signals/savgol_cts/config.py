@@ -179,8 +179,10 @@ class CtsFloorReversionEntryConfig:
 class CtsFloorReversionExitConfig:
     """CTS Floor Reversion exit: CTS trailing (ST-cross down)."""
     enabled: bool = True
-    hard_stop_enabled: bool = True
+    hard_stop_enabled: bool = False
     hard_stop_pct: float = 8.0
+    pnl_cap_enabled: bool = False
+    pnl_cap_pct: float = 10.0
 
 
 # ---------------------------------------------------------------------------

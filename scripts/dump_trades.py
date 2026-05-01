@@ -27,6 +27,7 @@ ENTRY_ALIASES = {
     "fas-zero-cross": EntryTag.FAS_ZERO_CROSS.value,
     "fas-floor-reversion": EntryTag.FAS_FLOOR_REVERSION.value,
     "fas-buy-cross": EntryTag.FAS_BUY_CROSS.value,
+    "cts-floor-reversion": EntryTag.CTS_FLOOR_REVERSION.value,
 }
 
 def main():

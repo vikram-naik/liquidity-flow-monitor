@@ -5,6 +5,7 @@ import numpy as np
 from src.trading.signals.enums import EntryTag
 from src.trading.signals.savgol_cts.config import CtsFloorReversionEntryConfig
 from src.trading.signals.savgol_cts.scoring import compute_intensity
+from src.trading.signals.savgol_cts.entries.utils import evaluate_spearman_trend, is_flattish_line_adaptive
 
 
 def check_cts_floor_reversion(
@@ -18,82 +19,142 @@ def check_cts_floor_reversion(
     
     Rules:
     - CTS and BT stuck at floor (-1) for 5 days.
-    - Day 6 must not meet this condition.
-    - psz_v must be turning positive (momentum rising).
-    - Multi-factor scoring must hit min_score.
-    - Price structural exhaustion guard (price_slope_z <= -0.15).
+    - Basic momentum turn (psz_v > prev_psz_v).
+    - Structural exhaustion (price_slope_z <= -0.15).
+    - Balanced multi-factor scoring (Score >= min_score).
     """
     if not cfg.enabled:
         return False, 0, {"reason": "Disabled"}
 
-    if idx < 5 or records is None:
+    if idx < 10 or records is None:
         return False, 0, {"reason": "Insufficient history"}
 
-    # 1. GATE 1 & 2: 5-bar floor condition
+    # 1. GATE 1: 5-bar floor condition
     was_deep_floor = True
     for j in range(5):
-        # Allow slight floating point variations
         if records[idx - j].get("cts", 0) > -0.999 or records[idx - j].get("cts_buy_threshold", 0) > -0.999:
             was_deep_floor = False
             break
 
     if not was_deep_floor:
         return False, 0, {"reason": "CTS and BT not at floor for 5 bars"}
-
-    # Gate 2: The 6th bar back must not have met this condition
-    if idx >= 5:
-        if records[idx - 5].get("cts", 0) <= -0.999 and records[idx - 5].get("cts_buy_threshold", 0) <= -0.999:
-            return False, 0, {"reason": "Already at floor on 6th day (only enter on exactly 5th day)"}
-
-    # 3. SCORING SYSTEM (Base Score 10.0)
-    score = 10.0
-    
-    # Structural Depth (PRT)
-    prt_now = row.get("prt", np.nan)
-    if not np.isnan(prt_now):
-        if prt_now <= -0.6: score += 4.0
-        elif prt_now <= -0.5: score += 3.0
-        elif prt_now <= -0.4: score += 2.0
-        elif prt_now <= -0.2: score += 0.0
-        else: score -= 5.0  # Shallow PRT penalty
-
-    # Momentum Violence (PSZ_V over last 3 days)
-    psz_v_0 = row.get("psz_v", np.nan)
-    psz_v_1 = records[idx - 1].get("psz_v", np.nan)
-    
-    if idx >= 3:
-        psz_v_2 = records[idx - 2].get("psz_v", np.nan)
-        psz_v_3 = records[idx - 3].get("psz_v", np.nan)
     else:
-        psz_v_2 = np.nan
-        psz_v_3 = np.nan
+        # if we passed the floor test, check prior to 5 cts bars in last 5 bars cts was not above cts_sell_threshold. If it was we reject because it means we are coming down from a failed breakout and not a true floor reversion
+        for j in range(5, 10):
+            if records[idx - j].get("cts", 0) >= records[idx - j].get("cts_sell_threshold", 0):
+                return False, 0, {"reason": "CTS was above sell threshold in lookback, likely coming down from failed breakout"}
 
-    # Gate 3: Basic guard that momentum is turning positive today
-    if not np.isnan(psz_v_0) and not np.isnan(psz_v_1) and psz_v_0 <= psz_v_1:
+    # 2. GATE 2: Basic momentum direction
+    psz_v = row.get("psz_v", np.nan)
+    prev_psz_v = records[idx - 1].get("psz_v", np.nan)
+    if not np.isnan(psz_v) and not np.isnan(prev_psz_v) and psz_v <= prev_psz_v:
         return False, 0, {"reason": "psz_v not rising"}
 
-    if not any(np.isnan(x) for x in [psz_v_1, psz_v_2, psz_v_3]):
-        min_psz_v_3d = min(psz_v_1, psz_v_2, psz_v_3)
-        max_abs_psz_v_3d = max(abs(psz_v_1), abs(psz_v_2), abs(psz_v_3))
-        psz_v_std = np.std([psz_v_1, psz_v_2, psz_v_3])
-        
-        if min_psz_v_3d <= -0.04: score += 4.0
-        elif min_psz_v_3d <= -0.02: score += 2.0
-        elif min_psz_v_3d <= -0.01: score += 0.0
-        else: score -= 4.0  # Weak momentum penalty
-        
-        # Miniscule/Flat Penalty (Filter dead-cat/noise floors)
-        if max_abs_psz_v_3d < 0.025 and psz_v_std < 0.008:
-            score -= 5.0
+    
 
-    # Gate 4: Soft Gate for Score
+    # 4. SCORING SYSTEM (Base Score 10.0)
+    score = 10.0
+
+    # MOMENTUM VIOLENCE (psz_v)
+    # 3. GATE 3: Structural Exhaustion Guard, we move it to soft guard and penalize if psz_v is below the threshold.
+    psz_now = row.get("price_slope_z", np.nan)
+    if not np.isnan(psz_now) and psz_now >= -0.15:
+        score -= 3.0  # Lack of structural exhaustion signal
+
+    if not np.isnan(psz_v) and psz_v <= 0:
+        score -= 5.0  # Weak momentum signal
+
+    # 4. Momentum Quality (Adaptive psz_v)
+    prev2_psz_v = records[idx-2].get("psz_v", np.nan)
+    prev3_psz_v = records[idx-3].get("psz_v", np.nan)
+    flat_lookback_size = 10
+    spearman_lookback_size = 5
+    if not any(np.isnan(x) for x in [psz_v, prev_psz_v, prev2_psz_v, prev3_psz_v]):
+        psz_v_lookback = np.array([
+            records[idx - n].get("psz_v", np.nan) 
+            for n in range(flat_lookback_size, 0, -1)
+        ])
+        
+        flat_check_psz_v = is_flattish_line_adaptive(
+            psz_v, prev_psz_v, prev2_psz_v, 
+            psz_v_lookback, sensitivity=0.15
+        )
+        if flat_check_psz_v["is_valid"]:
+            return False, 0, {"reason": "psz_v is flat"}
+
+        psz_v_lookback = np.array([
+            records[idx - n].get("psz_v", np.nan) 
+            for n in range(spearman_lookback_size, 0, -1)
+        ])
+        spearman_coeff = evaluate_spearman_trend(psz_v_lookback)
+        if abs(spearman_coeff) < 0.50:  # If the Spearman correlation is very low, it indicates a flat momentum trend
+            score -= 7.0  # Penalize for flat momentum trend
+        
+        # check if the spike was just after a flat period of low momentum, if so we give it a boost because that can be a sign of a strong reversal off the floor
+        psz_v_lookback = np.array([
+            records[idx - n].get("psz_v", np.nan) 
+            for n in range(spearman_lookback_size + 1, 1, -1)
+        ])
+        spearman_coeff = evaluate_spearman_trend(psz_v_lookback)
+        if abs(spearman_coeff) < 0.50:  # If the Spearman correlation is very low, it indicates a flat momentum trend
+            score -= 7.0  # Penalize for flat momentum trend
+
+    # INSTITUTIONAL THRUST (cts_accel)
+    cts_accel = row.get("cts_accel", np.nan)
+    cts_accel_thr = row.get("cts_accel_threshold", np.nan)
+    prev_accel = records[idx - 1].get("cts_accel", np.nan)
+    prev_accel_1 = records[idx - 2].get("cts_accel", np.nan)
+
+    cts_accel_lookback = np.array([
+        records[idx - n].get("cts_accel", np.nan) 
+        for n in range(flat_lookback_size, 0, -1)
+    ])
+    flat_check_cts_accel = is_flattish_line_adaptive(
+        cts_accel, prev_accel, prev_accel_1, 
+        cts_accel_lookback, sensitivity=0.15
+    )
+
+    if not np.isnan(cts_accel) and not np.isnan(cts_accel_thr):
+        if cts_accel < cts_accel_thr:
+            score -= 7.0  # Weak institutional response
+        else:
+            score += 5.0  # Strong institutional thrust off the floor            
+
+    if not any(np.isnan(x) for x in [cts_accel, prev_accel, prev_accel_1]):
+        if cts_accel < prev_accel:
+            score -= 7.0  # Penalize if there isn't a clear acceleration pattern
+
+    if flat_check_cts_accel["is_valid"]:
+        score -= 5.0  # Penalize for flat momentum, even if above threshold 
+
+    cts_accel_lookback = np.array([
+        records[idx - n].get("cts_accel", np.nan) 
+        for n in range(spearman_lookback_size, 0, -1)
+    ])
+    spearman_coeff = evaluate_spearman_trend(cts_accel_lookback)
+    if abs(spearman_coeff) < 0.50:  # If the Spearman correlation is very low, it indicates a flat momentum trend
+        score -= 5.0  # Penalize for flat momentum trend
+
+        
+
+    # finally if cts_accel is above 0.05 we have already run up a bit, so we penalize.
+    if not np.isnan(cts_accel) and cts_accel > 0.05:
+        score -= 7.0
+
+    # price range check
+    pw = row.get("range_pos_10", np.nan) #weekly range position
+    pm = row.get("range_pos_22", np.nan) #monthly range position
+    pq = row.get("range_pos_63", np.nan) #quarterly range position
+    py = row.get("range_pos_252", np.nan) #yearly range position
+    if not any(np.isnan(x) for x in [pw, pm, pq, py]):
+        if pw > 0.45 and py > 0.40:
+            score -= 7.0  # Penalize if price is above the midpoint of any major range, as it may indicate less room to run
+        if pw > 0.60 or py > 0.60:
+            score -= 7.0  # Heavily penalize if price is above the upper third of weekly.
+
+    # 5. GATE 4: Final Score Gate
     if score < cfg.min_score:
         return False, 0, {"reason": f"Score {score} < {cfg.min_score}"}
-
-    # Gate 5: Structural Exhaustion Guard
-    psz_now = row.get("price_slope_z", np.nan)
-    if not np.isnan(psz_now) and psz_now > -0.15:
-        return False, 0, {"reason": f"price_slope_z {psz_now:.3f} > -0.15"}
 
     # Intensity calculation
     intensity, meta = compute_intensity(row, prev_row, EntryTag.CTS_FLOOR_REVERSION, override_score=score)

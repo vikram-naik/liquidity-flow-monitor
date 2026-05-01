@@ -155,7 +155,7 @@ class SavgolCTSSignal(SignalInterface):
                     res = ExitReason.ST_CROSS
 
         # Mandatory Exit bypass for bespoke paths
-        bespoke_tags = [EntryTag.CTS_FLOOR_REVERSION, EntryTag.INSTITUTIONAL_FLOOR, EntryTag.RANGE_REVERSION, EntryTag.FAS_ZERO_CROSS, EntryTag.FAS_FLOOR_REVERSION]
+        bespoke_tags = [EntryTag.INSTITUTIONAL_FLOOR, EntryTag.RANGE_REVERSION, EntryTag.FAS_ZERO_CROSS, EntryTag.FAS_FLOOR_REVERSION]
         is_bespoke = any(tag == t.value for t in bespoke_tags)
         
         if res == ExitReason.BAR3_STOP or is_bespoke:
