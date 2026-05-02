@@ -105,7 +105,7 @@ class RangeReversionExitConfig:
 @dataclass
 class FasZeroCrossEntryConfig:
     """Path: FAS Zero Cross — FAS crosses above zero with active institutional engine."""
-    enabled: bool = True
+    enabled: bool = False
     lookback_size: int = 10
     sensitivity: float = 0.15
     psz_v_min: float = 0.0
