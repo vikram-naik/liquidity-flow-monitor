@@ -9,6 +9,7 @@ import zipfile
 import sqlite3
 import os
 import sys
+import json
 from datetime import datetime, timedelta
 import time
 import random
@@ -30,11 +31,46 @@ HEADERS = {
     'Referer': 'https://www.nseindia.com/'
 }
 
+def sync_historical_holidays():
+    """
+    Loads historical holidays from a local JSON file (covering 2019-2025) 
+    and stores them in the database.
+    """
+    json_path = os.path.join(os.path.dirname(__file__), 'historical_holidays.json')
+    if not os.path.exists(json_path):
+        print(f"[NSE] Historical holidays file not found: {json_path}")
+        return
+
+    print(f"[NSE] Loading historical holidays from {json_path}...")
+    try:
+        with open(json_path, 'r') as f:
+            holidays = json.load(f)
+            
+        records = []
+        for h in holidays:
+            records.append((h['date'], h['description'], "CM"))
+            
+        if records:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            cursor.executemany("""
+                INSERT OR REPLACE INTO nse_trading_holidays (holiday_date, description, segment)
+                VALUES (?, ?, ?)
+            """, records)
+            conn.commit()
+            conn.close()
+            print(f"[NSE] Successfully stored {len(records)} historical trading holidays.")
+    except Exception as e:
+        print(f"[NSE] Error loading historical holidays: {e}")
+
 def fetch_and_store_holidays():
     """
     Fetches the trading holidays from NSE API and stores them in the database.
     """
-    print(f"[NSE] Fetching trading holidays from {HOLIDAYS_URL}...")
+    # First sync historical ones if they are missing
+    sync_historical_holidays()
+    
+    print(f"[NSE] Fetching current trading holidays from {HOLIDAYS_URL}...")
     try:
         s = requests.Session()
         s.headers.update(HEADERS)
@@ -546,7 +582,8 @@ if __name__ == "__main__":
     parser.add_argument("--start-date", type=str, help="Start date to backfill from (YYYY-MM-DD)")
     parser.add_argument("--force", action="store_true", help="Force refill even if data exists")
     parser.add_argument("--sync", action="store_true", help="Smart sync: fetch from last available date to today")
-    parser.add_argument("--sync-holidays", action="store_true", help="Fetch and store trading holidays for the current year")
+    parser.add_argument("--sync-holidays", action="store_true", help="Fetch and store trading holidays (historical + current year)")
+    parser.add_argument("--sync-historical-holidays", action="store_true", help="Sync only historical holidays from local JSON")
     parser.add_argument("--info", action="store_true", help="Show database status (date range, records)")
     args = parser.parse_args()
     
@@ -554,6 +591,8 @@ if __name__ == "__main__":
         show_db_status()
     elif args.backfill > 0 or args.start_date:
         backfill_data(days=args.backfill, start_date=args.start_date, force=args.force)
+    elif args.sync_historical_holidays:
+        sync_historical_holidays()
     elif args.sync_holidays:
         fetch_and_store_holidays()
     elif args.sync:
