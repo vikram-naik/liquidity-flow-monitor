@@ -40,9 +40,7 @@ Update `SIGNAL_FLOW.md` to reflect the new architecture.
 - **State Bitfield:** If you used new bits in `SavgolCTSExitState`, document their mapping.
 - **Exit Flow:** Add the new dispatch target.
 
-## 6. Verification
-Final validation before committing.
-- **Syntax:** Run `python -m py_compile` on all modified files.
-- **Walk-Forward:** Execute `./venv/bin/python scripts/walk_forward.py --watchlist "NIFTY 50" --signal savgol_cts`.
-- **Metrics Check:** Ensure the **TEST period** win rate and PnL align with your study script results.
-- **Cache:** Flush the Redis cache (`./venv/bin/python scripts/flush_cache.py --all`) to ensure no stale calculations interfere.
+## ⚠️ Mandatory: EOD-Lag Reality Check
+Before migrating any study to production, you MUST verify that the study used **EOD-Lag Execution** (Signal at `i`, Entry at `i+1`).
+- **If the study used same-day entry (bar i):** You MUST rerun the study using EOD-Lag and present the corrected metrics to the user for approval.
+- **Production Code:** Ensure `SavgolCTSSignal` correctly handles the 1-bar lag between signal identification and execution.

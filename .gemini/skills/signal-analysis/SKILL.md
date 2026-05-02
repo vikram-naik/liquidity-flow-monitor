@@ -7,6 +7,13 @@ description: Standardized workflow for hypothesizing, debugging, and validating 
 
 This skill defines the standardized workflow for hypothesizing, debugging, and validating changes to entry and exit routines in the Liquidity Flow Monitor (LFM) system.
 
+## ⚠️ MANDATORY: EOD-Lag Execution
+The LFM system operates strictly on an **End-of-Day Lag (EOD-Lag)** model. You MUST simulate research using this constraint:
+- **Signal bar (i):** The bar where indicators/guards are evaluated.
+- **Entry bar (i+1):** The bar where the trade is executed (close/open).
+- **Exit evaluation (i+2):** Exit checks only begin AFTER entry execution.
+- **FAILING TO USE EOD-LAG:** Reporting results based on same-day entry (bar i) is a critical failure that overestimates expectancy and invalidates the study.
+
 ## Core Mandates
 1. **Universe:** ALWAYS use the `"NIFTY 50"` watchlist for backtesting and trade dumping.
 2. **Decision Making:** ALWAYS base final validation and decisions on the **TEST period** results.

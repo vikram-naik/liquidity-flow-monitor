@@ -23,11 +23,9 @@ class SavgolCTSExitState:
     prt_exit_suppressed: bool = False  # Track if the prt exit was suppressed.
     fas_crossed_zero: bool = False   # Track if the prt crosses zero
     extreme_bottom_extension: bool = False # Track if trade hit absolute floor (grant 2x timeout)
-    recovery_passed: bool = False  # Track if either indicator has crossed above zero
-    cts_exhausted: bool = False    # Track if CTS has exhausted post-recovery
-    fas_exhausted: bool = False    # Track if FAS has exhausted post-recovery
     cwf_count: int = 0            # Counter for High > CWVAP and Close < CWVAP (4 bits: 0-15)
     climax_hit_above_va: bool = False # Track if structural climax hit while price > va_high
+    cts_near_miss: bool = False    # Track if CTS barely touched ST (Bare-Touch persistence)
 
     @classmethod
     def from_int(cls, val: int) -> SavgolCTSExitState:
@@ -42,20 +40,16 @@ class SavgolCTSExitState:
             prt_exit_suppressed=bool((val >> 7) & 1),
             fas_crossed_zero=bool((val >> 8) & 1),
             extreme_bottom_extension=bool((val >> 9) & 1),
-            recovery_passed=bool((val >> 10) & 1),
-            cts_exhausted=bool((val >> 11) & 1),
-            fas_exhausted=bool((val >> 12) & 1),
             cwf_count=int((val >> 13) & 0xF),
             climax_hit_above_va=bool((val >> 17) & 1),
+            cts_near_miss=bool((val >> 18) & 1),
         )
 
     def to_int(self) -> int:
         return (
-            (int(self.climax_hit_above_va) << 17)
+            (int(self.cts_near_miss) << 18)
+            | (int(self.climax_hit_above_va) << 17)
             | ((self.cwf_count & 0xF) << 13)
-            | (int(self.fas_exhausted) << 12)
-            | (int(self.cts_exhausted) << 11)
-            | (int(self.recovery_passed) << 10)
             | (int(self.extreme_bottom_extension) << 9)
             | (int(self.fas_crossed_zero) << 8)
             | (int(self.prt_exit_suppressed) << 7) 

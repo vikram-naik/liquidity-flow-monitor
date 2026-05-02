@@ -119,16 +119,11 @@ class FasZeroCrossEntryConfig:
 
 @dataclass
 class FasZeroCrossExitConfig:
-    """FAS Zero Cross exit: Persistent Dual-Exhaustion Logic."""
+    """FAS Zero Cross exit: Pure CTS Trailing Logic."""
     enabled: bool = True
-    alpha_release_threshold_pct: float = 2.5
-    exhaustion_trail_threshold: float = 5.0
-    fas_floor_breach_threshold: float = 0.0
     fas_climax_threshold: float = 1.0
     fas_climax_tolerance: float = 0.1
     cts_st_tolerance: float = 0.05
-    anchor_bars: int = 5
-    anchor_fas_floor: float = -0.3
 
 
 @dataclass
@@ -185,6 +180,51 @@ class CtsFloorReversionExitConfig:
     pnl_cap_pct: float = 10.0
 
 
+@dataclass
+class CtsAccelCrossEntryConfig:
+    """Path 13: CTS Accel Cross — High-conviction crossover with robust structural guards."""
+    enabled: bool = True
+    # Range Guards
+    rp10_max: float = 0.60
+    rp252_max: float = 0.70
+    rp10_deep_thr: float = 0.40
+    rp252_deep_thr: float = 0.50
+    # Institutional Dislocation
+    cts_max: float = -0.20
+    prior_reset_lookback: int = 10
+    # Momentum / Accel
+    accel_spread_min: float = 0.02
+    accel_lookback: int = 5
+    accel_peak_guard_type: str = "proximity" # Approved Refinement (Scenario 2)
+    accel_peak_proximity_limit: float = 0.15 # 15% retracement allowed
+    psz_v_peak_guard_type: str = "proximity" # Approved Refinement
+    psz_v_peak_proximity_limit: float = 0.15 # 15% retracement allowed
+    psz_v_lookback: int = 5
+    accum_div_max: float = 0.010 # Tightened from 0.015 to catch AXISBANK trap
+    spearman_threshold: float = -0.3
+    # Price Guard
+    price_spearman_lookback: int = 10
+    price_spearman_max: float = -0.85
+    prt_slope_min: float = -0.02
+    prt_structural_min: float = -0.50
+    dist_high_10_max: float = -4.0 # Minimum 4% correction from 10-day high
+    # Scoring
+    min_score: float = 15.0
+    telemetry_enabled: bool = False
+
+
+@dataclass
+class CtsAccelCrossExitConfig:
+    """Path 13: CTS Accel Cross exit — Standard cross-down + Bare-Touch persistence."""
+    enabled: bool = True
+    bare_touch_tolerance: float = 0.01
+    cwvap_rejection_limit: int = 5
+    hard_stop_enabled: bool = True
+    hard_stop_pct: float = 8.0
+    pnl_cap_enabled: bool = False
+    pnl_cap_pct: float = 10.0
+
+
 # ---------------------------------------------------------------------------
 # Composite entry config
 # ---------------------------------------------------------------------------
@@ -207,6 +247,7 @@ class SavgolCTSEntryConfig(BaseEntryConfig):
     fas_zero_cross: FasZeroCrossEntryConfig = field(default_factory=FasZeroCrossEntryConfig)
     fas_floor_reversion: FasFloorReversionEntryConfig = field(default_factory=FasFloorReversionEntryConfig)
     fas_buy_cross: FasBuyCrossEntryConfig = field(default_factory=FasBuyCrossEntryConfig)
+    cts_accel_cross: CtsAccelCrossEntryConfig = field(default_factory=CtsAccelCrossEntryConfig)
 
 
 # ---------------------------------------------------------------------------
@@ -247,4 +288,5 @@ class SavgolCTSExitConfig(BaseExitConfig):
     fas_zero_cross: FasZeroCrossExitConfig = field(default_factory=FasZeroCrossExitConfig)
     fas_floor_reversion: FasFloorReversionExitConfig = field(default_factory=FasFloorReversionExitConfig)
     fas_buy_cross: FasBuyCrossExitConfig = field(default_factory=FasBuyCrossExitConfig)
+    cts_accel_cross: CtsAccelCrossExitConfig = field(default_factory=CtsAccelCrossExitConfig)
     cwvap_guard: CwvapGuardConfig = field(default_factory=CwvapGuardConfig)

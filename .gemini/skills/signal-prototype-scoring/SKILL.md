@@ -15,7 +15,8 @@ When tasked with analyzing a new setup, create a standalone script in `scripts/s
 Copy the structure from `scripts/nifty50_study.py`.
 - **Universe:** Load "NIFTY 50" symbols using `get_watchlist_symbols()`.
 - **Warmup:** ALWAYS load the entire history using `DivergenceEngine(ticker=symbol)` then filter the resulting `ledger` by the start date (e.g., `2024-01-01`). This ensures indicators like Savgol and EMA are warmed up.
-- **Cycle Logic:** Iterate through the `records` (list of dicts). Identify an `entry_idx` (signal at `i`, entry at `i+1` open) and then search forward for an `exit_idx` based on hypothesized logic.
+- **⚠️ EOD-Lag Constraint:** Identify a signal at index `i`. You MUST simulate the entry at `i+1`. All P&L, MFE, and MAE calculations MUST be based on the entry price at `i+1`.
+- **Cycle Logic:** Iterate through the `records` (list of dicts). Identify an `entry_idx` (signal at `i`, entry at `i+1` open/close) and then search forward for an `exit_idx` based on hypothesized logic.
 
 ### Step 2: Data Extraction
 Record key metrics for every setup found:

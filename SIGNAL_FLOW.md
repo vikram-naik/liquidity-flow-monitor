@@ -1,7 +1,15 @@
 # SavgolCTS Signal — Entry / Exit Flow
 
 **Package**: `src/trading/signals/savgol_cts/`
-**Last updated**: 2026-04-29
+**Last updated**: 2026-05-02
+
+## ⚠️ Mandatory Execution Model (EOD-Lag)
+The LFM system operates on an **End-of-Day Lag (EOD-Lag)** model. All signal research and production logic MUST adhere to this:
+1. **Signal Generation (Bar i)**: Indicators and guards are evaluated at the close of the trading day.
+2. **Execution (Bar i+1)**: The trade is entered at the close (or weighted open) of the following day.
+3. **Exit Evaluation (Bar i+2)**: Exit checks begin only after the trade has been open for at least one full bar.
+
+**Note**: Studies using "Bar i" close for entry will drastically overestimate performance by capturing same-day momentum that is unavailable in live execution.
 
 ## Package Structure
 
@@ -12,8 +20,8 @@ savgol_cts/
   state.py             # SavgolCTSExitState bitfield helper
   scoring.py           # compute_intensity() — shared intensity scoring
   signal.py            # SavgolCTSSignal orchestrator (cooldown, ST exit, dispatch)
-  entries/             # 7 active entry path implementations
-  exits/               # 7 active exit path implementations
+  entries/             # 8 active entry path implementations
+  exits/               # 8 active exit path implementations
 ```
 
 ---
@@ -31,6 +39,23 @@ check_entry(row, prev_row, cfg, records, idx)       [signal.py]
   |     FAIL --> REJECT "Cooldown active", metadata: {"cooldown": True}
   |
   |-- [Guard] CTS is NaN? --> REJECT "Missing CTS data"
+  |
+  |-- PATH 13: CTS Accel Cross (Elite)                   [entries/cts_accel_cross.py]
+  |     |-- [Gate] Adaptive CTS Buy Cross (CTS > BT)
+  |     |-- [Gate] Accel Conviction (cts_accel > threshold)
+  |     |-- [Guard] Falling Price (Typical Price Sp10 < -0.85 AND PRT < -0.02) OR (PRT < -0.50)
+  |     |-- [Guard] Deep Reversion (RP10 > 0.40 AND RP252 > 0.50)
+  |     |-- [Guard] Strict Range (RP252 < 0.70)
+  |     |-- [Guard] Strict RP10 (RP10 < 0.60)
+  |     |-- [Guard] Negative Momentum Gap (Price trapped > 6% below 10-day high after heavy distribution)
+  |     |-- [Guard] Inst Dislocation (CTS <= -0.20)
+  |     |-- [Guard] Prior Exhaustion (no CTS >= ST in last 10 bars)
+  |     |-- [Guard] Strict Accel (accel > prev_accel)
+  |     |-- [Guard] Minimum Accel Thrust (accel spread > 0.02, UNLESS Elite Clean-Thrust: Sp5 >= 0.90 AND Accel > 2x AT)
+  |     |-- [Guard] Accel Peak Proximity (Adaptive: Accel must be within 15% of recent spread-adjusted peak)
+  |     |-- [Guard] Velocity Peak Proximity (Adaptive: psz_v must be within 15% of recent 5-bar spread-adjusted peak)
+  |     |-- [Score] Multi-factor Score >= min_score (15.0) -> Map to 90-99 Intensity.
+  |     +-- PASS --> EntryTag.CTS_ACCEL_CROSS
   |
   |-- PATH 12: CTS Floor Reversion                       [entries/cts_floor_reversion.py]
   |     |-- [Gate] CTS AND CTS Buy Threshold stuck at floor (<= -0.999) for 5 days.
@@ -135,15 +160,15 @@ The state is packed into a 18-bit integer, stored in `delivery_bad_count`.
 | 7 | 0x00080 | `prt_exit_suppressed`      | (Legacy) PRT exit was suppressed |
 | 8 | 0x00100 | `fas_crossed_zero`         | (Legacy) PRT/FAS crossed zero |
 | 9 | 0x00200 | `extreme_bottom_extension` | (Legacy) Trade hit absolute floor |
-|10 | 0x00400 | `recovery_passed`          | Indicator crossed above zero |
-|11 | 0x00800 | `cts_exhausted`            | CTS exhausted post-recovery |
-|12 | 0x01000 | `fas_exhausted`            | FAS exhausted post-recovery |
 |13-| 0x1E000 | `cwf_count`                | High > CWVAP and Close < CWVAP (4 bits) |
 |17 | 0x20000 | `climax_hit_above_va`      | Structural Climax hit while price > VA_High |
+|18 | 0x40000 | `cts_near_miss`            | CTS stalled just below ST (Bare-Touch) |
 
 ## Exit Logic Classes
 
-The exit strategy relies heavily on path-specific logic located in `src/trading/signals/savgol_cts/exits/`. Paths like Accel Cross, Institutional Floor, and CTS Floor Reversion often implement multi-phase glides, PnL caps, trailing stops, and hard stops (usually 8%). Recent paths like FAS Zero Cross employ persistent Dual-Exhaustion Logic.
+The exit strategy relies heavily on path-specific logic located in `src/trading/signals/savgol_cts/exits/`. Paths like Accel Cross, Institutional Floor, and CTS Floor Reversion often implement multi-phase glides, PnL caps, trailing stops, and hard stops (usually 8%). 
+
+**Path 9 (FAS Zero Cross)** and **Path 13 (CTS Accel Cross)** both use the **Pure CTS Trailing** variant (Standard Cross-Down + Bare-Touch persistence). Unlike other bespoke paths, FAS Zero Cross now participates in the **CWVAP Guard** for additional structural protection.
 
 ## CWVAP Guard (`exits/cwvap_guard.py`)
 

@@ -27,6 +27,7 @@ ENTRY_ALIASES = {
     "fas-zero-cross": EntryTag.FAS_ZERO_CROSS.value,
     "fas-floor-reversion": EntryTag.FAS_FLOOR_REVERSION.value,
     "fas-buy-cross": EntryTag.FAS_BUY_CROSS.value,
+    "cts-accel-cross": EntryTag.CTS_ACCEL_CROSS.value,
     "cts-floor-reversion": EntryTag.CTS_FLOOR_REVERSION.value,
 }
 
@@ -126,8 +127,13 @@ def main():
                         t.rp_252 = f"{sig_row.get('range_pos_252', np.nan):.2f}"
 
                         cts_bt = sig_row.get("cts_buy_threshold", np.nan)
-                        if not np.isnan(cts_bt) and t.cts_signal <= cts_bt:
-                            t.cts_buy = "yes"
+                        if not np.isnan(cts_bt):
+                            # Path 13 (Accel Cross) is a "cross above" setup
+                            if t.entry_tag == EntryTag.CTS_ACCEL_CROSS.value:
+                                t.cts_buy = "yes" if t.cts_signal > cts_bt else "no"
+                            else:
+                                # Standard mean-reversion paths are "floor" setups
+                                t.cts_buy = "yes" if t.cts_signal <= cts_bt else "no"
                         else:
                             t.cts_buy = "no"
                         

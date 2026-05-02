@@ -21,6 +21,7 @@ from src.trading.signals.savgol_cts.entries.range_reversion import check_range_r
 from src.trading.signals.savgol_cts.entries.fas_zero_cross import check_fas_zero_cross
 from src.trading.signals.savgol_cts.entries.fas_floor_reversion import check_fas_floor_reversion
 from src.trading.signals.savgol_cts.entries.fas_buy_cross import check_fas_buy_cross
+from src.trading.signals.savgol_cts.entries.cts_accel_cross import check_cts_accel_cross
 
 # Exit path checkers
 from src.trading.signals.savgol_cts.exits.cwvap_guard import apply_cwvap_guard
@@ -28,9 +29,10 @@ from src.trading.signals.savgol_cts.exits.cts_floor_reversion import exit_cts_fl
 from src.trading.signals.savgol_cts.exits.accel_cross import check_exit_accel_cross
 from src.trading.signals.savgol_cts.exits.institutional_floor import exit_institutional_floor
 from src.trading.signals.savgol_cts.exits.range_reversion import exit_range_reversion
-from src.trading.signals.savgol_cts.exits.fas_zero_cross import exit_fas_zero_cross
+from src.trading.signals.savgol_cts.exits.fas_cts_trailing import exit_fas_cts_trailing
 from src.trading.signals.savgol_cts.exits.fas_floor_reversion import exit_fas_floor_reversion
 from src.trading.signals.savgol_cts.exits.fas_buy_cross import exit_fas_buy_cross
+from src.trading.signals.savgol_cts.exits.cts_accel_cross import exit_cts_accel_cross
 
 
 class SavgolCTSSignal(SignalInterface):
@@ -64,7 +66,12 @@ class SavgolCTSSignal(SignalInterface):
 
         rejections = []
 
-        # Path 12: CTS Floor Reversion (Highest Priority)
+        # Path 13: CTS Accel Cross (Highest Priority / Elite)
+        passed, intensity, meta = check_cts_accel_cross(row, prev_row, cfg.cts_accel_cross, records, idx)
+        if passed: return True, intensity, meta
+        if cfg.cts_accel_cross.enabled: rejections.append(f"AccelCross: {meta.get('reason', 'Failed')}")
+
+        # Path 12: CTS Floor Reversion (High Priority)
         passed, intensity, meta = check_cts_floor_reversion(row, prev_row, cfg.cts_floor_reversion, records, idx)
         if passed: return True, intensity, meta
         if cfg.cts_floor_reversion.enabled: rejections.append(f"CTSFloor: {meta.get('reason', 'Failed')}")
@@ -137,11 +144,14 @@ class SavgolCTSSignal(SignalInterface):
         elif tag == EntryTag.RANGE_REVERSION.value:
             exit_status = exit_range_reversion(row, prev_row, trade, peak_close, bars_held, updated_state_val, cfg, records, idx)
         elif tag == EntryTag.FAS_ZERO_CROSS.value:
-            exit_status = exit_fas_zero_cross(row, prev_row, trade, peak_close, bars_held, updated_state_val, cfg.fas_zero_cross, records, idx)
+            # exit_status = exit_fas_zero_cross(row, prev_row, trade, peak_close, bars_held, updated_state_val, cfg.fas_zero_cross, records, idx)
+            exit_status = exit_fas_cts_trailing(row, prev_row, trade, peak_close, bars_held, updated_state_val, cfg.fas_zero_cross, records, idx)
         elif tag == EntryTag.FAS_FLOOR_REVERSION.value:
             exit_status = exit_fas_floor_reversion(row, prev_row, trade, peak_close, bars_held, updated_state_val, cfg.fas_floor_reversion, records, idx)
         elif tag == EntryTag.FAS_BUY_CROSS.value:
             exit_status = exit_fas_buy_cross(row, prev_row, trade, peak_close, bars_held, updated_state_val, cfg.fas_buy_cross, records, idx)
+        elif tag == EntryTag.CTS_ACCEL_CROSS.value:
+            exit_status = exit_cts_accel_cross(row, prev_row, trade, peak_close, bars_held, updated_state_val, cfg.cts_accel_cross, records, idx)
         else:
             exit_status = (None, updated_state_val)
 
@@ -155,7 +165,12 @@ class SavgolCTSSignal(SignalInterface):
                     res = ExitReason.ST_CROSS
 
         # Mandatory Exit bypass for bespoke paths
-        bespoke_tags = [EntryTag.INSTITUTIONAL_FLOOR, EntryTag.RANGE_REVERSION, EntryTag.FAS_ZERO_CROSS, EntryTag.FAS_FLOOR_REVERSION]
+        bespoke_tags = [
+            EntryTag.INSTITUTIONAL_FLOOR, 
+            EntryTag.RANGE_REVERSION, 
+            EntryTag.FAS_FLOOR_REVERSION,
+            EntryTag.CTS_ACCEL_CROSS
+        ]
         is_bespoke = any(tag == t.value for t in bespoke_tags)
         
         if res == ExitReason.BAR3_STOP or is_bespoke:
