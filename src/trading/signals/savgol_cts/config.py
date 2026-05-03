@@ -151,6 +151,12 @@ class FasBuyCrossEntryConfig:
     cts_max: float = -0.98
     cts_bt_max: float = -0.98
     min_score: float = 15.0
+    price_spearman_lookback: int = 10
+    price_spearman_max: float = -0.85
+    prt_slope_min: float = -0.02
+    prt_structural_min: float = -0.45
+    prt_slope_max: float = 0.10
+    telemetry_enabled: bool = False
 
 
 @dataclass

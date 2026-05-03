@@ -95,6 +95,13 @@ def check_institutional_floor(
     if ifcfg.cts_slope_neg_guard and cts_s >= 0:
         return False, 0, {"reason": f"CTS slope {cts_s:.4f} >= 0 (not contrarian)"}
 
+    # GATE 8.5: Range Extension Guard (Avoid shallow falling knives)
+    prt = row.get("prt", np.nan)
+    prt_slope = row.get("prt_slope", np.nan)
+    if not np.isnan(prt) and not np.isnan(prt_slope):
+        if prt >= -0.40 and prt_slope < -0.05:
+            return False, 0, {"reason": f"Shallow Falling Knife: PRT {prt:.2f} >= -0.40 and PRTs {prt_slope:.2f} < -0.05"}
+
     # GATE 9: Institutional Alignment (CWC slope must be positive)
     if ifcfg.cwc_slope_rising_guard and cwc_s <= 0:
         return False, 0, {"reason": f"CWC slope {cwc_s:.4f} <= 0 (no alignment)"}

@@ -5,7 +5,7 @@ import numpy as np
 from src.trading.signals.enums import EntryTag
 from src.trading.signals.savgol_cts.config import FasBuyCrossEntryConfig
 from src.trading.signals.savgol_cts.scoring import compute_intensity
-from src.trading.signals.savgol_cts.entries.utils import is_flattish_line_adaptive
+from src.trading.signals.savgol_cts.entries.utils import is_flattish_line_adaptive, evaluate_spearman_trend
 
 
 def check_fas_buy_cross(
@@ -85,6 +85,13 @@ def check_fas_buy_cross(
     rsz_v = row.get("rsz_v", np.nan)
     if not np.isnan(rsz_v) and rsz_v < -0.13:
         return False, 0, {"reason": f"rsz_v ({rsz_v:.3f}) < -0.13"}
+
+    # 7. GUARD: Shallow Pullback (Empirical Data shows prt_slope > 0.10 performs poorly)
+    prt_slope = row.get("prt_slope", np.nan)
+    if not np.isnan(prt_slope):
+        prt_max = getattr(cfg, "prt_slope_max", 0.10)
+        if prt_slope >= prt_max:
+            return False, 0, {"reason": f"Shallow Pullback Guard: PRT Slope ({prt_slope:.3f}) >= {prt_max:.2f}"}
 
     # -----------------------------------------------------------------------
     # Multi-Factor Scoring (Strength & Weakness)
@@ -167,6 +174,21 @@ def check_fas_buy_cross(
             else:
                 base_score -= 10.0 # anemic momentum turn
         # No bonus or penalty for falling psz_v, just zeroing out the old negative bonus
+
+    # 5. Structural Free-Fall & Distribution Trap Guards
+    prt = row.get("prt", np.nan)
+    prt_slope = row.get("prt_slope", np.nan)
+    if not np.isnan(prt) and not np.isnan(prt_slope):
+        prt_structural_min = getattr(cfg, "prt_structural_min", -0.45) # slightly tightened from -0.50 to catch traps
+        prt_slope_min = getattr(cfg, "prt_slope_min", -0.02)
+        if prt < prt_structural_min and prt_slope < prt_slope_min:
+            base_score -= 11.0 # Heavy penalty for catching a deeply broken falling knife
+
+    dist_high_10 = row.get("dist_high_10", np.nan)
+    if not np.isnan(dist_high_10) and not np.isnan(cwc_slope):
+        # Heavy penalty for massive short-term drop without institutional cash alignment
+        if dist_high_10 < -8.0 and cwc_slope <= 0.0:
+            base_score -= 11.0
 
     min_score = getattr(cfg, "min_score", 20.0)
     if base_score < min_score:

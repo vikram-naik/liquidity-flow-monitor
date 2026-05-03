@@ -26,6 +26,7 @@ class SavgolCTSExitState:
     cwf_count: int = 0            # Counter for High > CWVAP and Close < CWVAP (4 bits: 0-15)
     climax_hit_above_va: bool = False # Track if structural climax hit while price > va_high
     cts_near_miss: bool = False    # Track if CTS barely touched ST (Bare-Touch persistence)
+    psz_second_cycle: bool = False # Track if PSZ went positive again during Phase 2
 
     @classmethod
     def from_int(cls, val: int) -> SavgolCTSExitState:
@@ -43,11 +44,13 @@ class SavgolCTSExitState:
             cwf_count=int((val >> 13) & 0xF),
             climax_hit_above_va=bool((val >> 17) & 1),
             cts_near_miss=bool((val >> 18) & 1),
+            psz_second_cycle=bool((val >> 19) & 1),
         )
 
     def to_int(self) -> int:
         return (
-            (int(self.cts_near_miss) << 18)
+            (int(self.psz_second_cycle) << 19)
+            | (int(self.cts_near_miss) << 18)
             | (int(self.climax_hit_above_va) << 17)
             | ((self.cwf_count & 0xF) << 13)
             | (int(self.extreme_bottom_extension) << 9)

@@ -51,6 +51,12 @@ def exit_institutional_floor(
 
     # Phase 2: CTS max-trail (psz_was_above repurposed as trailing_cts flag)
     if st.psz_was_above:
+        if not np.isnan(psz):
+            if psz > 0:
+                st.psz_second_cycle = True
+            elif psz < 0 and st.psz_second_cycle:
+                return ExitReason.SLOPE_CYCLE, st.to_int()
+
         if not np.isnan(cts) and not np.isnan(cts_st):
             # Track if we have already reached/exceeded the sell threshold
             if not st.cts_above_bt:  # repurposed: True if CTS >= ST

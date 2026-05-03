@@ -1,4 +1,4 @@
-# Study Reporting Standards - CTS Accel Cross
+# Study Reporting Standards
 
 Whenever reporting on Study Metrics for the Liquidity Flow Monitor, consistently report the "Before" and "After" state of the system when a logic change is introduced.
 

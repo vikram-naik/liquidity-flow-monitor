@@ -70,6 +70,9 @@ def main():
         t.accel_above_bt = "no"
         t.cwvap_dist_signal = 0.0
         t.psz_v_signal = 0.0
+        t.prt_signal = 0.0
+        t.prt_slope_signal = 0.0
+        t.prt_accel_signal = 0.0
         t.above_va_high = "no"
         t.regime_signal = "N/A"
 
@@ -152,6 +155,9 @@ def main():
                             t.cwvap_dist_signal = 0.0
                         
                         t.psz_v_signal = sig_row.get("psz_v", 0.0)
+                        t.prt_signal = sig_row.get("prt", 0.0)
+                        t.prt_slope_signal = sig_row.get("prt_slope", 0.0)
+                        t.prt_accel_signal = sig_row.get("prt_accel", 0.0)
                         
                         va_high = sig_row.get("va_high", np.nan)
                         if not np.isnan(va_high) and close > va_high:
@@ -191,15 +197,19 @@ def main():
     # Print
     print(f"\n--- {label} TRADES: STUDY REPORT ({args.period.upper()}) ---")
     header = (f"{'#':>3} | {'Symbol':<12} | {'Sig Date':<10} | {'PnL%':>7} | {'MFE%':>7} | "
-              f"{'FAS':>7} | {'CTS':>7} | {'Buy':>3} | {'Acc>BT':>6} | {'CWD%':>7} | {'PSZv':>7} | {'>VAH':>4} | {'Bars':>4} | {'CWF':>3} | {'SCORE':>5} |  {'RP10':>4} | {'RP22':>4} | {'RP63':>4} | {'RP252':>4} | {'Exit Reason'}")
+              f"{'FAS':>7} | {'CTS':>7} | {'Buy':>3} | {'Acc>BT':>6} | {'PSZv':>7} | "
+              f"{'PRT':>7} | {'PRTs':>7} | {'PRTa':>7} | "
+              f"{'>VAH':>4} | {'Bars':>4} | {'SCORE':>5} |  "
+              f"{'RP10':>4} | {'RP22':>4} | {'RP63':>4} | {'RP252':>4} | {'Exit Reason'}")
     print(header)
     print("-" * len(header))
     for i, t in enumerate(filtered, 1):
         reason = t.exit_reason.value if hasattr(t.exit_reason, "value") else str(t.exit_reason)
-        cwf = getattr(t, "cwvap_fail_count", 0)
         print(f"{i:>3} | {t.symbol:<12} | {t.signal_date:<10} | {t.pnl_pct:>7.2f} | "
-              f"{t.mfe_pct:>7.2f} | {t.fas_signal:>7.3f} | {t.cts_signal:>7.3f} | {t.cts_buy:>3} | {t.accel_above_bt:>6} | {t.cwvap_dist_signal:>7.2f} | "
-              f"{t.psz_v_signal:>7.4f} | {t.above_va_high:>4} | {t.duration:>4} | {cwf:>3} | {t.conviction_score:>+5} | {t.rp_10:>4} | {t.rp_22:>4} | {t.rp_63:>4} | {t.rp_252:>4} | {reason}")
+              f"{t.mfe_pct:>7.2f} | {t.fas_signal:>7.3f} | {t.cts_signal:>7.3f} | {t.cts_buy:>3} | {t.accel_above_bt:>6} | "
+              f"{t.psz_v_signal:>7.4f} | {t.prt_signal:>7.4f} | {t.prt_slope_signal:>7.4f} | {t.prt_accel_signal:>7.4f} | "
+              f"{t.above_va_high:>4} | {t.duration:>4} | {t.conviction_score:>+5} | "
+              f"{t.rp_10:>4} | {t.rp_22:>4} | {t.rp_63:>4} | {t.rp_252:>4} | {reason}")
 
 
 
