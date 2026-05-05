@@ -148,9 +148,9 @@ class FasFloorReversionExitConfig:
 class FasBuyCrossEntryConfig:
     """Path 11: FAS Buy Cross — FAS crosses BT while CTS is in deep floor."""
     enabled: bool = True
-    cts_max: float = -0.98
-    cts_bt_max: float = -0.98
-    min_score: float = 15.0
+    cts_max: float = -0.80
+    cts_bt_max: float = -0.80
+    min_score: float = 9.0
     price_spearman_lookback: int = 10
     price_spearman_max: float = -0.85
     prt_slope_min: float = -0.02
@@ -173,6 +173,10 @@ class CtsFloorReversionEntryConfig:
     """Path 12: CTS Floor Reversion — CTS and BT stuck at floor for 5 days, followed by snapback."""
     enabled: bool = True
     min_score: float = 9.0
+    range_guard_enabled: bool = True
+    shallow_drop_guard_enabled: bool = True
+    prt_structural_min: float = -0.45
+    prt_slope_min: float = -0.02
     telemetry_enabled: bool = False
 
 
@@ -200,11 +204,12 @@ class CtsAccelCrossEntryConfig:
     prior_reset_lookback: int = 10
     # Momentum / Accel
     accel_spread_min: float = 0.02
+    accel_spread_prt_bypass_delta: float = 0.20 # Delta required in prt_slope to bypass spread min
     accel_lookback: int = 5
     accel_peak_guard_type: str = "proximity" # Approved Refinement (Scenario 2)
     accel_peak_proximity_limit: float = 0.15 # 15% retracement allowed
     psz_v_peak_guard_type: str = "proximity" # Approved Refinement
-    psz_v_peak_proximity_limit: float = 0.15 # 15% retracement allowed
+    psz_v_peak_proximity_limit: float = 0.30 # 30% retracement allowed (NESTLEIND)
     psz_v_lookback: int = 5
     accum_div_max: float = 0.010 # Tightened from 0.015 to catch AXISBANK trap
     spearman_threshold: float = -0.3
@@ -213,7 +218,7 @@ class CtsAccelCrossEntryConfig:
     price_spearman_max: float = -0.85
     prt_slope_min: float = -0.02
     prt_structural_min: float = -0.50
-    dist_high_10_max: float = -4.0 # Minimum 4% correction from 10-day high
+    dist_high_10_max: float = -2.0 # Minimum 2% correction from 10-day high (NESTLEIND)
     # Scoring
     min_score: float = 15.0
     telemetry_enabled: bool = False
@@ -223,7 +228,7 @@ class CtsAccelCrossEntryConfig:
 class CtsAccelCrossExitConfig:
     """Path 13: CTS Accel Cross exit — Standard cross-down + Bare-Touch persistence."""
     enabled: bool = True
-    bare_touch_tolerance: float = 0.01
+    bare_touch_tolerance: float = 0.05
     cwvap_rejection_limit: int = 5
     hard_stop_enabled: bool = True
     hard_stop_pct: float = 8.0

@@ -13,13 +13,18 @@ The LFM system operates strictly on an **End-of-Day Lag (EOD-Lag)** model. You M
 - **Entry bar (i+1):** The bar where the trade is executed (close/open).
 - **Exit evaluation (i+2):** Exit checks only begin AFTER entry execution.
 - **FAILING TO USE EOD-LAG:** Reporting results based on same-day entry (bar i) is a critical failure that overestimates expectancy and invalidates the study.
+  - *Example:* If signal fires on 2026-03-25, entry is 2026-03-26, and the first possible exit check is 2026-03-27.
 
 ## Core Mandates
-1. **Universe:** ALWAYS use the `"NIFTY 50"` watchlist for backtesting and trade dumping.
-2. **Decision Making:** ALWAYS base final validation and decisions on the **TEST period** results.
-3. **Environment:** ALWAYS use the virtual environment at the root of the project (`./venv/bin/python`) to execute all scripts.
-4. **Metrics:** When comparing baseline vs. after-change performance, you MUST report the following exact parameters from the TEST period:
-   - Number of Trades
+1.  **Universe:** ALWAYS use the `"NIFTY 50"` watchlist for backtesting and trade dumping.
+2.  **Decision Making:** ALWAYS base final validation and decisions on the **TEST period** results.
+3.  **Environment:** ALWAYS use the virtual environment at the root of the project (`./venv/bin/python`) to execute all scripts.
+4.  **Delta Reporting:** When proposing a change, you MUST report the "Before vs After" delta for all core metrics.
+
+## Mandatory Metrics
+Consistently report these exact parameters for the **TEST period**:
+
+   - **Number of Trades**
    - Win Rate (%)
    - Avg P&L (%)
    - Profit Factor
@@ -27,6 +32,17 @@ The LFM system operates strictly on an **End-of-Day Lag (EOD-Lag)** model. You M
    - Avg MFE (%)
    - Avg MAE (%)
    - Avg duration (bars)
+
+### Impact Analysis Grid (Example)
+| Metric | Baseline (Before) | Optimized (After) | Delta |
+| :--- | :--- | :--- | :--- |
+| Trades | 142 | 118 | -17% |
+| Win Rate | 58.2% | 61.5% | +3.3% |
+| Avg P&L | 0.85% | 1.12% | +0.27% |
+| Prof. Factor | 1.45 | 1.78 | +0.33 |
+| Expectancy | 0.16% | 0.28% | +0.12% |
+| Avg MFE | 4.2% | 4.5% | +0.3% |
+| Avg Duration | 8.2 | 7.5 | -0.7 |
 
 ---
 

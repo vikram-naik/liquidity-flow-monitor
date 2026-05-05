@@ -40,7 +40,7 @@ def main():
     parser.add_argument("--reason", help="Filter by exit reason (substring match)")
     parser.add_argument("--watchlist", default="NIFTY 50")
     parser.add_argument("--sort", default="entry_date",
-                        choices=["entry_date", "pnl", "symbol", "mfe", "mae", "duration", "score"],
+                        choices=["entry_date", "pnl", "symbol", "mfe", "mae", "duration", "score", "cwdist", "cwmax"],
                         help="Sort column (default: entry_date)")
     args = parser.parse_args()
 
@@ -69,6 +69,8 @@ def main():
         t.cts_buy = "no"
         t.accel_above_bt = "no"
         t.cwvap_dist_signal = 0.0
+        t.cwvap_fail_count = 0
+        t.cwvap_dist_max = 0.0
         t.psz_v_signal = 0.0
         t.prt_signal = 0.0
         t.prt_slope_signal = 0.0
@@ -178,6 +180,7 @@ def main():
                         
                         # Count bars where High > CWVAP (crossed) but Close < CWVAP (failed to hold)
                         t.cwvap_fail_count = int(((trade_period["high"] > trade_period["cwvap"]) & (trade_period["close"] < trade_period["cwvap"])).sum())
+                        t.cwvap_dist_max = float(((trade_period["high"] / trade_period["cwvap"] - 1.0) * 100.0).max())
             except Exception:
                 pass
 
@@ -190,8 +193,10 @@ def main():
         "mae": lambda t: t.mae_pct,
         "duration": lambda t: t.duration,
         "score": lambda t: t.conviction_score,
+        "cwdist": lambda t: t.cwvap_dist_signal,
+        "cwmax": lambda t: t.cwvap_dist_max,
     }
-    reverse = args.sort in ("pnl", "mfe", "score")
+    reverse = args.sort in ("pnl", "mfe", "score", "cwmax")
     filtered.sort(key=sort_map[args.sort], reverse=reverse)
 
     # Print
@@ -199,6 +204,7 @@ def main():
     header = (f"{'#':>3} | {'Symbol':<12} | {'Sig Date':<10} | {'PnL%':>7} | {'MFE%':>7} | "
               f"{'FAS':>7} | {'CTS':>7} | {'Buy':>3} | {'Acc>BT':>6} | {'PSZv':>7} | "
               f"{'PRT':>7} | {'PRTs':>7} | {'PRTa':>7} | "
+              f"{'CWdist':>7} | {'CWmax':>7} | {'CWfl':>4} | "
               f"{'>VAH':>4} | {'Bars':>4} | {'SCORE':>5} |  "
               f"{'RP10':>4} | {'RP22':>4} | {'RP63':>4} | {'RP252':>4} | {'Exit Reason'}")
     print(header)
@@ -208,6 +214,7 @@ def main():
         print(f"{i:>3} | {t.symbol:<12} | {t.signal_date:<10} | {t.pnl_pct:>7.2f} | "
               f"{t.mfe_pct:>7.2f} | {t.fas_signal:>7.3f} | {t.cts_signal:>7.3f} | {t.cts_buy:>3} | {t.accel_above_bt:>6} | "
               f"{t.psz_v_signal:>7.4f} | {t.prt_signal:>7.4f} | {t.prt_slope_signal:>7.4f} | {t.prt_accel_signal:>7.4f} | "
+              f"{t.cwvap_dist_signal:>7.2f} | {t.cwvap_dist_max:>7.2f} | {t.cwvap_fail_count:>4} | "
               f"{t.above_va_high:>4} | {t.duration:>4} | {t.conviction_score:>+5} | "
               f"{t.rp_10:>4} | {t.rp_22:>4} | {t.rp_63:>4} | {t.rp_252:>4} | {reason}")
 

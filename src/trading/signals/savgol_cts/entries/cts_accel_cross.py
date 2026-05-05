@@ -130,10 +130,20 @@ def check_cts_accel_cross(
     accel_spread = max(accel_lb) - min(accel_lb)
     cts_a_spearman = evaluate_spearman_trend(accel_lb)
     is_elite_clean_thrust = (cts_a_spearman >= 0.90) and (cts_accel > 2 * cts_at)
-    is_accel_thrust = (accel_spread >= cfg.accel_spread_min) or is_elite_clean_thrust
-    tracker.add_gate("Accel Thrust", is_accel_thrust, f"Spread: {accel_spread:.4f}, Elite: {is_elite_clean_thrust}")
+    
+    # PRT Reversal Bypass Logic
+    prt_slope = row.get("prt_slope", np.nan)
+    prev_prt_slope = prev_row.get("prt_slope", np.nan)
+    is_prt_reversal_bypass = False
+    if not np.isnan(prt_slope) and not np.isnan(prev_prt_slope):
+        prt_delta = prt_slope - prev_prt_slope
+        if prev_prt_slope < 0 and prt_slope > 0 and prt_delta >= cfg.accel_spread_prt_bypass_delta:
+            is_prt_reversal_bypass = True
+
+    is_accel_thrust = (accel_spread >= cfg.accel_spread_min) or is_elite_clean_thrust or is_prt_reversal_bypass
+    tracker.add_gate("Accel Thrust", is_accel_thrust, f"Spread: {accel_spread:.4f}, Elite: {is_elite_clean_thrust}, PRT Bypass: {is_prt_reversal_bypass}")
     if not is_accel_thrust and first_fail_reason is None:
-        first_fail_reason = f"Accel spread {accel_spread:.4f} < {cfg.accel_spread_min} (Non-elite)"
+        first_fail_reason = f"Accel spread {accel_spread:.4f} < {cfg.accel_spread_min} (Non-elite, no PRT bypass)"
 
     # 9b. GUARD: Peak Momentum (ONGC Guard)
     accel_peak = max(accel_lb)

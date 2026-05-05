@@ -71,26 +71,25 @@ def exit_cts_accel_cross(
             st.cwf_count = 0
 
     # Condition A: Standard CTS cross below ST from above
-    # (Yesterday was definitively in exhaustion, today is falling out)
-    is_standard_cross = prev_cts >= prev_cts_st and cts < cts_st
+    # We apply the tolerance here to prevent "pixel-perfect" exits.
+    # A true cross is now defined as dropping significantly below the ceiling.
+    is_standard_cross = prev_cts >= prev_cts_st and cts < (cts_st - cfg.bare_touch_tolerance)
     if is_standard_cross:
         return ExitReason.ST_CROSS, st.to_int()
 
-    # Condition B: Bare-Touch Persistence (HCLTECH case)
-    # Latch the 'near miss' state if we are within tolerance but haven't crossed yet.
-    if not st.cts_near_miss:
-        # Was yesterday a near-miss? (Within 0.01 of the ceiling)
-        is_near_miss = (prev_cts_st - cfg.bare_touch_tolerance) <= prev_cts < prev_cts_st
-        if is_near_miss:
-            st.cts_near_miss = True
+    # Condition B: Bare-Touch Persistence (HCLTECH/NESTLEIND case)
+    # Latch the 'near miss' state if we are hugging the ceiling (within tolerance).
+    is_near_miss = (cts_st - cfg.bare_touch_tolerance) <= cts < cts_st
+    if is_near_miss:
+        st.cts_near_miss = True
     
-    # If we are in 'near-miss' mode, exit if institutional commitment starts fading.
+    # If we are in 'near-miss' mode, exit if institutional commitment starts fading significantly.
     if st.cts_near_miss:
-        # If we finally cross above ST, clear the near-miss latch (it's now a standard exhaustion cycle)
-        if cts >= cts_st:
+        # If we finally cross WELL ABOVE ST, clear the near-miss latch
+        if cts >= (cts_st + cfg.bare_touch_tolerance):
             st.cts_near_miss = False
-        # Otherwise, if we are falling away from the ceiling, trigger near-miss exit
-        elif cts < prev_cts:
+        # Otherwise, if we are falling away from the ceiling by more than the tolerance, trigger near-miss exit
+        elif cts < (prev_cts - cfg.bare_touch_tolerance):
             return ExitReason.CTS_BARE_TOUCH, st.to_int()
 
     return None, st.to_int()

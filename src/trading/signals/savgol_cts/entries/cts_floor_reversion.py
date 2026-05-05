@@ -142,15 +142,30 @@ def check_cts_floor_reversion(
         score -= 7.0
 
     # price range check
-    pw = row.get("range_pos_10", np.nan) #weekly range position
-    pm = row.get("range_pos_22", np.nan) #monthly range position
-    pq = row.get("range_pos_63", np.nan) #quarterly range position
-    py = row.get("range_pos_252", np.nan) #yearly range position
-    if not any(np.isnan(x) for x in [pw, pm, pq, py]):
-        if pw > 0.45 and py > 0.40:
-            score -= 7.0  # Penalize if price is above the midpoint of any major range, as it may indicate less room to run
-        if pw > 0.60 or py > 0.60:
-            score -= 7.0  # Heavily penalize if price is above the upper third of weekly.
+    if getattr(cfg, "range_guard_enabled", True):
+        pw = row.get("range_pos_10", np.nan) #weekly range position
+        pm = row.get("range_pos_22", np.nan) #monthly range position
+        pq = row.get("range_pos_63", np.nan) #quarterly range position
+        py = row.get("range_pos_252", np.nan) #yearly range position
+        if not any(np.isnan(x) for x in [pw, pm, pq, py]):
+            if pw > 0.45 and py > 0.40:
+                score -= 7.0  # Penalize if price is above the midpoint of any major range, as it may indicate less room to run
+            if pw > 0.60 or py > 0.60:
+                score -= 7.0  # Heavily penalize if price is above the upper third of weekly.
+
+    # Shallow Dead Cat & Strict Momentum Guards
+    if getattr(cfg, "shallow_drop_guard_enabled", True):
+        dist_high_10 = row.get("dist_high_10", np.nan)
+        psz_now = row.get("price_slope_z", np.nan)
+        
+        # Guard 1: Fake Floor (Shallow Pullback without Structural Exhaustion)
+        if not np.isnan(dist_high_10) and not np.isnan(psz_now):
+            if dist_high_10 > -5.0 and psz_now > -0.15:
+                score -= 11.0 # Heavy penalty for catching a high-level chop trade
+                
+        # Guard 2: Falling Knife (Strict Negative Momentum)
+        if not np.isnan(psz_v) and psz_v <= 0:
+            score -= 6.0 # Combined with the base -5.0 penalty above, this creates an -11.0 total rejection penalty
 
     # 5. GATE 4: Final Score Gate
     if score < cfg.min_score:

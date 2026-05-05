@@ -92,6 +92,15 @@ def check_fas_buy_cross(
         prt_max = getattr(cfg, "prt_slope_max", 0.10)
         if prt_slope >= prt_max:
             return False, 0, {"reason": f"Shallow Pullback Guard: PRT Slope ({prt_slope:.3f}) >= {prt_max:.2f}"}
+        
+    # 8. GUARD: close > va_high and rp_10 > 0.20 (Empirical data shows entries failing when price is above value area high with strong recent relative price strength)
+    close_px = row.get("close", np.nan)
+    va_high = row.get("va_high", np.nan)
+    rp_10 = row.get("range_pos_10", np.nan)
+    if not np.isnan(close_px) and not np.isnan(va_high) and not np.isnan(rp_10):
+        if close_px > va_high and rp_10 > 0.20:
+            return False, 0, {"reason": f"Value Area Guard: close ({close_px:.2f}) > va_high ({va_high:.2f}) with strong rp_10 ({rp_10:.3f})"}
+
 
     # -----------------------------------------------------------------------
     # Multi-Factor Scoring (Strength & Weakness)
