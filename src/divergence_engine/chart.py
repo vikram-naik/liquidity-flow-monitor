@@ -39,6 +39,7 @@ UI_COLUMNS = [
     # NextGen gate thresholds (rolling percentiles from trend_participation)
     "cts_buy_threshold", "cts_sell_threshold", "cts_accel_threshold", "pdd_120_threshold",
     "fas_buy_threshold", "fas_sell_threshold",
+    "prt_slope_buy_threshold", "prt_slope_sell_threshold",
     # Features
     "fas", "entry_signal_prob",
     # Divergence

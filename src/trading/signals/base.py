@@ -106,17 +106,19 @@ class SignalInterface(ABC):
     ) -> pd.DataFrame:
         """Run the full EOD-lag simulation over a ledger DataFrame.
 
-        Returns a copy of df with four columns added:
-            entry_signal  — intensity int (>0) on the signal bar, else 0
-            entry_reason  — reason string on every evaluated bar, else None
-            exit_signal   — 1 on the exit bar, else 0
-            exit_reason   — reason string on the exit bar, else None
+        Returns a copy of df with additional signal columns.
         """
         records = df.to_dict("records")
         n = len(records)
 
         entry_flags   = [0]    * n
         entry_reasons = [None] * n
+        entry_tags    = [None] * n
+        soft_filters  = [0]    * n
+        rdv_passes    = [0]    * n
+        mcs_passes    = [0]    * n
+        cwc_passes    = [0]    * n
+        grad_passes   = [0]    * n
         cooldown_flags = [False] * n
         exit_flags    = [0]    * n
         exit_reasons  = [None] * n
@@ -180,6 +182,12 @@ class SignalInterface(ABC):
                 cooldown_flags[i] = det.get("cooldown", False)
                 if ok:
                     entry_flags[i] = intensity
+                    entry_tags[i] = det.get("entry_tag", "")
+                    soft_filters[i] = intensity
+                    rdv_passes[i] = 1 if det.get("rdv") else 0
+                    mcs_passes[i] = 1 if det.get("mcs") else 0
+                    cwc_passes[i] = 1 if det.get("cwc") else 0
+                    grad_passes[i] = 1 if det.get("grad") else 0
                     pending_entry = {
                         "intensity": intensity,
                         "entry_tag": det.get("entry_tag", ""),
@@ -189,6 +197,12 @@ class SignalInterface(ABC):
         df = df.copy()
         df["entry_signal"] = entry_flags
         df["entry_reason"] = entry_reasons
+        df["entry_tag"]    = entry_tags
+        df["soft_filters_passed"] = soft_filters
+        df["rdv_pass"] = rdv_passes
+        df["mcs_pass"] = mcs_passes
+        df["cwc_pass"] = cwc_passes
+        df["grad_pass"] = grad_passes
         df["cooldown"]     = cooldown_flags
         df["exit_signal"]  = exit_flags
         df["exit_reason"]  = exit_reasons

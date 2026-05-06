@@ -32,6 +32,11 @@ Standard "Close Price" Spearman often misses intraday collapses.
 - **Threshold**: Reject if `Spearman < -0.85`.
 - **Why**: Captures intraday weakness (lows) that closing-price "fake bounces" hide.
 
+### Distribution Zone Guard (Big Money Dump)
+Prevents entering signals where institutions are aggressively selling into the move.
+- **Logic**: `REJECT IF accum_div > 0.010`.
+- **Why**: High `accum_div` values indicate significant institutional selling. Even if momentum looks green, we reject if "Big Money" is dumping volume.
+
 ### Adaptive Peak Proximity (Momentum Health)
 Prevents entering "fizzle" setups where momentum is already retracing from a local peak.
 - **Logic**: `REJECT IF current_val < Peak - (Range * 0.15)`
@@ -43,7 +48,41 @@ Rejects entries where the "Big Money" is still dumping at maximum intensity.
 - **Logic**: `REJECT IF cts <= -0.95 AND cts_slope < 0`.
 - **Why**: A технических bounce is irrelevant if institutional selling has not even begun to decelerate (slope must be at least flattening).
 
-## 3. Persistent State Machine Exits
+## 3. Scored Quality Filtering (Soft Guards)
+
+Modern paths (like Path 13) use penalties instead of hard gates to allow "Elite Clean-Thrusts" to pass while killing marginal traps.
+
+### Correction Depth Penalty (The ONGC Rule)
+- **Extremely Shallow (> -1.0%)**: **-20.0 pts** (Kills signals firing at local highs).
+- **Shallow (-1.0% to -4.0%)**: **-10.0 pts**.
+- **Why**: Shallow corrections are risky. Using a penalty instead of a hard gate allows high-momentum moves (clean thrusts) to pass if their score is high enough.
+
+### Red Bar Penalty (Intraday Divergence)
+- **Logic**: `IF Close < Open THEN -15.0 pts`.
+- **Why**: A red candle on a crossover day is a divergence. We only allow it if the institutional thrust is powerful enough to overcome the intraday selling pressure.
+
+## 4. Utility-Based Trend Gating
+
+Leverage standardized helpers in `src/trading/signals/savgol_cts/entries/utils.py` to implement robust momentum guards.
+
+### Adaptive Flatness Check
+Prevents entering when the engine or momentum has "no pulse."
+- **Helper**: `is_flattish_line_adaptive(y1, y2, y3, lookback_window_data, sensitivity=0.15)`.
+- **Logic**: Calculates tolerance dynamically based on the recent range of the data.
+- **Why**: A fixed tolerance fails when switching between low-volatility and high-volatility symbols.
+
+### Spearman Trend Consistency
+Ensures the move is structural and not just a one-bar spike.
+- **Helper**: `evaluate_spearman_trend(y_values)`.
+- **Application**:
+    - `psz_v` (Momentum Quality): Scored via linear interpolation.
+    - `cts_accel` (Accel Quality): Scored via linear interpolation.
+- **Thresholds**:
+    - `> 0.80`: Strong, visually obvious trend.
+    - `0.50 - 0.80`: Choppy but rising.
+    - `< 0.30`: Weak or sideways (Candidate for penalty).
+
+## 5. Persistent State Machine Exits
 
 For complex exits that require multiple confirmation phases (e.g., reclaim CWVAP -> reach target -> exit on fade), use bitfield latches in `delivery_bad_count`.
 
@@ -52,7 +91,7 @@ For complex exits that require multiple confirmation phases (e.g., reclaim CWVAP
 3.  **Phase 3: Exhaustion Exit**: Trigger the final exit only *after* Phase 1 and 2 are latched and momentum starts to fade (e.g., `psz < 0.0`).
 4.  **Implementation**: Define constants in `src/trading/signals/savgol_cts/state.py` and wrap the integer in `SavgolCTSExitState`.
 
-## 4. Bayesian Scoring and Intensity Mapping
+## 6. Bayesian Scoring and Intensity Mapping
 
 When implementing `src/trading/signals/savgol_cts/scoring.py` or path-specific scoring:
 
@@ -64,7 +103,7 @@ When implementing `src/trading/signals/savgol_cts/scoring.py` or path-specific s
   intensity_pts = 90.0 + (tracker.total - min_possible) / (max_possible - min_possible) * 9.0
   ```
 
-## 5. Implementation Guidelines
+## 7. Implementation Guidelines
 - **Telemetry**: Always use `ScoreTracker` (if available) or verbose logging to print the result of every Gate, Guard, and Score component during `check_entry`.
 - **Conditional Early Returns**: Use the "Conditional Early Return" pattern to ensure that "Heavy Guards" only execute if the "Master Gate" passes or telemetry is explicitly enabled. This prevents backtest slowdowns.
 - **EOD-Lag**: All guards and scores must be evaluated on Bar `i` (Signal Bar) to affect the entry at Bar `i+1`.

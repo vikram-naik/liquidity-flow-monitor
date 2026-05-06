@@ -245,23 +245,38 @@ class Scanner:
             if not records or len(records) < 2:
                 continue
 
-            last = records[-1]
-            prev = records[-2]
+            # Simulation-consistent signal detection:
+            # We run the full strategy simulation to ensure we only pick up signals
+            # that are not blocked by a 'phantom' trade in the strategy's memory.
+            df_tagged = self.signal.tag_signals(result.ledger, self.entry_cfg, self.exit_cfg)
+            last_row = df_tagged.iloc[-1]
+            prev_row = df_tagged.iloc[-2]
 
-            qualifies, soft_count, details = self.signal.check_entry(
-                last, prev, self.entry_cfg, records, len(records) - 1,
-            )
+            qualifies = last_row.get("entry_signal", 0) > 0
+            intensity = int(last_row.get("entry_signal", 0))
+            entry_reason = last_row.get("entry_reason", "")
+            entry_tag = last_row.get("entry_tag", "")
 
-            psz = last.get("price_slope_z", np.nan)
-            prev_psz = prev.get("price_slope_z", np.nan)
+            psz = last_row.get("price_slope_z", np.nan)
+            prev_psz = prev_row.get("price_slope_z", np.nan)
 
             if qualifies:
                 signals_found += 1
-                pdd_120 = last.get("pdd_120", np.nan)
-                regime = details.get("regime", "")
-                entry_tag = details.get("entry_tag", "")
+                pdd_120 = last_row.get("pdd_120", np.nan)
+                regime = last_row.get("regime", "")
+                
+                # Extract gate flags from tagged row
+                details = {
+                    "reason": entry_reason,
+                    "entry_tag": entry_tag,
+                    "regime": regime,
+                    "rdv": int(last_row.get("rdv_pass", 0)),
+                    "mcs": int(last_row.get("mcs_pass", 0)),
+                    "cwc": int(last_row.get("cwc_pass", 0)),
+                    "grad": int(last_row.get("grad_pass", 0)),
+                }
 
-                print(f"  {symbol}: SIGNAL (filters={soft_count}, regime={regime}, "
+                print(f"  {symbol}: SIGNAL (intensity={intensity}, regime={regime}, "
                       f"PSZ={psz:.3f}, PDD120={pdd_120:.2f})")
 
                 if not self.dry_run:

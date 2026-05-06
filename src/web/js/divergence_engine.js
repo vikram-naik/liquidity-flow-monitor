@@ -167,7 +167,7 @@
         var deliveryVol = [];
         globalTimeToIndex = {};
         var pZ = [], rZ = [], cRaw = [], cSmooth = [];
-        var rdvArr = [], cwcArr = [], rdvConsArr = [], atrArr = [], distArr = [], delPctArr = [], pddArr = [], prtArr = [], prtSlopeArr = [], prtAccelArr = [], fasArr = [], fasBuyThreshArr = [], fasSellThreshArr = [], entrySignalProbArr = [];
+        var rdvArr = [], cwcArr = [], rdvConsArr = [], atrArr = [], distArr = [], delPctArr = [], pddArr = [], prtArr = [], prtSlopeArr = [], prtSlopeBuyThreshArr = [], prtSlopeSellThreshArr = [], prtAccelArr = [], fasArr = [], fasBuyThreshArr = [], fasSellThreshArr = [], entrySignalProbArr = [];
         // NextGen gate series
         var ctsSlopeArr = [], ctsAccelArr = [], ctsAccelThreshArr = [], ctsBuyThreshArr = [], ctsSellThreshArr = [];
         var cdvlArr = [], vel60Arr = [], pdd120Arr = [], pdd120ThreshArr = [];
@@ -218,6 +218,8 @@
             if (r.pdd_120_threshold != null) pdd120ThreshArr.push({ time: t, value: r.pdd_120_threshold }); else pdd120ThreshArr.push({ time: t });
             if (r.prt != null) prtArr.push({ time: t, value: r.prt }); else prtArr.push({ time: t });
             if (r.prt_slope != null) prtSlopeArr.push({ time: t, value: r.prt_slope }); else prtSlopeArr.push({ time: t });
+            if (r.prt_slope_buy_threshold != null) prtSlopeBuyThreshArr.push({ time: t, value: r.prt_slope_buy_threshold }); else prtSlopeBuyThreshArr.push({ time: t });
+            if (r.prt_slope_sell_threshold != null) prtSlopeSellThreshArr.push({ time: t, value: r.prt_slope_sell_threshold }); else prtSlopeSellThreshArr.push({ time: t });
             if (r.prt_accel != null) prtAccelArr.push({ time: t, value: r.prt_accel }); else prtAccelArr.push({ time: t });
             if (r.fas != null) fasArr.push({ time: t, value: r.fas }); else fasArr.push({ time: t });
             if (r.fas_buy_threshold != null) fasBuyThreshArr.push({ time: t, value: r.fas_buy_threshold }); else fasBuyThreshArr.push({ time: t });
@@ -413,9 +415,19 @@
                 // PRT Slope
                 var sPrtSlope = c.addSeries(LC.LineSeries, { color: "#80cbc4", lineWidth: 2, lastValueVisible: false, priceLineVisible: false });
                 sPrtSlope.setData(prtSlopeArr);
+                
                 var sPrtSZ = c.addSeries(LC.LineSeries, { color: "#424242", lineWidth: 1, lineStyle: 2, lastValueVisible: false, priceLineVisible: false });
                 sPrtSZ.setData(prtSlopeArr.map(d => ({ time: d.time, value: 0 })));
+
+                var sPrtSBT = c.addSeries(LC.LineSeries, { color: "rgba(128, 203, 196, 0.8)", lineWidth: 1, lineStyle: 2, lastValueVisible: false, priceLineVisible: false });
+                sPrtSBT.setData(prtSlopeBuyThreshArr);
+
+                var sPrtSST = c.addSeries(LC.LineSeries, { color: "rgba(128, 203, 196, 0.8)", lineWidth: 1, lineStyle: 2, lastValueVisible: false, priceLineVisible: false });
+                sPrtSST.setData(prtSlopeSellThreshArr);
+
                 legConfig.push({ api: sPrtSlope, label: "PRT Slope", col: "prt_slope", color: "#80cbc4" });
+                legConfig.push({ api: sPrtSBT, label: "Buy Thr (10%)", col: "prt_slope_buy_threshold", color: "rgba(128, 203, 196, 0.8)" });
+                legConfig.push({ api: sPrtSST, label: "Sell Thr (90%)", col: "prt_slope_sell_threshold", color: "rgba(128, 203, 196, 0.8)" });
             } else if (panelKey === "prt_accel") {
                 // PRT Accel
                 var sPrtAccel = c.addSeries(LC.LineSeries, { color: "#ce93d8", lineWidth: 2, lastValueVisible: false, priceLineVisible: false });

@@ -238,4 +238,13 @@ def compute_trend_participation(
             window=psz_threshold_window, min_periods=min_periods
         ).quantile(0.90).fillna(0.0).round(4)
 
+    if "prt_slope" in df.columns:
+        prt_slope_series = df["prt_slope"]
+        df["prt_slope_buy_threshold"] = prt_slope_series.rolling(
+            window=psz_threshold_window, min_periods=min_periods
+        ).quantile(0.10).fillna(0.0).round(4)
+        df["prt_slope_sell_threshold"] = prt_slope_series.rolling(
+            window=psz_threshold_window, min_periods=min_periods
+        ).quantile(0.90).fillna(0.0).round(4)
+
     return df

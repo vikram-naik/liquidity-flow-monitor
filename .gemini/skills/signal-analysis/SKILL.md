@@ -78,7 +78,13 @@ Consistently report these exact parameters for the **TEST period**:
    - Run the walk-forward backtester BEFORE making code changes.
    - Command: `./venv/bin/python scripts/walk_forward.py --watchlist "NIFTY 50" --signal savgol_cts`
 2. **Implement Change:** Apply the new logic and optimal threshold to the core codebase (`src/trading/signals/savgol_cts/`).
+   - **Exit Tolerance Pattern**: When fixing "sticky" trades that fail to exit due to decimal noise, add a small tolerance (e.g., `0.01`) to the exit crossover check.
+     - *Example*: `IF cts < (cts_sell_threshold + 0.01) THEN exit`.
 3. **Validation Run:** Re-run the walk-forward backtester AFTER the change.
-4. **Diff Analysis:** 
+4. **Empirical Verification (Grep Guard):**
+   - Use `dump_trades.py` to verify that a specific failure case (isolated in Phase 2) is now correctly rejected.
+   - *Example*: `./venv/bin/python scripts/dump_trades.py --entry <tag> | grep ETERNAL`.
+   - If the failure case still appears, the fix is incomplete or was reverted during scaffolding.
+5. **Diff Analysis:** 
    - Extract and compare the exact reporting parameters (Trades, Win Rate, Avg P&L, Profit Factor, Expectancy, MFE, MAE, Avg Bars) for the **TEST period**.
    - Verify that the metrics improved or remained stable without over-constricting the trade frequency.
