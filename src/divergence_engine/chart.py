@@ -42,6 +42,8 @@ UI_COLUMNS = [
     "prt_slope_buy_threshold", "prt_slope_sell_threshold",
     # Features
     "fas", "entry_signal_prob",
+    # Oracle Labeling
+    "oracle_trough", "oracle_peak", "oracle_smooth",
     # Divergence
     "accum_div", "distrib_div",
     # Delivery-Profile Value Area (Module 3)

@@ -29,6 +29,7 @@ ENTRY_ALIASES = {
     "fas-buy-cross": EntryTag.FAS_BUY_CROSS.value,
     "cts-accel-cross": EntryTag.CTS_ACCEL_CROSS.value,
     "cts-floor-reversion": EntryTag.CTS_FLOOR_REVERSION.value,
+    "prt-zero-cross": EntryTag.PRT_ZERO_CROSS.value,
 }
 
 def main():

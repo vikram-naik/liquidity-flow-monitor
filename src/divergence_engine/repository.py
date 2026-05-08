@@ -23,7 +23,7 @@ from typing import Optional
 
 import pandas as pd
 
-from src.database import get_db_connection
+from src.database import get_db_connection, get_ca_version_string
 from src.cache import get_cache
 
 logger = logging.getLogger(__name__)
@@ -108,7 +108,8 @@ class DeliveryRepository:
         finally:
             conn.close()
 
-        cache_key = f"de:adjusted:{symbol}:{start_date or 'all'}:{end_date or 'all'}:{last_date}"
+        ca_ver = get_ca_version_string()
+        cache_key = f"de:adjusted:{symbol}:{start_date or 'all'}:{end_date or 'all'}:{last_date}:{ca_ver}"
 
         cached = cache.get(cache_key)
         if cached is not None:

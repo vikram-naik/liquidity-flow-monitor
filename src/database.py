@@ -12,6 +12,21 @@ def get_db_connection():
     return conn
 
 
+def get_ca_version_string() -> str:
+    """Returns a string representing the current state of corporate actions to invalidate caches."""
+    conn = get_db_connection()
+    try:
+        # Combine count and max update time/id to detect changes
+        row = conn.execute("SELECT COUNT(*), MAX(id) FROM corporate_actions").fetchone()
+        if not row or row[0] == 0:
+            return "ca:0:0"
+        return f"ca:{row[0]}:{row[1]}"
+    except Exception:
+        return "ca:err"
+    finally:
+        conn.close()
+
+
 def _migrate_add_column(cursor, table: str, column: str, col_type: str) -> None:
     """Add a column to an existing table if it doesn't exist (safe migration)."""
     cols = [row[1] for row in cursor.execute(f"PRAGMA table_info({table})").fetchall()]

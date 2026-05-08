@@ -33,10 +33,12 @@ from src.divergence_engine.cwvap import CompositeVWAP
 from src.divergence_engine.dvl_ledger import DVLLedger
 from src.divergence_engine.mcs import MoneyCompositeScore
 from src.divergence_engine.analysis import compute_trend_participation
+from src.divergence_engine.oracle import OracleLabeler
 from src.divergence_engine.regime import classify_market_regime
 from src.divergence_engine.utils import load_symbol_data, validate_dataframe, WINDOWS
 from src.divergence_engine.aggregator import resample_ohlc_delivery, VALID_MODES
 from src.cache import get_cache
+from src.database import get_db_connection, get_ca_version_string
 
 logger = logging.getLogger(__name__)
 
@@ -216,7 +218,6 @@ class DivergenceEngine:
             cache = get_cache()
             
             # Get latest record date to ensure cache freshness if data was recently synced
-            from src.database import get_db_connection
             conn = get_db_connection()
             try:
                 last_row = conn.execute(
@@ -227,7 +228,8 @@ class DivergenceEngine:
             finally:
                 conn.close()
 
-            cache_key = f"de:result:{self.ticker}:{self._start_date or 'all'}:{self._end_date or 'all'}:{self._agg_mode}:{last_date}"
+            ca_ver = get_ca_version_string()
+            cache_key = f"de:result:{self.ticker}:{self._start_date or 'all'}:{self._end_date or 'all'}:{self._agg_mode}:{last_date}:{ca_ver}"
             cached_df = cache.get(cache_key)
             if cached_df is not None:
                 logger.info("Engine cache HIT for %s", cache_key)
@@ -287,6 +289,9 @@ class DivergenceEngine:
         # Module 6 — Trend Participation Analysis
         df = compute_trend_participation(df)
 
+        # Module 7 — Oracle Labeling (Ground Truth)
+        oracle = OracleLabeler(window_length=31, polyorder=2, min_swing_pct=4.0)
+        df = oracle.compute_labels(df)
 
         # --- Drop intermediate columns ---
         df = df.drop(columns=[c for c in _DROP_COLS if c in df.columns])

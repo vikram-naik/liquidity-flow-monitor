@@ -10,6 +10,7 @@ class EntryTag(str, Enum):
     FAS_FLOOR_REVERSION = "SavgolCTS FAS-Floor-Reversion"
     FAS_BUY_CROSS = "SavgolCTS FAS-Buy-Cross"
     CTS_ACCEL_CROSS = "SavgolCTS CTS-Accel-Cross"
+    PRT_ZERO_CROSS = "SavgolCTS PRT-Zero-Cross"
     CTS_BT_FLOOR = "SavgolCTS CTS-BT-Floor"  # Legacy
 
     # Deprecated — retained for historical trade log compatibility.

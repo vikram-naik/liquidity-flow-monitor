@@ -177,6 +177,9 @@
         var rszArr = [], rszVArr = [];
         var entryMarkers = [];
         var exitMarkers = [];
+        var oracleTroughMarkers = [];
+        var oraclePeakMarkers = [];
+        var oracleSmoothArr = [];
 
         for (var i = 0; i < ledger.length; i++) {
             var r = ledger[i];
@@ -263,6 +266,24 @@
                 });
             }
 
+            if (r.oracle_trough) {
+                oracleTroughMarkers.push({
+                    time: t, position: 'belowBar', color: '#3d5afe',
+                    shape: 'arrowUp', text: 'ORC'
+                });
+            }
+
+            if (r.oracle_peak) {
+                oraclePeakMarkers.push({
+                    time: t, position: 'aboveBar', color: '#f50057',
+                    shape: 'arrowDown', text: 'ORC'
+                });
+            }
+
+            if (r.oracle_smooth != null) {
+                oracleSmoothArr.push({ time: t, value: r.oracle_smooth });
+            }
+
             if (r.delivery_qty != null) {
                 var mfm = r.mfm != null ? r.mfm : 0;
                 deliveryVol.push({
@@ -319,9 +340,14 @@
         mainSeries = cs;
         var entryMarkersPrimitive = LC.createSeriesMarkers(cs, entryMarkers);
         var exitMarkersPrimitive = LC.createSeriesMarkers(cs, exitMarkers);
+        var oracleTroughMarkersPrimitive = LC.createSeriesMarkers(cs, oracleTroughMarkers);
+        var oraclePeakMarkersPrimitive = LC.createSeriesMarkers(cs, oraclePeakMarkers);
 
         var sCwvap = pc.addSeries(LC.LineSeries, { color: "#00bfa5", lineWidth: 2, lastValueVisible: false });
         sCwvap.setData(cwvap);
+
+        var sOracleSmooth = pc.addSeries(LC.LineSeries, { color: "rgba(255, 255, 255, 0.2)", lineWidth: 1, lastValueVisible: false, priceLineVisible: false });
+        sOracleSmooth.setData(oracleSmoothArr);
 
         // --- VA High/Low (Delivery-Profile Value Area boundaries) ---
         var sVaHigh = pc.addSeries(LC.LineSeries, { color: "#7c4dff", lineWidth: 1, lineStyle: 2, lastValueVisible: false, priceLineVisible: false });
@@ -817,6 +843,12 @@
             }
             if (r.exit_signal) {
                 baseMarkers.push({ time: t, position: 'aboveBar', color: '#FFD700', shape: 'arrowDown', text: '' });
+            }
+            if (r.oracle_trough) {
+                baseMarkers.push({ time: t, position: 'belowBar', color: '#3d5afe', shape: 'arrowUp', text: 'ORC' });
+            }
+            if (r.oracle_peak) {
+                baseMarkers.push({ time: t, position: 'aboveBar', color: '#f50057', shape: 'arrowDown', text: 'ORC' });
             }
         }
         

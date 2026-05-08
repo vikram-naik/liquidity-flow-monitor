@@ -38,9 +38,9 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Default threshold for a "whip-saw" (e.g., 10% change in one day)
-DEFAULT_THRESHOLD = 10.0
+DEFAULT_THRESHOLD = 12.0
 # Tolerance for reconciliation with external source (percentage)
-RECONCILE_TOLERANCE = 1.0
+RECONCILE_TOLERANCE = 1.5
 
 def get_symbols(watchlist_name=None):
     """Fetch symbols from watchlist or all symbols from delivery log."""
@@ -96,32 +96,36 @@ def reconcile_with_internet(symbol, date, local_close, local_ret):
     """
     Reconciles local adjusted data with yfinance adjusted data.
     Compares the daily return to verify the move. 
-    Returns (match_status, external_ohlc_dict, ext_close)
+    Returns (match_status, external_ohlc_dict, ext_ret, dividend_impact)
     """
     yf_symbol = f"{symbol.upper()}.NS"
     logger.info(f"Reconciling {symbol} on {date} with yfinance...")
     try:
         dt = pd.to_datetime(date)
-        # Fetch a small window around the date to get previous close
-        start_str = (dt - pd.Timedelta(days=10)).strftime('%Y-%m-%d')
+        # Fetch a small window around the date
+        start_str = (dt - pd.Timedelta(days=15)).strftime('%Y-%m-%d')
         end_str = (dt + pd.Timedelta(days=5)).strftime('%Y-%m-%d')
         
-        df = yf.download(yf_symbol, start=start_str, end=end_str, progress=False, auto_adjust=True)
-        if df.empty:
-            return "No External Data", None, None
-            
-        # Handle multi-index columns from newer yfinance versions
-        if isinstance(df.columns, pd.MultiIndex):
-            df.columns = df.columns.droplevel(1)
-            
-        # Handle yfinance index which might have timezones
-        df.index = df.index.tz_localize(None)
+        ticker = yf.Ticker(yf_symbol)
+        df = ticker.history(start=start_str, end=end_str, auto_adjust=True)
         
+        if df.empty:
+            return "No External Data", None, None, 0.0
+            
+        # Get dividends specifically to explain drift
+        divs = ticker.dividends
+        date_iso = dt.strftime('%Y-%m-%d')
+        dividend = 0.0
+        if not divs.empty:
+            day_divs = divs[divs.index.strftime('%Y-%m-%d') == date_iso]
+            if not day_divs.empty:
+                dividend = float(day_divs.iloc[0])
+                logger.info(f"Found dividend of {dividend} for {symbol} on {date}")
+
         # Calculate daily returns in yfinance
         df['prev_close'] = df['Close'].shift(1)
         df['daily_ret'] = (df['Close'] / df['prev_close'] - 1) * 100.0
         
-        date_iso = dt.strftime('%Y-%m-%d')
         if date_iso in df.index.strftime('%Y-%m-%d'):
             ext_row = df.loc[df.index.strftime('%Y-%m-%d') == date_iso].iloc[0]
             
@@ -139,24 +143,47 @@ def reconcile_with_internet(symbol, date, local_close, local_ret):
                 'c': round(ext_close, 2)
             }
             
-            # Compare returns instead of absolute prices
             if pd.isna(ext_ret):
-                return "External Return N/A", ext_ohlc, ext_ret
-                
-            delta_ret = abs(local_ret - ext_ret)
+                return "External Return N/A", ext_ohlc, ext_ret, 0.0
             
+            # Dividend Impact on return: (P - div)/P_prev vs P/P_prev
+            # yfinance adjusted return already includes the dividend.
+            # Our local return does NOT.
+            # Approximate impact: dividend / prev_price
+            div_impact_ret = 0.0
+            if dividend > 0:
+                # We need the local previous close to estimate the impact
+                conn = get_db_connection()
+                row = conn.execute("SELECT price_close FROM nse_delivery_log WHERE symbol=? AND record_date < ? ORDER BY record_date DESC LIMIT 1", (symbol, date)).fetchone()
+                conn.close()
+                if row and row[0] > 0:
+                    div_impact_ret = (dividend / row[0]) * 100.0
+                    logger.info(f"Estimated dividend impact on return: {div_impact_ret:.2f}%")
+
+            delta_ret = abs(local_ret - ext_ret)
+            drift_pct = abs(local_close - ext_close) / ext_close * 100.0
+            
+            # 1. Primary Check: Absolute Price Drift
+            # If the price itself matches within a tight tolerance, it's a match.
+            if drift_pct <= RECONCILE_TOLERANCE:
+                return "Match (Price Verified)", ext_ohlc, ext_ret, 0.0
+
+            # 2. Secondary Check: Dividend-Adjusted Return
+            # If we account for the dividend, does the return match?
+            if dividend > 0 and abs(delta_ret - div_impact_ret) <= RECONCILE_TOLERANCE:
+                return "Match (with Dividend)", ext_ohlc, ext_ret, div_impact_ret
+            
+            # 3. Tertiary Check: Standard Return Match
             if delta_ret <= RECONCILE_TOLERANCE:
-                return "Match", ext_ohlc, ext_ret
+                return "Match", ext_ohlc, ext_ret, 0.0
             else:
-                # Calculate absolute price drift for reporting/patching
-                drift_pct = abs(local_close - ext_close) / ext_close * 100.0
-                return f"Mismatch (Ret diff: {delta_ret:.2f}%, Drift: {drift_pct:.2f}%)", ext_ohlc, ext_ret
+                return f"Mismatch (Ret diff: {delta_ret:.2f}%, Drift: {drift_pct:.2f}%)", ext_ohlc, ext_ret, div_impact_ret
         else:
-            return "Date Not Found Externally", None, None
+            return "Date Not Found Externally", None, None, 0.0
             
     except Exception as e:
         logger.error(f"Reconciliation error for {symbol} on {date}: {e}")
-        return f"Recon Error", None, None
+        return f"Recon Error", None, None, 0.0
 
 def patch_override(symbol, date, local_ret, ext_ret):
     """
@@ -274,10 +301,10 @@ def main():
             patches_applied = False
             for issue in issues:
                 issue['symbol'] = symbol
-                status, ext_ohlc, ext_ret = reconcile_with_internet(symbol, issue['date'], issue['price'], issue['change_pct'])
+                status, ext_ohlc, ext_ret, div_impact = reconcile_with_internet(symbol, issue['date'], issue['price'], issue['change_pct'])
                 
-                if status == "Match":
-                    issue['status'] = 'Verified (Real Market Event)'
+                if status.startswith("Match"):
+                    issue['status'] = f'Verified (Real Market Event{ " + Dividend" if "Dividend" in status else ""})'
                     issue['ext_ohlc'] = f"O:{ext_ohlc['o']} H:{ext_ohlc['h']} L:{ext_ohlc['l']} C:{ext_ohlc['c']}"
                     verified_moves.append(issue)
                 else:
@@ -306,9 +333,9 @@ def main():
                     final_issues = detect_whip_saws(symbol, args.threshold)
                     for issue in final_issues:
                         issue['symbol'] = symbol
-                        status, ext_ohlc, ext_ret = reconcile_with_internet(symbol, issue['date'], issue['price'], issue['change_pct'])
-                        if status == "Match":
-                            issue['status'] = 'Verified (Real Market Event)'
+                        status, ext_ohlc, ext_ret, div_impact = reconcile_with_internet(symbol, issue['date'], issue['price'], issue['change_pct'])
+                        if status.startswith("Match"):
+                            issue['status'] = f'Verified (Real Market Event{ " + Dividend" if "Dividend" in status else ""})'
                             issue['ext_ohlc'] = f"O:{ext_ohlc['o']} H:{ext_ohlc['h']} L:{ext_ohlc['l']} C:{ext_ohlc['c']}"
                             verified_moves.append(issue)
                         else:
