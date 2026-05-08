@@ -22,6 +22,7 @@ from src.trading.signals.savgol_cts.entries.fas_zero_cross import check_fas_zero
 from src.trading.signals.savgol_cts.entries.fas_floor_reversion import check_fas_floor_reversion
 from src.trading.signals.savgol_cts.entries.fas_buy_cross import check_fas_buy_cross
 from src.trading.signals.savgol_cts.entries.cts_accel_cross import check_cts_accel_cross
+from src.trading.signals.savgol_cts.entries.prt_zero_cross import check_prt_zero_cross
 
 # Exit path checkers
 from src.trading.signals.savgol_cts.exits.cwvap_guard import apply_cwvap_guard
@@ -33,6 +34,8 @@ from src.trading.signals.savgol_cts.exits.fas_cts_trailing import exit_fas_cts_t
 from src.trading.signals.savgol_cts.exits.fas_floor_reversion import exit_fas_floor_reversion
 from src.trading.signals.savgol_cts.exits.fas_buy_cross import exit_fas_buy_cross
 from src.trading.signals.savgol_cts.exits.cts_accel_cross import exit_cts_accel_cross
+from src.trading.signals.savgol_cts.exits.prt_zero_cross import exit_prt_zero_cross
+
 
 
 class SavgolCTSSignal(SignalInterface):
@@ -65,6 +68,11 @@ class SavgolCTSSignal(SignalInterface):
             return False, 0, {"reason": "Missing CTS data"}
 
         rejections = []
+
+        # Path: PRT Zero Cross
+        passed, intensity, meta = check_prt_zero_cross(row, prev_row, cfg.prt_zero_cross, records, idx)
+        if passed: return True, intensity, meta
+        if cfg.prt_zero_cross.enabled: rejections.append(f"PRTZeroCross: {meta.get('reason', 'Failed')}")
 
         # Path 13: CTS Accel Cross (Highest Priority / Elite)
         passed, intensity, meta = check_cts_accel_cross(row, prev_row, cfg.cts_accel_cross, records, idx)
@@ -152,6 +160,8 @@ class SavgolCTSSignal(SignalInterface):
             exit_status = exit_fas_buy_cross(row, prev_row, trade, peak_close, bars_held, updated_state_val, cfg.fas_buy_cross, records, idx)
         elif tag == EntryTag.CTS_ACCEL_CROSS.value:
             exit_status = exit_cts_accel_cross(row, prev_row, trade, peak_close, bars_held, updated_state_val, cfg.cts_accel_cross, records, idx)
+        elif tag == EntryTag.PRT_ZERO_CROSS.value:
+            exit_status = exit_prt_zero_cross(row, prev_row, trade, peak_close, bars_held, updated_state_val, cfg.prt_zero_cross, records, idx)
         else:
             exit_status = (None, updated_state_val)
 

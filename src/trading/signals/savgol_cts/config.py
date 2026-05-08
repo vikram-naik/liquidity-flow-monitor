@@ -236,6 +236,21 @@ class CtsAccelCrossExitConfig:
     pnl_cap_pct: float = 10.0
 
 
+@dataclass
+class PrtZeroCrossEntryConfig:
+    """Path: PRT Zero Cross with ML Guard."""
+    enabled: bool = True
+    min_ml_score: float = 80.0
+
+
+@dataclass
+class PrtZeroCrossExitConfig:
+    """PRT Zero Cross exit: Pure CTS Trailing Logic."""
+    enabled: bool = True
+    hard_stop_enabled: bool = True
+    hard_stop_pct: float = 8.0
+
+
 # ---------------------------------------------------------------------------
 # Composite entry config
 # ---------------------------------------------------------------------------
@@ -259,6 +274,7 @@ class SavgolCTSEntryConfig(BaseEntryConfig):
     fas_floor_reversion: FasFloorReversionEntryConfig = field(default_factory=FasFloorReversionEntryConfig)
     fas_buy_cross: FasBuyCrossEntryConfig = field(default_factory=FasBuyCrossEntryConfig)
     cts_accel_cross: CtsAccelCrossEntryConfig = field(default_factory=CtsAccelCrossEntryConfig)
+    prt_zero_cross: PrtZeroCrossEntryConfig = field(default_factory=PrtZeroCrossEntryConfig)
 
 
 # ---------------------------------------------------------------------------
@@ -300,4 +316,5 @@ class SavgolCTSExitConfig(BaseExitConfig):
     fas_floor_reversion: FasFloorReversionExitConfig = field(default_factory=FasFloorReversionExitConfig)
     fas_buy_cross: FasBuyCrossExitConfig = field(default_factory=FasBuyCrossExitConfig)
     cts_accel_cross: CtsAccelCrossExitConfig = field(default_factory=CtsAccelCrossExitConfig)
+    prt_zero_cross: PrtZeroCrossExitConfig = field(default_factory=PrtZeroCrossExitConfig)
     cwvap_guard: CwvapGuardConfig = field(default_factory=CwvapGuardConfig)

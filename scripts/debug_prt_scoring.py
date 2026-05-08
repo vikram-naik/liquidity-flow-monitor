@@ -15,12 +15,12 @@ import pandas as pd
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from src.divergence_engine.engine import DivergenceEngine
-from src.trading.signals.savgol_cts.config import PrtSlopeZeroCrossEntryConfig
-from src.trading.signals.savgol_cts.entries.prt_slope_zero_cross import check_prt_slope_zero_cross
+from src.trading.signals.savgol_cts.config import PrtZeroCrossEntryConfig
+from src.trading.signals.savgol_cts.entries.prt_zero_cross import check_prt_zero_cross
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Debug PRT Slope Zero Cross Scoring")
+    parser = argparse.ArgumentParser(description="Debug PRT Zero Cross Scoring")
     parser.add_argument("--symbol", type=str, required=True, help="Stock symbol (e.g., ADANIPORTS)")
     parser.add_argument("--date", type=str, required=True, help="Target date (YYYY-MM-DD)")
     args = parser.parse_args()
@@ -57,14 +57,14 @@ def main():
     prev_row = records[idx - 1]
 
     # Configure the entry check with telemetry enabled
-    cfg = PrtSlopeZeroCrossEntryConfig()
-    cfg.telemetry_enabled = True
+    cfg = PrtZeroCrossEntryConfig()
+    cfg.min_ml_score = 80.0
 
-    print(f"\nEvaluating PRT Slope Zero Cross Entry for {symbol} on {target_date}...")
+    print(f"\nEvaluating PRT Zero Cross Entry for {symbol} on {target_date}...")
     print("-" * 60)
     
     # Call the logic
-    passed, intensity, meta = check_prt_slope_zero_cross(
+    passed, intensity, meta = check_prt_zero_cross(
         row=row,
         prev_row=prev_row,
         cfg=cfg,
