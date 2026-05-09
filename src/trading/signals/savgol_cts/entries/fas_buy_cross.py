@@ -6,6 +6,7 @@ from src.trading.signals.enums import EntryTag
 from src.trading.signals.savgol_cts.config import FasBuyCrossEntryConfig
 from src.trading.signals.savgol_cts.scoring import compute_intensity
 from src.trading.signals.savgol_cts.entries.utils import is_flattish_line_adaptive, evaluate_spearman_trend
+from src.trading.signals.savgol_cts.ml_guard import MLGuard
 
 
 def check_fas_buy_cross(
@@ -202,6 +203,25 @@ def check_fas_buy_cross(
     min_score = getattr(cfg, "min_score", 20.0)
     if base_score < min_score:
         return False, 0, {"reason": f"Score {base_score} < min {min_score} (delta_at={delta_at:.4f})"}
+
+    # ML Guard gate
+    if getattr(cfg, "ml_guard_enabled", False):
+        prob = MLGuard.get_instance().score_setup(row)
+        if prob is None:
+            return False, 0, {"reason": "ML Guard model not available"}
+        
+        prob_pct = prob * 100.0
+        if prob_pct < cfg.min_ml_score:
+            return False, 0, {"reason": f"ML Guard Failed: Score {prob_pct:.1f}% < {cfg.min_ml_score}%"}
+        
+        intensity_int, meta = compute_intensity(
+            row, prev_row, EntryTag.FAS_BUY_CROSS, 
+            extra_parts=[f"ml={prob_pct:.1f}%", f"path_score={base_score}"],
+            override_score=prob_pct
+        )
+        meta["ml_score"] = prob_pct
+        meta["score"] = float(intensity_int)
+        return True, intensity_int, meta
 
     intensity, meta = compute_intensity(row, prev_row, EntryTag.FAS_BUY_CROSS, override_score=base_score)
     meta["score"] = float(intensity)

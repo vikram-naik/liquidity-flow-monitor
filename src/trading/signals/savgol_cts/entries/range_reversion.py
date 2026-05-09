@@ -12,6 +12,7 @@ import numpy as np
 from src.trading.signals.enums import EntryTag
 from src.trading.signals.savgol_cts.config import SavgolCTSEntryConfig
 from src.trading.signals.savgol_cts.scoring import compute_intensity
+from src.trading.signals.savgol_cts.ml_guard import MLGuard
 
 
 def check_range_reversion(
@@ -96,6 +97,26 @@ def check_range_reversion(
     if cts_s > prev_row.get("cts_slope", 0): score += 3
     psz_v_prev = prev_row.get("psz_v", 0)
     if psz_v > psz_v_prev: score += 2
+
+    # ML Guard gate
+    if getattr(rr_cfg, "ml_guard_enabled", False):
+        prob = MLGuard.get_instance().score_setup(row)
+        if prob is None:
+            return False, 0, {"reason": "ML Guard model not available"}
+        
+        prob_pct = prob * 100.0
+        if prob_pct < rr_cfg.min_ml_score:
+            return False, 0, {"reason": f"ML Guard Failed: Score {prob_pct:.1f}% < {rr_cfg.min_ml_score}%"}
+        
+        # Override intensity if ML Guard is enabled
+        intensity_int, meta = compute_intensity(
+            row, prev_row, EntryTag.RANGE_REVERSION,
+            [f"rp252={rp252:.2f}", f"ml={prob_pct:.1f}%"],
+            override_score=prob_pct
+        )
+        meta["ml_score"] = prob_pct
+        meta["score"] = float(intensity_int)
+        return True, intensity_int, meta
 
     # All gates passed
     intensity_int, meta = compute_intensity(

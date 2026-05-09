@@ -12,6 +12,7 @@ from src.trading.signals.savgol_cts.config import CtsAccelCrossEntryConfig
 from src.trading.signals.savgol_cts.scoring import compute_intensity
 from src.trading.signals.savgol_cts.entries.utils import evaluate_spearman_trend, is_flattish_line_adaptive
 from src.trading.signals.savgol_cts.telemetry import ScoreTracker
+from src.trading.signals.savgol_cts.ml_guard import MLGuard
 
 
 def check_cts_accel_cross(
@@ -238,6 +239,26 @@ def check_cts_accel_cross(
 
     if not tracker.passed_scoring():
         return False, 0, {"reason": f"Score {tracker.total:.1f} < min {cfg.min_score}", "tracker": tracker}
+
+    # ML Guard gate
+    if getattr(cfg, "ml_guard_enabled", False):
+        prob = MLGuard.get_instance().score_setup(row)
+        if prob is None:
+            return False, 0, {"reason": "ML Guard model not available", "tracker": tracker}
+        
+        prob_pct = prob * 100.0
+        if prob_pct < cfg.min_ml_score:
+            return False, 0, {"reason": f"ML Guard Failed: Score {prob_pct:.1f}% < {cfg.min_ml_score}%", "tracker": tracker}
+        
+        intensity_int, meta = compute_intensity(
+            row, prev_row, EntryTag.CTS_ACCEL_CROSS,
+            extra_parts=[f"ml={prob_pct:.1f}%", f"path_score={tracker.total:.1f}"],
+            override_score=prob_pct
+        )
+        meta["ml_score"] = prob_pct
+        meta["score"] = float(intensity_int)
+        meta["tracker"] = tracker
+        return True, intensity_int, meta
 
     # Intensity Mapping (90-99)
     # Map score (15 to 100) to intensity (90 to 99)

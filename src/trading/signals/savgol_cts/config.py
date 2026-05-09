@@ -40,6 +40,8 @@ class InstitutionalFloorEntryConfig:
     conv_psz_delta_mid: float = 0.01
     conv_spread_strong: float = 0.60
     conv_spread_mid: float = 0.45
+    ml_guard_enabled: bool = True
+    min_ml_score: float = 30.0
 
 
 @dataclass
@@ -68,6 +70,8 @@ class AccelCrossEntryConfig:
     score_max: int = 29
     flat_bars_boom: int = 4
     chain_len_trend: int = 3
+    ml_guard_enabled: bool = True
+    min_ml_score: float = 30.0
 
 
 @dataclass
@@ -92,6 +96,8 @@ class RangeReversionEntryConfig:
     rw10_atrs_max: float = 2.0
     cts_max: float = -0.50
     cts_slope_min: float = -0.05
+    ml_guard_enabled: bool = True
+    min_ml_score: float = 30.0
 
 
 @dataclass
@@ -114,6 +120,8 @@ class FasZeroCrossEntryConfig:
     gap_pct_max: float = 1.0
     cts_max: float = 0.0
     min_score: float = 15.0
+    ml_guard_enabled: bool = True
+    min_ml_score: float = 30.0
     telemetry_enabled: bool = False
 
 
@@ -134,6 +142,8 @@ class FasFloorReversionEntryConfig:
     prt_slope_min: float = 0.0
     cts_max: float = -0.99
     cts_slope_max: float = 0.0
+    ml_guard_enabled: bool = True
+    min_ml_score: float = 30.0
 
 
 @dataclass
@@ -156,6 +166,8 @@ class FasBuyCrossEntryConfig:
     prt_slope_min: float = -0.02
     prt_structural_min: float = -0.45
     prt_slope_max: float = 0.10
+    ml_guard_enabled: bool = True
+    min_ml_score: float = 30.0
     telemetry_enabled: bool = False
 
 
@@ -177,6 +189,8 @@ class CtsFloorReversionEntryConfig:
     shallow_drop_guard_enabled: bool = True
     prt_structural_min: float = -0.45
     prt_slope_min: float = -0.02
+    ml_guard_enabled: bool = True
+    min_ml_score: float = 30.0
     telemetry_enabled: bool = False
 
 
@@ -221,6 +235,8 @@ class CtsAccelCrossEntryConfig:
     dist_high_10_max: float = -2.0 # Minimum 2% correction from 10-day high (NESTLEIND)
     # Scoring
     min_score: float = 15.0
+    ml_guard_enabled: bool = True
+    min_ml_score: float = 30.0
     telemetry_enabled: bool = False
 
 

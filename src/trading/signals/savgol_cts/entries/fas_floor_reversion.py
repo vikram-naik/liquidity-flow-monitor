@@ -5,6 +5,7 @@ import numpy as np
 from src.trading.signals.enums import EntryTag
 from src.trading.signals.savgol_cts.config import FasFloorReversionEntryConfig
 from src.trading.signals.savgol_cts.scoring import compute_intensity
+from src.trading.signals.savgol_cts.ml_guard import MLGuard
 
 
 def check_fas_floor_reversion(
@@ -47,6 +48,25 @@ def check_fas_floor_reversion(
     # Gate 4: CTS slope guard (must be negative)
     if cts_slope >= cfg.cts_slope_max:
         return False, 0, {"reason": f"cts_slope {cts_slope:.3f} >= {cfg.cts_slope_max:.3f}"}
+
+    # ML Guard gate
+    if getattr(cfg, "ml_guard_enabled", False):
+        prob = MLGuard.get_instance().score_setup(row)
+        if prob is None:
+            return False, 0, {"reason": "ML Guard model not available"}
+        
+        prob_pct = prob * 100.0
+        if prob_pct < cfg.min_ml_score:
+            return False, 0, {"reason": f"ML Guard Failed: Score {prob_pct:.1f}% < {cfg.min_ml_score}%"}
+        
+        intensity, meta = compute_intensity(
+            row, prev_row, EntryTag.FAS_FLOOR_REVERSION,
+            extra_parts=[f"fas={fas:.3f}", f"ml={prob_pct:.1f}%"],
+            override_score=prob_pct
+        )
+        meta["ml_score"] = prob_pct
+        meta["score"] = float(intensity)
+        return True, intensity, meta
 
     # All gates passed, calculate intensity
     intensity, meta = compute_intensity(row, prev_row, EntryTag.FAS_FLOOR_REVERSION)

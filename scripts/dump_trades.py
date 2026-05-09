@@ -20,6 +20,7 @@ from src.divergence_engine.engine import DivergenceEngine
 from src.trading.signals import SignalFactory
 from src.trading.signals.savgol_cts.config import SavgolCTSEntryConfig, SavgolCTSExitConfig
 from src.trading.signals.enums import EntryTag
+from src.trading.signals.savgol_cts.ml_guard import MLGuard
 
 ENTRY_ALIASES = {
     "inst-floor":   EntryTag.INSTITUTIONAL_FLOOR.value,
@@ -30,6 +31,7 @@ ENTRY_ALIASES = {
     "cts-accel-cross": EntryTag.CTS_ACCEL_CROSS.value,
     "cts-floor-reversion": EntryTag.CTS_FLOOR_REVERSION.value,
     "prt-zero-cross": EntryTag.PRT_ZERO_CROSS.value,
+    "range-reversion": EntryTag.RANGE_REVERSION.value,
 }
 
 def main():
@@ -65,6 +67,7 @@ def main():
     # Initialize signal day info defaults
     for t in all_trades:
         t.signal_date = t.entry_date
+        t.ml_score = 0.0
         t.fas_signal = 0.0
         t.cts_signal = 0.0
         t.cts_buy = "no"
@@ -170,6 +173,11 @@ def main():
                         
                         t.regime_signal = sig_row.get("regime", "N/A")
 
+                        # Score with ML Guard if not already scored (non-PRT-Zero-Cross)
+                        if t.entry_tag != EntryTag.PRT_ZERO_CROSS.value:
+                            prob = MLGuard.get_instance().score_setup(sig_row.to_dict())
+                            t.ml_score = prob * 100.0 if prob is not None else 0.0
+
                     # Trade active from entry_idx to entry_idx + duration
                     # We use entry_idx_in_ledger to ensure we are in the right spot
                     start_idx = entry_idx_in_ledger
@@ -203,23 +211,19 @@ def main():
     # Print
     print(f"\n--- {label} TRADES: STUDY REPORT ({args.period.upper()}) ---")
     header = (f"{'#':>3} | {'Symbol':<12} | {'Sig Date':<10} | {'PnL%':>7} | {'MFE%':>7} | "
-              f"{'FAS':>7} | {'CTS':>7} | {'Buy':>3} | {'Acc>BT':>6} | {'PSZv':>7} | "
-              f"{'PRT':>7} | {'PRTs':>7} | {'PRTa':>7} | "
-              f"{'CWdist':>7} | {'CWmax':>7} | {'CWfl':>4} | "
-              f"{'>VAH':>4} | {'Bars':>4} | {'SCORE':>5} |  "
+              f"{'CTS':>7} | {'Buy':>3} | {'Acc>BT':>6} | {'PSZv':>7} | "
+              f"{'>VAH':>4} | {'Bars':>4} | {'SCORE':>5} | {'ML%':>5} | "
               f"{'RP10':>4} | {'RP22':>4} | {'RP63':>4} | {'RP252':>4} | {'Exit Reason'}")
     print(header)
     print("-" * len(header))
     for i, t in enumerate(filtered, 1):
         reason = t.exit_reason.value if hasattr(t.exit_reason, "value") else str(t.exit_reason)
+        ml_str = f"{t.ml_score:>5.1f}" if t.entry_tag != EntryTag.PRT_ZERO_CROSS.value else "  N/A"
         print(f"{i:>3} | {t.symbol:<12} | {t.signal_date:<10} | {t.pnl_pct:>7.2f} | "
-              f"{t.mfe_pct:>7.2f} | {t.fas_signal:>7.3f} | {t.cts_signal:>7.3f} | {t.cts_buy:>3} | {t.accel_above_bt:>6} | "
-              f"{t.psz_v_signal:>7.4f} | {t.prt_signal:>7.4f} | {t.prt_slope_signal:>7.4f} | {t.prt_accel_signal:>7.4f} | "
-              f"{t.cwvap_dist_signal:>7.2f} | {t.cwvap_dist_max:>7.2f} | {t.cwvap_fail_count:>4} | "
-              f"{t.above_va_high:>4} | {t.duration:>4} | {t.conviction_score:>+5} | "
+              f"{t.mfe_pct:>7.2f} | {t.cts_signal:>7.3f} | {t.cts_buy:>3} | {t.accel_above_bt:>6} | "
+              f"{t.psz_v_signal:>7.4f} | "
+              f"{t.above_va_high:>4} | {t.duration:>4} | {t.conviction_score:>+5} | {ml_str} | "
               f"{t.rp_10:>4} | {t.rp_22:>4} | {t.rp_63:>4} | {t.rp_252:>4} | {reason}")
-
-
 
 if __name__ == "__main__":
     main()

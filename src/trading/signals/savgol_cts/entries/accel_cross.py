@@ -10,6 +10,7 @@ import numpy as np
 from src.trading.signals.enums import EntryTag
 from src.trading.signals.savgol_cts.config import AccelCrossEntryConfig
 from src.trading.signals.savgol_cts.scoring import compute_intensity
+from src.trading.signals.savgol_cts.ml_guard import MLGuard
 
 
 def check_entry_accel_cross(
@@ -147,6 +148,27 @@ def check_entry_accel_cross(
         return False, 0, {"reason": f"Production gate failed (Score: {total_score}, Flat: {flat_bars}, Chain: {chain_len})"}
     if total_score > cfg.score_max:
         return False, 0, {"reason": f"Score {total_score} > max {cfg.score_max} (Climax exhaustion)"}
+
+    # -----------------------------------------------------------------------
+    # ML GUARD
+    # -----------------------------------------------------------------------
+    if getattr(cfg, "ml_guard_enabled", False):
+        prob = MLGuard.get_instance().score_setup(row)
+        if prob is None:
+            return False, 0, {"reason": "ML Guard model not available"}
+        
+        prob_pct = prob * 100.0
+        if prob_pct < cfg.min_ml_score:
+            return False, 0, {"reason": f"ML Guard Failed: Score {prob_pct:.1f}% < {cfg.min_ml_score}%"}
+        
+        intensity_int, meta = compute_intensity(
+            row, prev, EntryTag.ACCEL, 
+            extra_parts=[f"ml={prob_pct:.1f}%", f"score={total_score}"], 
+            override_score=prob_pct
+        )
+        meta["ml_score"] = prob_pct
+        meta["score"] = float(intensity_int)
+        return True, intensity_int, meta
 
     # -----------------------------------------------------------------------
     # INTENSITY MAPPING

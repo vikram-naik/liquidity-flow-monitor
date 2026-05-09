@@ -6,6 +6,7 @@ from src.trading.signals.enums import EntryTag
 from src.trading.signals.savgol_cts.config import CtsFloorReversionEntryConfig
 from src.trading.signals.savgol_cts.scoring import compute_intensity
 from src.trading.signals.savgol_cts.entries.utils import evaluate_spearman_trend, is_flattish_line_adaptive
+from src.trading.signals.savgol_cts.ml_guard import MLGuard
 
 
 def check_cts_floor_reversion(
@@ -170,6 +171,25 @@ def check_cts_floor_reversion(
     # 5. GATE 4: Final Score Gate
     if score < cfg.min_score:
         return False, 0, {"reason": f"Score {score} < {cfg.min_score}"}
+
+    # ML Guard gate
+    if getattr(cfg, "ml_guard_enabled", False):
+        prob = MLGuard.get_instance().score_setup(row)
+        if prob is None:
+            return False, 0, {"reason": "ML Guard model not available"}
+        
+        prob_pct = prob * 100.0
+        if prob_pct < cfg.min_ml_score:
+            return False, 0, {"reason": f"ML Guard Failed: Score {prob_pct:.1f}% < {cfg.min_ml_score}%"}
+        
+        intensity, meta = compute_intensity(
+            row, prev_row, EntryTag.CTS_FLOOR_REVERSION, 
+            extra_parts=[f"ml={prob_pct:.1f}%", f"path_score={score}"],
+            override_score=prob_pct
+        )
+        meta["ml_score"] = prob_pct
+        meta["score"] = float(intensity)
+        return True, intensity, meta
 
     # Intensity calculation
     intensity, meta = compute_intensity(row, prev_row, EntryTag.CTS_FLOOR_REVERSION, override_score=score)

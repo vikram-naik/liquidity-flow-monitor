@@ -12,6 +12,7 @@ import numpy as np
 from src.trading.signals.enums import EntryTag
 from src.trading.signals.savgol_cts.config import SavgolCTSEntryConfig
 from src.trading.signals.savgol_cts.scoring import compute_intensity
+from src.trading.signals.savgol_cts.ml_guard import MLGuard
 
 
 def check_institutional_floor(
@@ -154,6 +155,26 @@ def check_institutional_floor(
             return False, 0, {
                 "reason": f"Conviction too low ({conv_score}/{ifcfg.conviction_min_score}, {'+'.join(conv_parts) or 'none'})"
             }
+
+    # GATE 11: ML Guard
+    if getattr(ifcfg, "ml_guard_enabled", False):
+        prob = MLGuard.get_instance().score_setup(row)
+        if prob is None:
+            return False, 0, {"reason": "ML Guard model not available"}
+        
+        prob_pct = prob * 100.0
+        if prob_pct < ifcfg.min_ml_score:
+            return False, 0, {"reason": f"ML Guard Failed: Score {prob_pct:.1f}% < {ifcfg.min_ml_score}%"}
+        
+        # Override intensity if ML Guard is enabled
+        intensity_int, meta = compute_intensity(
+            row, prev_row, EntryTag.INSTITUTIONAL_FLOOR,
+            [f"psz={psz:.2f}", f"ml={prob_pct:.1f}%"],
+            override_score=prob_pct
+        )
+        meta["ml_score"] = prob_pct
+        meta["score"] = float(intensity_int)
+        return True, intensity_int, meta
 
     # All gates passed
     intensity_int, meta = compute_intensity(

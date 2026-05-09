@@ -6,6 +6,7 @@ from src.trading.signals.enums import EntryTag
 from src.trading.signals.savgol_cts.config import FasZeroCrossEntryConfig
 from src.trading.signals.savgol_cts.scoring import compute_intensity
 from src.trading.signals.savgol_cts.entries.utils import is_flattish_line_adaptive
+from src.trading.signals.savgol_cts.ml_guard import MLGuard
 
 def check_fas_zero_cross(
     row: dict,
@@ -192,6 +193,25 @@ def check_fas_zero_cross(
 
     if not tracker.passed_scoring():
         return False, 0, {"reason": f"score {tracker.total} < min {cfg.min_score}"}
+
+    # ML Guard gate
+    if getattr(cfg, "ml_guard_enabled", False):
+        prob = MLGuard.get_instance().score_setup(row)
+        if prob is None:
+            return False, 0, {"reason": "ML Guard model not available"}
+        
+        prob_pct = prob * 100.0
+        if prob_pct < cfg.min_ml_score:
+            return False, 0, {"reason": f"ML Guard Failed: Score {prob_pct:.1f}% < {cfg.min_ml_score}%"}
+        
+        intensity, meta = compute_intensity(
+            row, prev_row, EntryTag.FAS_ZERO_CROSS, 
+            extra_parts=[f"ml={prob_pct:.1f}%", f"path_score={tracker.total}"],
+            override_score=prob_pct
+        )
+        meta["ml_score"] = prob_pct
+        meta["score"] = float(intensity)
+        return True, intensity, meta
 
     intensity, meta = compute_intensity(row, prev_row, EntryTag.FAS_ZERO_CROSS, override_score=tracker.total)
     meta["path_score"] = tracker.total
