@@ -27,11 +27,15 @@ def main():
         data_path = Path(args.dataset)
     else:
         ml_dir = PROJECT_ROOT / "output" / "ml"
-        datasets = list(ml_dir.glob("dataset_trade_*.csv"))
+        # Prioritize dense datasets
+        datasets = list(ml_dir.glob("dataset_dense_*.csv"))
         if not datasets:
-            print("No datasets found in output/ml/. Run extract_features_from_trades.py first.")
-            sys.exit(1)
+            datasets = list(ml_dir.glob("dataset_trade_*.csv"))
+            if not datasets:
+                print("No datasets found in output/ml/. Run extract_dense_universal_features.py first.")
+                sys.exit(1)
         data_path = sorted(datasets)[-1] # get latest
+
 
     if not data_path.exists():
         print(f"Dataset not found at {data_path}.")
@@ -83,10 +87,10 @@ def main():
             max_depth=5, class_weight=weights_dict, random_state=42, min_samples_leaf=5
         ),
         "RandomForest": RandomForestClassifier(
-            n_estimators=100, max_depth=7, class_weight=weights_dict, random_state=42, min_samples_leaf=5
+            n_estimators=100, max_depth=9, class_weight=weights_dict, random_state=42, min_samples_leaf=5
         ),
         "XGBoost": XGBClassifier(
-            n_estimators=100, max_depth=5, random_state=42, eval_metric='logloss'
+            n_estimators=150, max_depth=7, random_state=42, eval_metric='logloss'
         )
     }
 

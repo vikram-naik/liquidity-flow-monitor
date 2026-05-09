@@ -23,6 +23,7 @@ from src.trading.signals.savgol_cts.entries.fas_floor_reversion import check_fas
 from src.trading.signals.savgol_cts.entries.fas_buy_cross import check_fas_buy_cross
 from src.trading.signals.savgol_cts.entries.cts_accel_cross import check_cts_accel_cross
 from src.trading.signals.savgol_cts.entries.prt_zero_cross import check_prt_zero_cross
+from src.trading.signals.savgol_cts.entries.universal_cross import entry_universal_cross
 
 # Exit path checkers
 from src.trading.signals.savgol_cts.exits.cwvap_guard import apply_cwvap_guard
@@ -68,6 +69,12 @@ class SavgolCTSSignal(SignalInterface):
             return False, 0, {"reason": "Missing CTS data"}
 
         rejections = []
+
+        # Path 0: Universal ML Master Path (If enabled, handles everything)
+        if getattr(cfg, "universal_cross", None) and cfg.universal_cross.enabled:
+            passed, intensity, meta = entry_universal_cross(row, prev_row, cfg, records, idx)
+            if passed: return True, intensity, meta
+            rejections.append(f"UniversalCross: {meta.get('reason', 'Failed')}")
 
         # Path: PRT Zero Cross
         passed, intensity, meta = check_prt_zero_cross(row, prev_row, cfg.prt_zero_cross, records, idx)

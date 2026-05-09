@@ -20,7 +20,7 @@ from src.trading.signals.enums import ExitReason
 @dataclass
 class InstitutionalFloorEntryConfig:
     """Path 3: Institutional Floor — Sustained PSZ recovery with institutional alignment."""
-    enabled: bool = True
+    enabled: bool = False
     psz_threshold: float = -0.30
     psz_delta: float = 0.01
     psz_lookback: int = 3
@@ -41,7 +41,7 @@ class InstitutionalFloorEntryConfig:
     conv_spread_strong: float = 0.60
     conv_spread_mid: float = 0.45
     ml_guard_enabled: bool = True
-    min_ml_score: float = 30.0
+    min_ml_score: float = 35.0
 
 
 @dataclass
@@ -59,7 +59,7 @@ class InstitutionalFloorExitConfig:
 @dataclass
 class AccelCrossEntryConfig:
     """Path 2: Accel Cross — Triple-trend momentum cross with institutional alignment."""
-    enabled: bool = True
+    enabled: bool = False
     cts_min: float = 0.0
     cts_max: float = 0.5
     psz_min: float = 0.0
@@ -71,7 +71,7 @@ class AccelCrossEntryConfig:
     flat_bars_boom: int = 4
     chain_len_trend: int = 3
     ml_guard_enabled: bool = True
-    min_ml_score: float = 30.0
+    min_ml_score: float = 70.0
 
 
 @dataclass
@@ -89,7 +89,7 @@ class AccelCrossExitConfig:
 @dataclass
 class RangeReversionEntryConfig:
     """Path 6: Range Reversion — Mean-reversion on oversold NIFTY 50 stocks."""
-    enabled: bool = True
+    enabled: bool = False
     rp252_max: float = 0.25
     rp63_max: float = 0.30
     bars_at_base_min: int = 5
@@ -97,7 +97,7 @@ class RangeReversionEntryConfig:
     cts_max: float = -0.50
     cts_slope_min: float = -0.05
     ml_guard_enabled: bool = True
-    min_ml_score: float = 30.0
+    min_ml_score: float = 80.0
 
 
 @dataclass
@@ -137,13 +137,13 @@ class FasZeroCrossExitConfig:
 @dataclass
 class FasFloorReversionEntryConfig:
     """Path 10: FAS Floor Reversion — FAS deep floor with extreme exhaustion."""
-    enabled: bool = True
+    enabled: bool = False
     fas_max: float = -1.15
     prt_slope_min: float = 0.0
     cts_max: float = -0.99
     cts_slope_max: float = 0.0
     ml_guard_enabled: bool = True
-    min_ml_score: float = 30.0
+    min_ml_score: float = 40.0
 
 
 @dataclass
@@ -157,7 +157,7 @@ class FasFloorReversionExitConfig:
 @dataclass
 class FasBuyCrossEntryConfig:
     """Path 11: FAS Buy Cross — FAS crosses BT while CTS is in deep floor."""
-    enabled: bool = True
+    enabled: bool = False
     cts_max: float = -0.80
     cts_bt_max: float = -0.80
     min_score: float = 9.0
@@ -167,7 +167,7 @@ class FasBuyCrossEntryConfig:
     prt_structural_min: float = -0.45
     prt_slope_max: float = 0.10
     ml_guard_enabled: bool = True
-    min_ml_score: float = 30.0
+    min_ml_score: float = 60.0
     telemetry_enabled: bool = False
 
 
@@ -183,14 +183,14 @@ class FasBuyCrossExitConfig:
 @dataclass
 class CtsFloorReversionEntryConfig:
     """Path 12: CTS Floor Reversion — CTS and BT stuck at floor for 5 days, followed by snapback."""
-    enabled: bool = True
+    enabled: bool = False
     min_score: float = 9.0
     range_guard_enabled: bool = True
     shallow_drop_guard_enabled: bool = True
     prt_structural_min: float = -0.45
     prt_slope_min: float = -0.02
     ml_guard_enabled: bool = True
-    min_ml_score: float = 30.0
+    min_ml_score: float = 80.0
     telemetry_enabled: bool = False
 
 
@@ -207,7 +207,7 @@ class CtsFloorReversionExitConfig:
 @dataclass
 class CtsAccelCrossEntryConfig:
     """Path 13: CTS Accel Cross — High-conviction crossover with robust structural guards."""
-    enabled: bool = True
+    enabled: bool = False
     # Range Guards
     rp10_max: float = 0.60
     rp252_max: float = 0.70
@@ -236,7 +236,7 @@ class CtsAccelCrossEntryConfig:
     # Scoring
     min_score: float = 15.0
     ml_guard_enabled: bool = True
-    min_ml_score: float = 30.0
+    min_ml_score: float = 50.0
     telemetry_enabled: bool = False
 
 
@@ -255,7 +255,7 @@ class CtsAccelCrossExitConfig:
 @dataclass
 class PrtZeroCrossEntryConfig:
     """Path: PRT Zero Cross with ML Guard."""
-    enabled: bool = True
+    enabled: bool = False
     min_ml_score: float = 80.0
 
 
@@ -265,6 +265,13 @@ class PrtZeroCrossExitConfig:
     enabled: bool = True
     hard_stop_enabled: bool = True
     hard_stop_pct: float = 8.0
+
+
+@dataclass
+class UniversalCrossEntryConfig:
+    """Universal ML Master Path — Catches any structural inflection and relies purely on ML Guard."""
+    enabled: bool = True
+    min_ml_score: float = 85.0
 
 
 # ---------------------------------------------------------------------------
@@ -282,6 +289,7 @@ class SavgolCTSEntryConfig(BaseEntryConfig):
         ExitReason.BAR5_STOP,
     )
 
+    universal_cross: UniversalCrossEntryConfig = field(default_factory=UniversalCrossEntryConfig)
     cts_floor_reversion: CtsFloorReversionEntryConfig = field(default_factory=CtsFloorReversionEntryConfig)
     accel_cross: AccelCrossEntryConfig = field(default_factory=AccelCrossEntryConfig)
     institutional_floor: InstitutionalFloorEntryConfig = field(default_factory=InstitutionalFloorEntryConfig)

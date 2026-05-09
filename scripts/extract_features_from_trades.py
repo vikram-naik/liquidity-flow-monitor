@@ -6,6 +6,7 @@ Captures the state of the indicators at the signal bar and the resulting PnL fro
 from __future__ import annotations
 
 import sys
+import argparse
 import pandas as pd
 import numpy as np
 from pathlib import Path
@@ -28,7 +29,13 @@ EXCLUDE_COLS = [
 ]
 
 def main():
-    watchlist = "NIFTY 100"
+    parser = argparse.ArgumentParser(description="Extract features from historical trades for ML training.")
+    parser.add_argument("--watchlist", type=str, default="NIFTY 100", help="Watchlist to run backtests on.")
+    parser.add_argument("--threshold", type=float, default=2.5, help="PnL threshold to label a trade as 'Good' (1). Default: 2.5%")
+    args = parser.parse_args()
+
+    watchlist = args.watchlist
+    threshold = args.threshold
     print(f"Fetching symbols for {watchlist}...")
     symbols = get_watchlist_symbols(watchlist)
     
@@ -51,7 +58,7 @@ def main():
         "prt_zero_cross"
     ]
 
-    print("Running siloed backtests for each entry path to generate dataset...")
+    print(f"Running siloed backtests (Threshold: {threshold}%) for each entry path to generate dataset...")
 
     for target_path in entry_paths:
         print(f"\n--- Processing path: {target_path} ---")
@@ -112,9 +119,8 @@ def main():
                     # We have our trade and our feature row
                     pnl_pct = t.pnl_pct
                     
-                    # Target a slightly lower threshold for "Good" to get balance since these are actual trades, not perfect troughs
-                    # PnL > 2.5% is a reasonable "Good Trade" in our system.
-                    label = 1 if pnl_pct >= 2.5 else 0
+                    # Labeled based on CLI threshold
+                    label = 1 if pnl_pct >= threshold else 0
                     
                     feature_row = {
                         "symbol": sym,

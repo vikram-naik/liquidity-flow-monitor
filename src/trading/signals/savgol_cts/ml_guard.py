@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 class MLGuard:
     """Singleton for live inference using the trained XGBoost guard."""
     _instance = None
-    ACTIVE_MODEL_VERSION = "20260508"
+    ACTIVE_MODEL_VERSION = "20260509"
 
     def __init__(self):
         self.model = None
