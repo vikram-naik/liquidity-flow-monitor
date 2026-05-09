@@ -26,8 +26,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.divergence_engine.engine import DivergenceEngine
 from src.trading.signals import (
-    PriceDivergenceEntryConfig, PriceDivergenceExitConfig,
-    NextGenEntryConfig, NextGenExitConfig,
     Trade, SignalFactory,
 )
 from src.trading.signals.savgol_cts import SavgolCTSEntryConfig, SavgolCTSExitConfig
@@ -359,7 +357,7 @@ def summarize(trades: list[Trade], label: str, period_start: str, period_end: st
 def main():
     parser = argparse.ArgumentParser(description="Walk-forward validation")
     parser.add_argument("--watchlist", default="NIFTY 50")
-    parser.add_argument("--signal", default="savgol_cts", choices=["price_divergence", "nextgen", "savgol_cts"],
+    parser.add_argument("--signal", default="savgol_cts", choices=["savgol_cts"],
                         help="Signal strategy to use (default: savgol_cts)")
     args = parser.parse_args()
 
@@ -384,15 +382,13 @@ def main():
     w(f"  Test:       {TEST_START} to {test_end}")
     w()
 
-    if args.signal == "nextgen":
-        entry_cfg = NextGenEntryConfig()
-        exit_cfg = NextGenExitConfig()
-    elif args.signal == "savgol_cts":
+    if args.signal == "savgol_cts":
         entry_cfg = SavgolCTSEntryConfig()
         exit_cfg = SavgolCTSExitConfig()
     else:
-        entry_cfg = PriceDivergenceEntryConfig()
-        exit_cfg = PriceDivergenceExitConfig()
+        # Standard fallback if needed
+        entry_cfg = SavgolCTSEntryConfig()
+        exit_cfg = SavgolCTSExitConfig()
 
     signal = SignalFactory.get_signal(args.signal)
 

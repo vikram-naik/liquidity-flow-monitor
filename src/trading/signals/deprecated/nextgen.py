@@ -4,7 +4,7 @@ import numpy as np
 from typing import Tuple
 
 from src.trading.signals.base import BaseEntryConfig, BaseExitConfig, SignalInterface, Trade
-from src.trading.signals.price_divergence import can_exit, PriceDivergenceExitConfig
+from src.trading.signals.deprecated.price_divergence import can_exit, PriceDivergenceExitConfig
 
 
 @dataclass

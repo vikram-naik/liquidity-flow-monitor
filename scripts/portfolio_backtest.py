@@ -888,14 +888,10 @@ def main():
     if args.signal == "savgol_cts":
         entry_cfg = SavgolCTSEntryConfig()
         exit_cfg = SavgolCTSExitConfig()
-    elif args.signal == "nextgen":
-        from src.trading.signals import NextGenEntryConfig, NextGenExitConfig
-        entry_cfg = NextGenEntryConfig()
-        exit_cfg = NextGenExitConfig()
     else:
-        from src.trading.signals import PriceDivergenceEntryConfig, PriceDivergenceExitConfig
-        entry_cfg = PriceDivergenceEntryConfig()
-        exit_cfg = PriceDivergenceExitConfig()
+        # Standard fallback if needed
+        entry_cfg = SavgolCTSEntryConfig()
+        exit_cfg = SavgolCTSExitConfig()
 
     signal = SignalFactory.get_signal(args.signal)
 
@@ -948,6 +944,15 @@ def main():
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     ts = datetime.now().strftime("%d-%b-%Y_%H:%M")
     sanitized_wl = args.watchlist.replace(" ", "_")
+    filename = f"{sanitized_wl}_pbt_{ts}.txt"
+    outpath = OUTPUT_DIR / filename
+    outpath.write_text(report)
+    print(f"\nReport saved to {outpath}")
+
+
+if __name__ == "__main__":
+    main()
+= args.watchlist.replace(" ", "_")
     filename = f"{sanitized_wl}_pbt_{ts}.txt"
     outpath = OUTPUT_DIR / filename
     outpath.write_text(report)

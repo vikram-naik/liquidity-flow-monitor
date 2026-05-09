@@ -73,15 +73,6 @@ def _resolve_signal_configs(signal_name: str):
     """Return (entry_cfg, exit_cfg) for the given signal strategy name."""
     if signal_name == "savgol_cts":
         return SavgolCTSEntryConfig(), SavgolCTSExitConfig()
-    elif signal_name == "long_divergence":
-        from src.trading.signals import LongDivergenceEntryConfig, LongDivergenceExitConfig
-        return LongDivergenceEntryConfig(min_soft_filters=0), LongDivergenceExitConfig()
-    elif signal_name == "nextgen":
-        from src.trading.signals import NextGenEntryConfig, NextGenExitConfig
-        return NextGenEntryConfig(), NextGenExitConfig()
-    elif signal_name == "price_divergence":
-        from src.trading.signals import PriceDivergenceEntryConfig, PriceDivergenceExitConfig
-        return PriceDivergenceEntryConfig(), PriceDivergenceExitConfig()
     raise ValueError(f"Unknown signal strategy: {signal_name}")
 
 
