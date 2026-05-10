@@ -1,5 +1,5 @@
 """
-Script to analyze the PnL of PRT-Zero-Cross trades from the backtest
+Script to analyze the PnL of Universal-Cross trades from the backtest
 across different ML score thresholds to find the optimal min_ml_score.
 """
 
@@ -20,7 +20,7 @@ def main():
     entry_cfg = SavgolCTSEntryConfig()
     exit_cfg = SavgolCTSExitConfig()
     # Ensure threshold is 80 to get a wide range of trades
-    entry_cfg.prt_zero_cross.min_ml_score = 80.0
+    entry_cfg.universal_cross.min_ml_score = 80.0
     signal = SignalFactory.get_signal("savgol_cts")
 
     symbols = get_watchlist_symbols("NIFTY 50")
@@ -29,17 +29,17 @@ def main():
     print("Running TEST period to generate trades...", flush=True)
     all_trades = run_period(symbols, "2024-01-01", test_end, entry_cfg, exit_cfg, "TEST", signal)
 
-    # Filter for PRT_ZERO_CROSS
-    prt_trades = [t for t in all_trades if t.entry_tag == EntryTag.PRT_ZERO_CROSS.value]
+    # Filter for UNIVERSAL_CROSS
+    universal_trades = [t for t in all_trades if t.entry_tag == EntryTag.UNIVERSAL_CROSS.value]
 
-    if not prt_trades:
-        print("No PRT-Zero-Cross trades found.")
+    if not universal_trades:
+        print("No Universal-Cross trades found.")
         return
 
-    print(f"\nTotal PRT-Zero-Cross trades: {len(prt_trades)}")
+    print(f"\nTotal Universal-Cross trades: {len(universal_trades)}")
 
     # We will analyze the impact of different min score thresholds.
-    # Because PRT_ZERO_CROSS override_score maps ML score exactly to conviction_score
+    # Because UNIVERSAL_CROSS override_score maps ML score exactly to conviction_score
     thresholds = [80.0, 85.0, 90.0, 92.0, 94.0, 95.0, 96.0, 97.0, 98.0, 99.0]
     
     print("\n--- PnL Distribution by Minimum ML Score Threshold ---")
@@ -47,7 +47,7 @@ def main():
     print("-" * 65)
 
     for thresh in thresholds:
-        filtered = [t for t in prt_trades if float(t.conviction_score) >= thresh]
+        filtered = [t for t in universal_trades if float(t.conviction_score) >= thresh]
         if not filtered:
             continue
         

@@ -5,7 +5,7 @@ This document establishes the institutionalized process for periodically retrain
 ## 1. Rationale and Cadence
 Financial markets evolve. The structural conditions that define a "Good" vs "Bad" setup shift over time. 
 - **Cadence**: Models should be retrained **Monthly** or after significant regime shifts.
-- **Trigger**: Win rate drop in `walk_forward` reports or significant increase in Hard Stop hits for `PRT_ZERO_CROSS`.
+- **Trigger**: Win rate drop in `walk_forward` reports or significant increase in Hard Stop hits for `UNIVERSAL_CROSS`.
 
 ## 2. Step 1: Data Extraction
 Generate a fresh trade-based dataset. This runs each entry path in a silo to capture its pure mechanical behavior.

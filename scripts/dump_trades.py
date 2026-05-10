@@ -23,15 +23,7 @@ from src.trading.signals.enums import EntryTag
 from src.trading.signals.savgol_cts.ml_guard import MLGuard
 
 ENTRY_ALIASES = {
-    "inst-floor":   EntryTag.INSTITUTIONAL_FLOOR.value,
-    "accel-cross":  EntryTag.ACCEL.value,
-    "fas-zero-cross": EntryTag.FAS_ZERO_CROSS.value,
-    "fas-floor-reversion": EntryTag.FAS_FLOOR_REVERSION.value,
-    "fas-buy-cross": EntryTag.FAS_BUY_CROSS.value,
-    "cts-accel-cross": EntryTag.CTS_ACCEL_CROSS.value,
-    "cts-floor-reversion": EntryTag.CTS_FLOOR_REVERSION.value,
-    "prt-zero-cross": EntryTag.PRT_ZERO_CROSS.value,
-    "range-reversion": EntryTag.RANGE_REVERSION.value,
+    "universal":    EntryTag.UNIVERSAL_CROSS.value,
 }
 
 def main():
@@ -137,12 +129,8 @@ def main():
 
                         cts_bt = sig_row.get("cts_buy_threshold", np.nan)
                         if not np.isnan(cts_bt):
-                            # Path 13 (Accel Cross) is a "cross above" setup
-                            if t.entry_tag == EntryTag.CTS_ACCEL_CROSS.value:
-                                t.cts_buy = "yes" if t.cts_signal > cts_bt else "no"
-                            else:
-                                # Standard mean-reversion paths are "floor" setups
-                                t.cts_buy = "yes" if t.cts_signal <= cts_bt else "no"
+                            # Standard mean-reversion setups are "floor" setups
+                            t.cts_buy = "yes" if t.cts_signal <= cts_bt else "no"
                         else:
                             t.cts_buy = "no"
                         
@@ -173,8 +161,8 @@ def main():
                         
                         t.regime_signal = sig_row.get("regime", "N/A")
 
-                        # Score with ML Guard if not already scored (non-PRT-Zero-Cross)
-                        if t.entry_tag != EntryTag.PRT_ZERO_CROSS.value:
+                        # Score with ML Guard if not already scored
+                        if t.entry_tag == EntryTag.UNIVERSAL_CROSS.value:
                             prob = MLGuard.get_instance().score_setup(sig_row.to_dict())
                             t.ml_score = prob * 100.0 if prob is not None else 0.0
 
@@ -218,7 +206,7 @@ def main():
     print("-" * len(header))
     for i, t in enumerate(filtered, 1):
         reason = t.exit_reason.value if hasattr(t.exit_reason, "value") else str(t.exit_reason)
-        ml_str = f"{t.ml_score:>5.1f}" if t.entry_tag != EntryTag.PRT_ZERO_CROSS.value else "  N/A"
+        ml_str = f"{t.ml_score:>5.1f}" if t.entry_tag == EntryTag.UNIVERSAL_CROSS.value else "  N/A"
         print(f"{i:>3} | {t.symbol:<12} | {t.signal_date:<10} | {t.pnl_pct:>7.2f} | "
               f"{t.mfe_pct:>7.2f} | {t.cts_signal:>7.3f} | {t.cts_buy:>3} | {t.accel_above_bt:>6} | "
               f"{t.psz_v_signal:>7.4f} | "

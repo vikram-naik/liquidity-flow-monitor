@@ -44,26 +44,29 @@ def trace(symbol, entry_date):
         print(f"Bar {i-idx} | PnL: {pnl:.2f}% | PSZ: {row.price_slope_z:.3f} | CTS: {row.cts:.3f}")
 ```
 
-## 4. Identifying the Lever
+## 4. Identifying the Lever (Threshold Tuning)
 
-Compare the trace of a **Hard Stop** setup vs. a **Winner** setup. Look for the "Lever"—the specific indicator value that separates them.
+In the ML-Guarded architecture, the primary "lever" is the `min_ml_score`. Use `scripts/analyze_score_thresholds.py` to find the optimal balance between win rate and trade frequency.
 
-- **Gate Overlap:** If a winner has a deeper price drop than a loser, do NOT use a hard gate.
-- **Scoring Penalty (Lever):** If indicators are conflicting, implement a heavy penalty (e.g., `-11.0`) in the scoring section. This forces the signal to have overwhelmingly positive secondary alignment to pass.
+```bash
+./venv/bin/python scripts/analyze_score_thresholds.py
+```
+
+### Result Analysis:
+- **Low Threshold (80%)**: Captures more winners but allows many "Duds" through (lower win rate).
+- **High Threshold (95%)**: High specificity (elite winners) but significantly lower trade count.
 
 ## 5. Implementing Surgical Levers
 
-### Entry Lever (Penalty)
-Apply in `src/trading/signals/savgol_cts/entries/<path>.py`:
-```python
-# Penalty: Structural Free-Fall
-if prt < -0.45 and prt_slope < -0.02:
-    base_score -= 11.0  # Soft-rejection lever
-```
+### Retraining (Feature Lever)
+If a specific indicator consistently predicts failure but the model is missing it:
+1. Ensure the indicator is in the `feature_cols` of `train_ml_guard.py`.
+2. Re-extract dense features using `scripts/extract_dense_universal_features.py`.
+3. Retrain the model.
 
 ### Exit Lever (Stateful)
-Apply in `src/trading/signals/savgol_cts/exits/<path>.py` using `SavgolCTSExitState` bits.
-- **Stall Exit:** If price momentum (`PSZ`) fails a second time (Cycle 2) without hitting the profit target, exit immediately with `ExitReason.PSZ_STALL`.
+Apply in `src/trading/signals/savgol_cts/exits/universal_cross.py` using `SavgolCTSExitState` bits.
+- **Cycle Guard**: If price momentum fails without hitting a profit target, use the CWVAP guard to release the exit earlier.
 
 ## 6. Thrust Guards (Adaptive Flatness)
 

@@ -5,7 +5,7 @@ Unlike standard simulation, this script DOES NOT use the `in_trade` blocking log
 It captures *every single instance* of a PRT, FAS, CTS, or Accel cross, spawning
 overlapping Virtual Trades to capture maximum dataset variance without signal shadowing.
 
-All generated setups are resolved using the standardized PRT-Zero-Cross exit logic
+All generated setups are resolved using the standardized Universal-Cross exit logic
 to ensure a consistent target variable (PnL) for the XGBoost model.
 """
 
@@ -67,7 +67,7 @@ def main():
     # We only need the signal logic for check_exit
     signal = SignalFactory.get_signal("savgol_cts")
     
-    # Standardize ALL exits to PRT-Zero-Cross logic (Pure CTS Trailing + CWVAP + Hard Stop)
+    # Standardize ALL exits to Universal-Cross logic (Pure CTS Trailing + CWVAP + Hard Stop)
     exit_cfg = SavgolCTSExitConfig()
     
     start_date = "2019-01-01"
@@ -122,12 +122,15 @@ def main():
 
                     # We must mock a standard Trade object for the signal logic to consume
                     mock_trade = Trade(
-                        symbol=vt.symbol, entry_date="", entry_price=vt.entry_price, entry_idx=vt.entry_idx,
-                        entry_tag=EntryTag.PRT_ZERO_CROSS.value, # Force PRT exit logic
-                        atr_at_entry=0.0, soft_filters_passed=0,
-                        conviction_score=0, rdv_pass=False, mcs_pass=False, cwc_pass=False, grad_pass=False,
-                        regime_at_entry="N/A", psz_at_entry=0.0, psz_peak=0.0,
-                        mfe_pct=vt.mfe_pct, mae_pct=vt.mae_pct
+                        symbol=vt.symbol,
+                        entry_date="",
+                        entry_price=vt.entry_price,
+                        entry_idx=vt.entry_idx,
+                        atr_at_entry=0.0,
+                        soft_filters_passed=0,
+                        entry_tag=EntryTag.UNIVERSAL_CROSS.value,
+                        mfe_pct=vt.mfe_pct,
+                        mae_pct=vt.mae_pct
                     )
 
                     reason, new_dbc = signal.check_exit(
@@ -242,10 +245,10 @@ def main():
         print(f"Class Balance - Good Trades (1): {out_df['label'].sum()}, Bad Trades (0): {len(out_df) - out_df['label'].sum()}")
         
         print("\nTrigger Distribution:")
-        print(f"  PRT Cross: {out_df['trigger_prt'].sum()}")
-        print(f"  FAS Cross: {out_df['trigger_fas'].sum()}")
-        print(f"  CTS Cross: {out_df['trigger_cts'].sum()}")
-        print(f"  Accel Cross: {out_df['trigger_accel'].sum()}")
+        print(f"  Universal Inflection (PRT): {out_df['trigger_prt'].sum()}")
+        print(f"  Universal Inflection (FAS): {out_df['trigger_fas'].sum()}")
+        print(f"  Universal Inflection (CTS): {out_df['trigger_cts'].sum()}")
+        print(f"  Universal Inflection (Accel): {out_df['trigger_accel'].sum()}")
     else:
         print("\nNo setups were generated.")
 

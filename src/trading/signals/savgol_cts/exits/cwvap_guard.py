@@ -57,7 +57,7 @@ def apply_cwvap_guard(
         gc = cfg.cwvap_guard
         
         # Rule PREEMPT: Candlestick Rejection Guard (Only for specific tags for now)
-        if getattr(gc, "candle_guard_enabled", False) and tag == EntryTag.FAS_BUY_CROSS.value:
+        if getattr(gc, "candle_guard_enabled", False) and tag == EntryTag.UNIVERSAL_CROSS.value:
             open_px = row.get("open", np.nan)
             high_px = row.get("high", np.nan)
             low_px = row.get("low", np.nan)

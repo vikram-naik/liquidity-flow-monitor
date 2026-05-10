@@ -47,15 +47,7 @@ def main():
 
     # Map of all paths in SavgolCTSEntryConfig
     entry_paths = [
-        "institutional_floor",
-        "range_reversion",
-        "fas_zero_cross",
-        "fas_floor_reversion",
-        "fas_buy_cross",
-        "accel_cross",
-        "cts_floor_reversion",
-        "cts_accel_cross",
-        "prt_zero_cross"
+        "universal_cross"
     ]
 
     print(f"Running siloed backtests (Threshold: {threshold}%) for each entry path to generate dataset...")
@@ -66,7 +58,7 @@ def main():
         entry_cfg = SavgolCTSEntryConfig()
         exit_cfg = SavgolCTSExitConfig()
 
-        # Disable all paths
+        # Disable all paths (Only one now)
         for path in entry_paths:
             getattr(entry_cfg, path).enabled = False
             
@@ -74,9 +66,8 @@ def main():
         target_cfg = getattr(entry_cfg, target_path)
         target_cfg.enabled = True
         
-        # If it's PRT Zero Cross, disable the ML Guard to capture raw mechanical setups
-        if target_path == "prt_zero_cross":
-            target_cfg.min_ml_score = 0.0
+        # Disable ML Guard to capture raw mechanical setups (it will still trigger on inflections)
+        target_cfg.min_ml_score = 0.0
 
         # Run backtest
         print(f"Running backtest for {target_path}...")

@@ -37,7 +37,7 @@ class Trade:
     cwc_pass: bool = False
     grad_pass: bool = False
     regime_at_entry: str = ""
-    entry_tag: str = ""               # entry path identifier (e.g. "PSZ", "BT-cross")
+    entry_tag: str = ""               # entry path identifier (e.g. "Universal-Cross")
     psz_at_entry: float = 0.0
     psz_peak: float = 0.0             # track highest PSZ during trade
     # Filled on exit

@@ -8,9 +8,9 @@
   - Trade opens on bar `i+1`.
   - Exit checks begin on bar `i+2`.
 - **Simulation**: `scripts/walk_forward.py` is the primary entry point for backtesting.
-- **Debugging PRT Scoring**: To inspect the gate checks and detailed scoring telemetry for the `PrtSlopeZeroCross` entry on a specific stock and date, run the debug script:
+- **Debugging Universal Scoring**: To inspect the gate checks and detailed scoring telemetry for the ``UniversalCross`` entry on a specific stock and date, run the debug script:
   ```bash
-  ./venv/bin/python scripts/debug_prt_scoring.py --symbol <SYMBOL> --date <YYYY-MM-DD>
+  ./venv/bin/python scripts/debug_universal_scoring.py --symbol <SYMBOL> --date <YYYY-MM-DD>
   ```
 
 ## Development Standards

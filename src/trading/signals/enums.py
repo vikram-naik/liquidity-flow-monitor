@@ -2,23 +2,25 @@ from enum import Enum
 
 class EntryTag(str, Enum):
     """Strongly typed entry tags with presentation-friendly strings."""
-    CTS_FLOOR_REVERSION = "SavgolCTS CTS-Floor-Reversion"
-    INSTITUTIONAL_FLOOR = "SavgolCTS Institutional-Floor"
-    ACCEL = "SavgolCTS Accel-Cross"
-    RANGE_REVERSION = "SavgolCTS Range-Reversion"
-    FAS_ZERO_CROSS = "SavgolCTS FAS-Zero-Cross"
-    FAS_FLOOR_REVERSION = "SavgolCTS FAS-Floor-Reversion"
-    FAS_BUY_CROSS = "SavgolCTS FAS-Buy-Cross"
-    CTS_ACCEL_CROSS = "SavgolCTS CTS-Accel-Cross"
-    PRT_ZERO_CROSS = "SavgolCTS PRT-Zero-Cross"
-    CTS_BT_FLOOR = "SavgolCTS CTS-BT-Floor"  # Legacy
+    # Active Paths
+    UNIVERSAL_CROSS = "SavgolCTS Universal-Cross"
+    
+    # Generic / Fallback
+    UNKNOWN = "Unknown Entry"
 
     # Deprecated — retained for historical trade log compatibility.
-    PSZ = "SavgolCTS PSZ Bend"               # Entry path removed (2026-03-28)
-    PSZV_FLAT = "SavgolCTS PSZv-Flat"         # Entry path removed (2026-03-28)
-    
-    # Generic
-    UNKNOWN = "Unknown Entry"
+    PRT_ZERO_CROSS = "SavgolCTS PRT-Zero-Cross"        # Renamed to UNIVERSAL_CROSS (2026-05-10)
+    CTS_FLOOR_REVERSION = "SavgolCTS CTS-Floor-Reversion" # Removed (2026-05-10)
+    INSTITUTIONAL_FLOOR = "SavgolCTS Institutional-Floor" # Removed (2026-05-10)
+    ACCEL = "SavgolCTS Accel-Cross"                      # Removed (2026-05-10)
+    RANGE_REVERSION = "SavgolCTS Range-Reversion"        # Removed (2026-05-10)
+    FAS_ZERO_CROSS = "SavgolCTS FAS-Zero-Cross"          # Removed (2026-05-10)
+    FAS_FLOOR_REVERSION = "SavgolCTS FAS-Floor-Reversion" # Removed (2026-05-10)
+    FAS_BUY_CROSS = "SavgolCTS FAS-Buy-Cross"            # Removed (2026-05-10)
+    CTS_ACCEL_CROSS = "SavgolCTS CTS-Accel-Cross"        # Removed (2026-05-10)
+    CTS_BT_FLOOR = "SavgolCTS CTS-BT-Floor"              # Removed (2026-05-10)
+    PSZ = "SavgolCTS PSZ Bend"                          # Removed (2026-03-28)
+    PSZV_FLAT = "SavgolCTS PSZv-Flat"                    # Removed (2026-03-28)
 
 
 class ExitReason(str, Enum):

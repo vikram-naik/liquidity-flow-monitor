@@ -60,7 +60,7 @@ def entry_universal_cross(row, prev_row, cfg, records, idx):
     # 3. Accept Setup
     details = {
         "reason": "Universal Cross accepted",
-        "entry_tag": EntryTag.PRT_ZERO_CROSS, # Exploit existing PRT exit logic
+        "entry_tag": EntryTag.UNIVERSAL_CROSS.value, # Use standardized Universal exit logic
         "override_score": ml_score_pct,
         "score": int(ml_score_pct),
         "ml_score": ml_score_pct,

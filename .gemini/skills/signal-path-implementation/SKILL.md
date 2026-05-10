@@ -5,42 +5,28 @@ description: Repo-specific checklist and procedure for implementing a new signal
 
 # Signal Path Implementation Checklist
 
-This skill provides the comprehensive procedure for migrating a validated signal study into the core LFM system.
+This skill provides the procedure for migrating a validated signal trigger into the core Universal Master Path.
 
-## 1. Global Enums
-Add a new strongly typed entry tag to `src/trading/signals/enums.py`.
-- **Enum Class:** `EntryTag`
-- **Format:** `<NAME> = "SavgolCTS <name-friendly>"`
-- **Example:** `CTS_FLOOR_REVERSION = "SavgolCTS CTS-Floor-Reversion"`
+## 1. Implement Trigger Logic
+Update `src/trading/signals/savgol_cts/entries/universal_cross.py`.
+- **Trigger Extraction**: Define the new mechanical inflection (e.g., a specific crossover).
+- **Trigger Variable**: Add a `trigger_<name>` binary variable (0 or 1).
+- **Wiring**: Include the new trigger in the `any()` check before calling the ML Guard.
+- **Row Update**: Add the new trigger to the `row_dict` so the ML Guard can see it as a feature.
 
-## 2. Configuration Classes
-Update `src/trading/signals/savgol_cts/config.py` to include parameters for the new path.
-- **Entry Config:** Define a `@dataclass` for `<Name>EntryConfig`. Include all thresholds used in your study (e.g., `min_score`, `psz_z_max`).
-- **Exit Config:** Define a `@dataclass` for `<Name>ExitConfig`. Include standard trailing and stop parameters (e.g., `hard_stop_pct`).
-- **Wire into Composites:** Inject these into `SavgolCTSEntryConfig` and `SavgolCTSExitConfig` as fields with `default_factory`.
+## 2. Dataset Enrichment (Dense Extraction)
+Update `scripts/extract_dense_universal_features.py` to capture the new trigger.
+- **Triggers Dict**: Include the new trigger in the `VirtualTrade` object's metadata.
+- **Feature CSV**: Run the script to generate a fresh training dataset with the new trigger column.
 
-## 3. Implement Entry/Exit Logic
-Create two new modules in the `savgol_cts` package:
-- **Entry:** `src/trading/signals/savgol_cts/entries/<name>.py`
-  - Implement `check_<name>(row, prev_row, cfg, records, idx)`.
-  - Use `ScoreTracker` from `telemetry.py` if implementing a scoring system.
-- **Exit:** `src/trading/signals/savgol_cts/exits/<name>.py`
-  - Implement `exit_<name>(row, prev_row, trade, peak_close, bars_held, state_val, cfg, records, idx)`.
+## 3. Retrain ML Guard
+Run `scripts/train_ml_guard.py` to produce a new model that "understands" how to filter the new trigger.
+- **Verification**: Ensure the classification report shows improved precision/recall for the "Good Trade" label.
+- **Deployment**: Update `ACTIVE_MODEL_VERSION` in `src/trading/signals/savgol_cts/ml_guard.py`.
 
-## 4. Signal Orchestrator Wiring
-Update `src/trading/signals/savgol_cts/signal.py` to recognize the new path.
-- **Imports:** Import your new entry and exit functions.
-- **`check_entry`:** Add your path checker to the prioritized sequence. (First match wins).
-- **`check_exit`:** Add your path exit to the dispatch `elif` chain based on `tag`.
-- **`bespoke_tags`:** Add your new `EntryTag.NAME.value` to the `bespoke_tags` list if it manages its own exit logic (prevents it being killed by generic exit rules).
-
-## 5. Documentation
-Update `SIGNAL_FLOW.md` to reflect the new architecture.
-- **Entry Flow:** Document the new `PATH X` with its gates, guards, and scoring rules.
-- **State Bitfield:** If you used new bits in `SavgolCTSExitState`, document their mapping.
-- **Exit Flow:** Add the new dispatch target.
+## 4. Documentation
+Update `SIGNAL_FLOW.md` to reflect the new trigger in the Universal Master Path diagram.
 
 ## ⚠️ Mandatory: EOD-Lag Reality Check
 Before migrating any study to production, you MUST verify that the study used **EOD-Lag Execution** (Signal at `i`, Entry at `i+1`).
-- **If the study used same-day entry (bar i):** You MUST rerun the study using EOD-Lag and present the corrected metrics to the user for approval.
-- **Production Code:** Ensure `SavgolCTSSignal` correctly handles the 1-bar lag between signal identification and execution.
+- **Production Code**: Ensure `UniversalCross` correctly handles the 1-bar lag between signal identification and execution.

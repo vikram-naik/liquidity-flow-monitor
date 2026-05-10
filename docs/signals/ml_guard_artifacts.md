@@ -34,15 +34,15 @@ This document catalogs the scripts, core modules, and output artifacts created t
 *   **`src/trading/signals/savgol_cts/ml_guard.py`**
     *   *Type*: Core Module
     *   *Description*: A robust Singleton class that loads the active `model_xgb_YYYYMMDD.joblib` into memory once. Provides the `score_setup(row)` method to execute sub-millisecond live inference on active market data using the XGBoost model.
-*   **`src/trading/signals/savgol_cts/entries/prt_zero_cross.py`**
+*   **`src/trading/signals/savgol_cts/entries/universal_cross.py`**
     *   *Type*: Signal Entry Path
-    *   *Description*: The `PRT_ZERO_CROSS` entry logic. It checks for a mechanical momentum cross, queries the `MLGuard`, and mandates a minimum confidence score (currently 80.0%). Overrides the standard UI intensity score with the ML confidence probability.
-*   **`src/trading/signals/savgol_cts/exits/prt_zero_cross.py`**
+    *   *Description*: The `UNIVERSAL_CROSS` entry logic. It checks for any structural momentum inflection, queries the `MLGuard`, and mandates a minimum confidence score (currently 85.0%). Overrides the standard UI intensity score with the ML confidence probability.
+*   **`src/trading/signals/savgol_cts/exits/universal_cross.py`**
     *   *Type*: Signal Exit Path
-    *   *Description*: The dedicated exit logic for the ML-Guarded entry. Implements a pure CTS Trailing Stop alongside system-level hard stops (8%) and CWVAP momentum guards.
+    *   *Description*: The dedicated exit logic for the Universal Master Path. Implements a pure CTS Trailing Stop alongside system-level hard stops (8%) and CWVAP momentum guards.
 *   **`src/trading/signals/savgol_cts/config.py` & `signal.py`**
     *   *Type*: Configuration & Orchestration
-    *   *Description*: Updated to route and manage the `PRT_ZERO_CROSS` entry/exit paths within the overarching `SavgolCTS` strategy.
+    *   *Description*: Updated to route and manage the `UNIVERSAL_CROSS` entry/exit paths within the overarching `SavgolCTS` strategy.
 
 ## 5. UI & Tooling Enhancements
 

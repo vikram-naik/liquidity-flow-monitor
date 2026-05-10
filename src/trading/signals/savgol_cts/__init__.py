@@ -1,6 +1,6 @@
-"""SavgolCTS signal package — CTS mean-reversion with multiple entry/exit paths.
+"""SavgolCTS signal package — CTS mean-reversion with Universal ML Master Path.
 
-Public API (backwards-compatible with the former single-module):
+Public API:
     - SavgolCTSEntryConfig / SavgolCTSExitConfig  — configuration
     - SavgolCTSSignal                               — signal implementation
 """

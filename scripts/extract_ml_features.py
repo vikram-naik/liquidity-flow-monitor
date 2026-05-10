@@ -1,5 +1,6 @@
 """
-Extracts feature vectors at each Oracle-labeled trough and calculates the PnL to the next Oracle-labeled peak.
+Extracts feature vectors at each Oracle-labeled trough and calculates the PnL to the next Oracle-labeled peak
+using Universal Cross inflection as the entry point.
 Produces a CSV dataset for training the ML Guard model.
 """
 
@@ -51,7 +52,7 @@ def main():
             trough_indices = df_filtered[df_filtered['oracle_trough'] == 1.0].index.tolist()
             peak_indices = df_filtered[df_filtered['oracle_peak'] == 1.0].index.tolist()
             
-            # Find all PRT Zero Cross events
+            # Find all Universal Cross inflection events (PRT component)
             prev_prt_slope = df_filtered['prt_slope'].shift(1)
             cross_mask = (df_filtered['prt_slope'] > 0) & (prev_prt_slope <= 0)
             cross_indices = df_filtered[cross_mask].index.tolist()

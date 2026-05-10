@@ -169,7 +169,7 @@ def main():
     num_trades = len(df_results)
     
     print("\n" + "="*40)
-    print("      PRT SLOPE ZERO CROSS STUDY")
+    print("      UNIVERSAL CROSS INFLECTION STUDY")
     print("="*40)
     print(f"Total Trades:      {num_trades}")
     print(f"Win Rate:         {(df_results['pnl'] > 0).mean() * 100:.2f}%")

@@ -91,19 +91,15 @@ For complex exits that require multiple confirmation phases (e.g., reclaim CWVAP
 3.  **Phase 3: Exhaustion Exit**: Trigger the final exit only *after* Phase 1 and 2 are latched and momentum starts to fade (e.g., `psz < 0.0`).
 4.  **Implementation**: Define constants in `src/trading/signals/savgol_cts/state.py` and wrap the integer in `SavgolCTSExitState`.
 
-## 6. Bayesian Scoring and Intensity Mapping
+## 6. ML Guarded Entry Logic (Universal Master Path)
 
-When implementing `src/trading/signals/savgol_cts/scoring.py` or path-specific scoring:
+Modern signals (Universal Cross) replace manual Bayesian scoring with a machine-learning model (`XGBoost`) to rank setups.
 
-- **ScoreTracker Pattern**: Use a `ScoreTracker` class to aggregate points and reasons.
-- **Base Score**: Start with a base score (e.g., 15.0 or 20.0).
-- **Linear Interpolation**: Use `_interp(val, min_val, max_val, min_pts, max_pts)` for smooth scoring.
-- **Intensity Mapping**: Map the final internal score to the 90-99 range for the UI:
-  ```python
-  intensity_pts = 90.0 + (tracker.total - min_possible) / (max_possible - min_possible) * 9.0
-  ```
+- **Trigger Inflections**: Identify cheap structural inflections (PRT Cross, FAS Cross, CTS Cross).
+- **ML Scoring**: Feed the entire indicator state at the inflection bar to the `MLGuard`.
+- **Confidence Threshold**: Only accept setups where the ML model's probability of a "Good Trade" (2.5% PnL) exceeds a high threshold (e.g., 85.0%).
+- **Telemetry**: The confidence score overrides the standard intensity score for UI visualization.
 
 ## 7. Implementation Guidelines
-- **Telemetry**: Always use `ScoreTracker` (if available) or verbose logging to print the result of every Gate, Guard, and Score component during `check_entry`.
-- **Conditional Early Returns**: Use the "Conditional Early Return" pattern to ensure that "Heavy Guards" only execute if the "Master Gate" passes or telemetry is explicitly enabled. This prevents backtest slowdowns.
-- **EOD-Lag**: All guards and scores must be evaluated on Bar `i` (Signal Bar) to affect the entry at Bar `i+1`.
+- **Master Gate**: Always use the cheapest binary check first. Bypass the ML Guard or "Heavy Guards" if no trigger occurred to maintain backtest speed.
+- **EOD-Lag**: All indicators and ML scoring must be evaluated on Bar `i` (Signal Bar) to affect the entry at Bar `i+1`.

@@ -1,5 +1,5 @@
 """
-Script to measure the temporal offset between an Oracle Trough and a PRT Zero Cross.
+Script to measure the temporal offset between an Oracle Trough and a Universal Cross trigger (PRT inflection).
 """
 
 from __future__ import annotations
@@ -34,7 +34,7 @@ def main():
                 
             trough_indices = df[df['oracle_trough'] == 1.0].index.tolist()
             
-            # Find PRT Zero Cross events
+            # Find Universal Cross inflection events (PRT component)
             prev_prt_slope = df['prt_slope'].shift(1)
             cross_mask = (df['prt_slope'] > 0) & (prev_prt_slope <= 0)
             cross_indices = df[cross_mask].index.tolist()
@@ -71,7 +71,7 @@ def main():
         print(f"Max Delay: {np.max(offsets)} days")
         
         print(f"\nAverage PRT_Slope at Oracle Trough (Training State): {np.mean(prt_slope_at_trough):.4f}")
-        print(f"Average PRT_Slope at PRT Zero Cross (Inference State): {np.mean(prt_slope_at_cross):.4f}")
+        print(f"Average PRT_Slope at Universal Cross inflection (Inference State): {np.mean(prt_slope_at_cross):.4f}")
     else:
         print("No events found.")
 

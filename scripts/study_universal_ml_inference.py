@@ -1,7 +1,7 @@
 """
 Study script to test the Live Inference capabilities of the ML Guard model.
 Scans the NIFTY 100 universe over the last 60 days.
-Finds PRT Slope zero-cross entries, scores them with ML, applies CTS trailing exit,
+Finds Universal Cross inflection entries, scores them with ML, applies CTS trailing exit,
 calculates EOD-lag PnL, and reports PnL distribution by ML confidence.
 """
 
@@ -41,7 +41,7 @@ def main():
     start_date_dt = end_date_dt - timedelta(days=60)
     start_date = start_date_dt.strftime("%Y-%m-%d")
 
-    print(f"Scanning for PRT Slope Zero-Crosses from {start_date} to today (Out-of-Sample)...")
+    print(f"Scanning for Universal Cross inflections from {start_date} to today (Out-of-Sample)...")
 
     results = []
 
@@ -62,7 +62,7 @@ def main():
             if df_test.empty:
                 continue
                 
-            # Identify PRT Slope Zero Cross (-ve to +ve)
+            # Identify Universal Cross inflection (PRT Slope component for study)
             prev_prt_slope = df['prt_slope'].shift(1)
             cross_mask = (df['prt_slope'] > 0) & (prev_prt_slope <= 0)
             

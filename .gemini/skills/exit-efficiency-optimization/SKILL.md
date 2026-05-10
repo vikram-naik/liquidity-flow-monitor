@@ -22,15 +22,10 @@ To find out if an exit routine is underperforming, run the trade dump script sor
 
 ## 2. Audit Structural Guards
 
-Review the system orchestrator (`src/trading/signals/savgol_cts/signal.py`) to see if the entry tag is listed in `bespoke_tags`:
+Review the system orchestrator (`src/trading/signals/savgol_cts/signal.py`). All entries now route through common CWVAP guards unless explicitly bypassed in `check_exit`.
 
-```python
-# Check signal.py around line 138
-bespoke_tags = [EntryTag.INSTITUTIONAL_FLOOR, EntryTag.FAS_ZERO_CROSS, ...]
-```
-
-- **If listed:** The entry **bypasses** the global `CWVAP` guards (candlestick wicks at resistance, volume spikes, structural climax). This is a common cause of givebacks on explosive moves.
-- **If not listed:** The entry is subject to global safety exits.
+- **Global Safety**: The Universal Cross path is subject to global safety exits (candlestick wicks at resistance, volume spikes, structural climax) by default.
+- **Bypass**: If a trade is giving back profits but not exiting, verify if the CWVAP guard is suppressing the exit due to momentum strength.
 
 ## 3. Optimization Options
 

@@ -18,10 +18,10 @@ class SavgolCTSExitState:
     cts_above_bt: bool = False
     exit_suppressed: bool = False
     suppressed_this_bar: bool = False
-    slope_crossed_zero: bool = False  # Track if slope has crossed above zero (Slope Bottom phase 1 complete)
+    slope_crossed_zero: bool = False  # Track if structural momentum crossed above zero
     price_above_cwvap: bool = False    # Track if price has reclaimed CWVAP post-entry
-    prt_exit_suppressed: bool = False  # Track if the prt exit was suppressed.
-    fas_crossed_zero: bool = False   # Track if the prt crosses zero
+    exit_suppressed_ext: bool = False  # Track if a path-specific exit was suppressed
+    fas_crossed_zero: bool = False     # Track if FAS crossed above zero
     extreme_bottom_extension: bool = False # Track if trade hit absolute floor (grant 2x timeout)
     cwf_count: int = 0            # Counter for High > CWVAP and Close < CWVAP (4 bits: 0-15)
     climax_hit_above_va: bool = False # Track if structural climax hit while price > va_high
@@ -38,7 +38,7 @@ class SavgolCTSExitState:
             suppressed_this_bar=bool((val >> 4) & 1),
             slope_crossed_zero=bool((val >> 5) & 1),
             price_above_cwvap=bool((val >> 6) & 1),
-            prt_exit_suppressed=bool((val >> 7) & 1),
+            exit_suppressed_ext=bool((val >> 7) & 1),
             fas_crossed_zero=bool((val >> 8) & 1),
             extreme_bottom_extension=bool((val >> 9) & 1),
             cwf_count=int((val >> 13) & 0xF),
@@ -55,7 +55,7 @@ class SavgolCTSExitState:
             | ((self.cwf_count & 0xF) << 13)
             | (int(self.extreme_bottom_extension) << 9)
             | (int(self.fas_crossed_zero) << 8)
-            | (int(self.prt_exit_suppressed) << 7) 
+            | (int(self.exit_suppressed_ext) << 7) 
             | (int(self.price_above_cwvap) << 6)
             | (int(self.slope_crossed_zero) << 5)
             | (int(self.suppressed_this_bar) << 4)
