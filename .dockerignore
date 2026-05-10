@@ -14,3 +14,13 @@ data/
 liquidity_monitor.db
 brain/
 .gemini/
+.claude/
+memory/
+output/
+tests/
+docs/
+GEMINI.md
+system_overview.txt
+RCI.txt
+Dockerfile
+docker-compose.yml
