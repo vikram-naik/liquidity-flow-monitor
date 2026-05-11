@@ -30,7 +30,7 @@ class UniversalCrossEntryConfig:
 @dataclass
 class SavgolCTSEntryConfig(BaseEntryConfig):
     """Configuration for CTS mean-reversion entry signal."""
-    cooldown_enabled: bool = True
+    cooldown_enabled: bool = False
     cooldown_bars: int = 10
     cooldown_exit_reasons: tuple[ExitReason, ...] = (
         ExitReason.SUPPRESSED_EXIT,
