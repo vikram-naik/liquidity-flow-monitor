@@ -16,9 +16,6 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from src.trading.signals import SignalFactory
-from src.trading.signals.savgol_cts import SavgolCTSSignal
-
 # Columns the UI actually reads — trim everything else before serialising
 UI_COLUMNS = [
     # Chart panels (OHLC, overlays, slopes, coherence)
@@ -54,8 +51,6 @@ UI_COLUMNS = [
     "cooldown",
 ]
 
-_SIGNAL: SavgolCTSSignal = SignalFactory.get_signal("savgol_cts")
-
 def _nan_safe(val: Any) -> Any:
     """Convert NaN / Inf to None for JSON serialisation."""
     if isinstance(val, (float, np.floating)) and (np.isnan(val) or np.isinf(val)):
@@ -87,26 +82,6 @@ def ledger_to_json(df: pd.DataFrame) -> list[dict]:
 
     Trims to UI_COLUMNS and uses vectorised conversion for performance.
     """
-    df = _SIGNAL.tag_signals(df)
-
-    # Entry Signal Probability Feature
-    # 1 when psz crosses zero (-ve to +ve) and prt < 0 and cts_slope > 0
-    # 0 when psz crosses zero and any of the other conditions fire
-    # -1 when none of the conditions fire
-    if all(col in df.columns for col in ["price_slope_z", "prt", "cts_slope"]):
-        psz_cross_up = (df["price_slope_z"] > 0) & (df["price_slope_z"].shift(1) < 0)
-        prt_cond = df["prt"] < 0
-        cts_cond = df["cts_slope"] > 0
-
-        cond_all = psz_cross_up & prt_cond & cts_cond
-        cond_psz_any = psz_cross_up & (prt_cond | cts_cond)
-
-        df["entry_signal_prob"] = np.select(
-            [cond_all, cond_psz_any],
-            [1.0, 0.0],
-            default=-1.0
-        )
-
     # Trim to only the columns the UI needs
     cols = [c for c in UI_COLUMNS if c in df.columns]
     slim = df[cols].copy()

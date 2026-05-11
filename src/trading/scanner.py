@@ -33,10 +33,9 @@ from src.divergence_engine.engine import DivergenceEngine
 from src.trading.signals import Trade, SignalFactory
 from src.trading.signals.savgol_cts import SavgolCTSEntryConfig, SavgolCTSExitConfig
 from src.trading.repository import TradingRepository
+from src.database import DB_PATH
 
 logger = logging.getLogger(__name__)
-
-DB_PATH = Path(__file__).resolve().parent.parent.parent / "liquidity_monitor.db"
 
 
 def get_watchlist_symbols(name: str) -> list[str]:

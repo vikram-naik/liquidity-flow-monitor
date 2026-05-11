@@ -22,7 +22,7 @@ To find out if an exit routine is underperforming, run the trade dump script sor
 
 ## 2. Audit Structural Guards
 
-Review the system orchestrator (`src/trading/signals/savgol_cts/signal.py`). All entries now route through common CWVAP guards unless explicitly bypassed in `check_exit`.
+Review the exit logic in `src/trading/signals/savgol_cts/exits/universal_cross.py`. All entries now route through common CWVAP guards in `exits/cwvap_guard.py` unless explicitly bypassed.
 
 - **Global Safety**: The Universal Cross path is subject to global safety exits (candlestick wicks at resistance, volume spikes, structural climax) by default.
 - **Bypass**: If a trade is giving back profits but not exiting, verify if the CWVAP guard is suppressing the exit due to momentum strength.
@@ -31,20 +31,21 @@ Review the system orchestrator (`src/trading/signals/savgol_cts/signal.py`). All
 
 Propose and test these fixes in order of complexity:
 
-### Option A: Enable Global Guards (Simplest)
-Remove the entry tag from the `bespoke_tags` list in `signal.py`.
-- **Pros:** Locks in gains on volume climaxes and resistance wicks automatically.
-- **Cons:** Might prematurely exit from slow-moving "choppy" winners.
+### Option A: Standardized Threshold Tuning (Simplest)
+Adjust `cts_sell_threshold` in `config.py` for the Universal Cross exit path.
+- **Pros:** Tightens the trailing stop for all trades globally.
+- **Cons:** Might increase "churn" and decrease Average PnL if too tight.
 
 ### Option B: Hard PnL Cap
-Add a fixed profit target (e.g., 10%) to the exit logic or configuration.
-- **Fix:** Update `check_exit` to trigger `ExitReason.PNL_CAP_HIT` if `pnl >= 10.0`.
-- **Validation:** Best for "mean-reversion" setups that tend to overshoot and then mean-revert rapidly.
+Add a fixed profit target (e.g., 10.0%) to the `UniversalCrossExitConfig`.
+- **Fix**: Update `exit_universal_cross` to trigger `ExitReason.PNL_CAP_HIT` if `pnl >= cfg.pnl_cap_pct`.
+- **Validation**: Best for setups that mean-revert rapidly after a peak.
 
 ### Option C: Fast Engine Exhaustion
-Implement a secondary, faster momentum engine check (e.g., FAS).
-- **Logic:** Once a trade is in profit (> 2.5%), monitor if the fast momentum (`fas`) collapses below a threshold (e.g., `-0.1`).
-- **Fix:** Exit if `pnl > 2.5 and fas < -0.1`.
+Implement a secondary, faster momentum engine check (e.g., FAS) in the exit logic.
+- **Logic**: Once a trade is in profit (> 2.5%), monitor if the fast momentum (`fas`) collapses below a threshold (e.g., `-0.1`).
+- **Fix**: Exit if `pnl > 2.5 and fas < -0.1`.
+
 
 ## 4. UI Parity Constraint (Mandatory)
 

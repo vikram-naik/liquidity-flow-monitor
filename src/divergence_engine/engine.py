@@ -293,6 +293,25 @@ class DivergenceEngine:
         oracle = OracleLabeler(window_length=31, polyorder=2, min_swing_pct=4.0)
         df = oracle.compute_labels(df)
 
+        # Generate signals and probabilities before caching so the UI doesn't have to compute them sequentially
+        from src.trading.signals import SignalFactory
+        _signal = SignalFactory.get_signal("savgol_cts")
+        df = _signal.tag_signals(df)
+
+        if all(col in df.columns for col in ["price_slope_z", "prt", "cts_slope"]):
+            psz_cross_up = (df["price_slope_z"] > 0) & (df["price_slope_z"].shift(1) < 0)
+            prt_cond = df["prt"] < 0
+            cts_cond = df["cts_slope"] > 0
+
+            cond_all = psz_cross_up & prt_cond & cts_cond
+            cond_psz_any = psz_cross_up & (prt_cond | cts_cond)
+
+            df["entry_signal_prob"] = np.select(
+                [cond_all, cond_psz_any],
+                [1.0, 0.0],
+                default=-1.0
+            )
+
         # --- Drop intermediate columns ---
         df = df.drop(columns=[c for c in _DROP_COLS if c in df.columns])
 

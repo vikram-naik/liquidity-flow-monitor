@@ -19,13 +19,19 @@ Whenever asked to debug a stock, analyze its indicators, or understand why an en
 
 ## 1.1 Surgical Scoring Analysis
 
-For paths with complex multi-factor scoring (like `PRT_SLOPE_ZERO_CROSS` or `CTS_ACCEL_CROSS`), use the specialized scoring debug scripts to see the exact gate validations and point additions/deductions:
+For the modern **Universal Cross** architecture, use the specialized debug script to see the gate validations and ML Guard score:
 
 ```bash
+./venv/bin/python scripts/debug_universal_scoring.py --symbol <SYMBOL> --date <YYYY-MM-DD>
+```
+
+For legacy paths (used in research), use the old path-specific scripts:
+```bash
+# LEGACY: Only for research paths
 ./venv/bin/python scripts/debug_<path_alias>_scoring.py --symbol <SYMBOL> --date <YYYY-MM-DD>
 ```
 
-*Available scripts: `debug_prt_scoring.py`, `debug_cts_accel_scoring.py`, `debug_fas_scoring.py`.*
+*Legacy scripts: `debug_prt_scoring.py`, `debug_cts_accel_scoring.py`, `debug_fas_scoring.py`.*
 
 ## 2. Core Indicators to Analyze
 

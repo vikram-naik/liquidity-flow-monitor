@@ -31,8 +31,8 @@ from src.trading.signals import (
 from src.trading.signals.savgol_cts import SavgolCTSEntryConfig, SavgolCTSExitConfig
 from src.trading.signals.base import BaseEntryConfig, BaseExitConfig
 from src.trading.signals.enums import ExitReason
+from src.database import DB_PATH
 
-DB_PATH = Path(__file__).resolve().parent.parent / "liquidity_monitor.db"
 OUTPUT_DIR = Path(__file__).resolve().parent.parent / "output"
 
 TRAIN_START = "2019-01-01"

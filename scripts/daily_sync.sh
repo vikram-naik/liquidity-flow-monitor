@@ -9,6 +9,8 @@ if [ -z "$VIRTUAL_ENV" ]; then
     if [ -f "venv/bin/activate" ]; then
         echo "Activating virtual environment at $PROJECT_ROOT/venv"
         source venv/bin/activate
+    elif [ -f "/.dockerenv" ] || { [ -f "/proc/1/cgroup" ] && grep -q "docker" /proc/1/cgroup; }; then
+        echo "Detected Docker/Container environment, skipping venv activation."
     else
         echo "Error: Virtual environment not found at $PROJECT_ROOT/venv. Please set it up."
         exit 1

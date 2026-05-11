@@ -1,4 +1,4 @@
-FROM python:3.11-slim
+FROM python:3.12-slim
 
 # Set working directory
 WORKDIR /app
@@ -7,8 +7,9 @@ WORKDIR /app
 COPY requirements.txt .
 # Note: We install all requirements, but Selenium won't be used by API/Dashboard.
 # System dependencies for Selenium are removed.
-RUN pip install --no-cache-dir -r requirements.txt
-
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt && \
+    rm -rf /usr/local/lib/python3.12/site-packages/nvidia* 
 # Copy source code
 COPY . .
 

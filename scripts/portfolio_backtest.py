@@ -35,8 +35,8 @@ from src.trading.signals.savgol_cts import SavgolCTSEntryConfig, SavgolCTSExitCo
 from src.trading.signals.base import BaseEntryConfig, BaseExitConfig
 from src.trading.signals.enums import ExitReason
 from src.trading.charges import ZerodhaDeliveryCharges
+from src.database import DB_PATH
 
-DB_PATH = Path(__file__).resolve().parent.parent / "liquidity_monitor.db"
 OUTPUT_DIR = Path(__file__).resolve().parent.parent / "output"
 
 SEP = "=" * 72

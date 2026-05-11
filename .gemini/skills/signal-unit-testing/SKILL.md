@@ -41,19 +41,19 @@ row = {
 Use `pytest` to verify that a specific combination of indicators triggers or rejects a signal.
 
 ```python
-from src.trading.signals.savgol_cts.entries.my_path import check_my_path
-from src.trading.signals.savgol_cts.config import MyPathEntryConfig
+from src.trading.signals.savgol_cts.entries.universal_cross import entry_universal_cross
+from src.trading.signals.savgol_cts.config import SavgolCTSEntryConfig
 
-def test_my_path_entry_success():
-    cfg = MyPathEntryConfig(enabled=True, min_score=10.0)
+def test_universal_cross_entry_success():
+    cfg = SavgolCTSEntryConfig()
     row = { ... } # Setup winning conditions
     prev = { ... }
     records = [prev, row] # Simplified history
     
-    passed, intensity, meta = check_my_path(row, prev, cfg, records, idx=1)
+    passed, intensity, meta = entry_universal_cross(row, prev, cfg, records, idx=1)
     
     assert passed is True
-    assert intensity >= 90
+    assert intensity >= 85
     assert "reason" in meta
 ```
 
@@ -64,20 +64,20 @@ Exits require a `Trade` object and often a `state_val` (bitfield) for multi-phas
 ```python
 from src.trading.signals.base import Trade
 from src.trading.signals.enums import ExitReason
-from src.trading.signals.savgol_cts.exits.my_path import exit_my_path
+from src.trading.signals.savgol_cts.exits.universal_cross import exit_universal_cross
 from src.trading.signals.savgol_cts.state import SavgolCTSExitState
 
-def test_my_path_exit_trigger():
-    trade = Trade(symbol="TEST", entry_price=100.0, entry_date="2024-01-01", ...)
-    cfg = MyPathExitConfig(hard_stop_pct=-8.0)
+def test_universal_cross_exit_trigger():
+    trade = Trade(symbol="TEST", entry_price=100.0, entry_date="2024-01-01")
+    cfg = SavgolCTSExitConfig().universal_cross
     
     # Test state transition
-    row = { "close": 95.0, ... }
-    reason, state_val = exit_my_path(row, prev, trade, peak_close=100.0, bars_held=5, state_val=0, cfg=cfg)
+    row = { "close": 95.0, "cts": -0.99, "cts_sell_threshold": -0.90 }
+    reason, state_val = exit_universal_cross(row, prev, trade, peak_close=100.0, bars_held=5, state_val=0, cfg=cfg)
     
-    assert reason == ExitReason.INDICATOR_EXIT # Or specific reason
+    assert reason == ExitReason.ST_CROSS
     # Verify bitfield state if applicable
-    assert SavgolCTSExitState.from_int(state_val).cts_rose is True
+    st = SavgolCTSExitState.from_int(state_val)
 ```
 
 ## 5. Failure Shields & Regression Tests

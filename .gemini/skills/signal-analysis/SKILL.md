@@ -66,9 +66,13 @@ Consistently report these exact parameters for the **TEST period**:
 
 1. **Identify Edge Case:** Pick a specific symbol and date that represents anomalous behavior (e.g., a massive loss or an incorrectly rejected trade) from the dump or study.
 2. **Create/Run Debug Harness:** 
-   - Create a minimal script (e.g., `scripts/debug_<feature>.py`) or adapt `scripts/debug_signal.py`.
+   - For the **Universal Cross** architecture, use the specialized debug script:
+     ```bash
+     ./venv/bin/python scripts/debug_universal_scoring.py --symbol <SYMBOL> --date <YYYY-MM-DD>
+     ```
+   - For legacy or specialized studies, create a minimal script (e.g., `scripts/debug_<feature>.py`) or adapt `scripts/debug_signal.py`.
    - Initialize the `DivergenceEngine` for the target symbol and extract the exact `row`, `prev_row`, and `records` for the signal date.
-3. **Enable Telemetry:** Instantiate the specific entry/exit configuration and forcefully enable `telemetry_enabled = True` (or equivalent verbose logging).
+3. **Enable Telemetry:** Instantiate the specific entry/exit configuration and forcefully enable `telemetry_enabled = True` (or equivalent verbose logging). For `UniversalCross`, this is handled automatically by the debug script.
 4. **Execute & Inspect:** Pass the data directly into the isolated `check_entry` or `check_exit` function to view the gate-by-gate pass/fail console printout and final intensity score.
 
 ## Phase 3: Systemic Regression Validation
