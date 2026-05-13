@@ -210,7 +210,7 @@ def run_period(symbols: list[str], start: str, end: str,
     for sym in symbols:
         try:
             # Always run the engine with full history to ensure indicators are fully warmed up
-            engine = DivergenceEngine(sym, start_date=None, end_date=None)
+            engine = DivergenceEngine(sym, start_date=None, end_date=None, signal_lookback=None)
             result = engine.run()
             
             # The simulator iterates the full history but only returns trades

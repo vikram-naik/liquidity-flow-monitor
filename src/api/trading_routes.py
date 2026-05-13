@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import os
 import threading
+import sqlite3
 from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, Query
@@ -13,11 +14,27 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from src.trading.repository import TradingRepository
+from src.database import DB_PATH
 
 router = APIRouter()
 repo = TradingRepository()
 
 _WEB_DIR = os.path.join(os.path.dirname(__file__), '..', 'web')
+
+@router.get("/de/screener")
+def screener_page():
+    html_path = os.path.join(_WEB_DIR, "screener.html")
+    if not os.path.isfile(html_path):
+        raise HTTPException(status_code=404, detail="Screener page not found")
+    return FileResponse(html_path, media_type="text/html")
+
+@router.get("/de/api/screener")
+def get_screener_signals():
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute("SELECT * FROM screener_signals ORDER BY symbol").fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
 
 
 # ── Models ───────────────────────────────────────────────────────────────────

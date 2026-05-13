@@ -46,8 +46,12 @@ echo "[5/6] Syncing Index Watchlists..."
 python scripts/sync_index_watchlists.py
 
 echo ""
-echo "[6/6] Validating Data Integrity & Reconciliation..."
+echo "[6/7] Validating Data Integrity & Reconciliation..."
 python scripts/validate_data_integrity.py --watchlist "NIFTY 50" --auto-fix --auto-patch
+
+echo ""
+echo "[7/7] Running Global Market Screener..."
+python scripts/daily_screener.py
 
 echo ""
 echo "========================================"

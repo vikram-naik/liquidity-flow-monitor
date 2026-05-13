@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NIFTY 500 Screener | Liquidity Flow Monitor</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/de/static/css/trades.css">
+  <script src="https://cdn.jsdelivr.net/npm/ag-grid-community@31.0.3/dist/ag-grid-community.min.js"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ag-grid-community@31.0.3/styles/ag-grid.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ag-grid-community@31.0.3/styles/ag-theme-alpine.css">
+</head>
+<body>
+  <div class="hdr">
+    <div>
+      <h1>NIFTY 500 Market Screener</h1>
+      <span class="sub">Daily execution of DivergenceEngine across all NIFTY 500 symbols</span>
+    </div>
+    <div style="display:flex;gap:12px;align-items:center">
+      <a href="/de/dashboard" class="back-link">Divergence Engine</a>
+      <a href="/de/trades" class="back-link">Trading Dashboard</a>
+    </div>
+  </div>
+
+  <div class="tab-content active" style="padding: 20px; display: flex; flex-direction: column; height: calc(100vh - 51px);">
+    <div class="cards" id="screener-summary" style="margin-bottom: 20px;">
+      <!-- Populated via JS -->
+    </div>
+
+    <div id="screener-grid" class="ag-theme-alpine-dark" style="flex: 1; width: 100%;"></div>
+  </div>
+
+  <script src="/de/static/js/screener.js"></script>
+</body>
+</html>

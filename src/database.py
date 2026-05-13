@@ -347,6 +347,18 @@ def init_db():
     );
     """)
 
+    # Table: screener_signals (Global Market Screener)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS screener_signals (
+        symbol TEXT PRIMARY KEY,
+        date TEXT NOT NULL,
+        price REAL,
+        signal_type TEXT NOT NULL,
+        pnl REAL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    """)
+
     # Seed trading config defaults
     cursor.executemany(
         "INSERT OR IGNORE INTO trading_config (key, value) VALUES (?, ?)",
@@ -365,6 +377,12 @@ def init_db():
 
     # Migrations — add columns that may not exist in older DBs
     _migrate_add_column(cursor, "trading_orders", "price_rationale", "TEXT")
+    
+    _migrate_add_column(cursor, "screener_signals", "entry_date", "TEXT")
+    _migrate_add_column(cursor, "screener_signals", "entry_price", "REAL")
+    _migrate_add_column(cursor, "screener_signals", "bars_held", "INTEGER")
+    _migrate_add_column(cursor, "screener_signals", "mfe_pct", "REAL")
+    _migrate_add_column(cursor, "screener_signals", "mae_pct", "REAL")
 
     # Trading indices
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_trading_positions_status ON trading_positions (status);")

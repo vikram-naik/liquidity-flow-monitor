@@ -11,6 +11,14 @@ The LFM system operates on an **End-of-Day Lag (EOD-Lag)** model. All signal res
 
 **Note**: Studies using "Bar i" close for entry will drastically overestimate performance by capturing same-day momentum that is unavailable in live execution.
 
+## Global Market Screener
+The system maintains a decoupled Screener module (`scripts/daily_screener.py`) specifically scoped to the `NIFTY 500` watchlist.
+- Executes daily as the final step in `scripts/daily_sync.sh`.
+- Drops previous state from the `screener_signals` database table and recalculates current exact state (`entry`, `in-trade`, `exit`) for all 500 symbols using the `SavgolCTS` logic.
+- **Optimization:** The screener utilizes `ProcessPoolExecutor` to parallelize `DivergenceEngine` calculations across all CPU cores and bounds the signal tagging to the last 180 bars (`signal_lookback=180`), reducing execution time to under 1 second when fully cached.
+- **Trade Metrics:** Calculates and persists deep trade metrics including `entry_date`, `entry_price`, `bars_held`, `mfe_pct` (Max Favorable Excursion), and `mae_pct` (Max Adverse Excursion).
+- "Post-exit" symbols are automatically omitted from the fresh database write on `T+1`, ensuring only actionable or actively managed trades are surfaced to the UI (`/de/screener`).
+
 ## Package Structure
 
 ```

@@ -43,7 +43,10 @@ NSE_INDICES = {
 }
 
 
+from fastapi.middleware.gzip import GZipMiddleware
+
 app = FastAPI(title="LFM Divergence Engine", docs_url="/de/api/docs", openapi_url="/de/api/openapi.json")
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
@@ -121,6 +124,7 @@ def divergence_engine_data(
     end_date: Optional[str] = Query(None, description="ISO date YYYY-MM-DD"),
     agg_mode: str = Query("daily", description="Aggregation mode: daily, weekly, monthly"),
     focus_date: Optional[str] = Query(None, description="ISO date YYYY-MM-DD"),
+    full_history: bool = Query(False, description="Recalculate signals for entire history"),
 ):
     """Run the divergence engine and return JSON ledger + state summary."""
     if agg_mode not in ("daily", "weekly", "monthly"):
@@ -134,6 +138,7 @@ def divergence_engine_data(
             start_date=start_date,
             end_date=end_date,
             agg_mode=agg_mode,
+            signal_lookback=None if full_history else 252,
         )
         result = engine.run()
 

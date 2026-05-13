@@ -183,6 +183,7 @@ class DivergenceEngine:
         start_date: str | None = None,
         end_date: str | None = None,
         agg_mode: str = "daily",
+        signal_lookback: int | None = 252,
     ) -> None:
         if agg_mode not in VALID_MODES:
             raise ValueError(f"Invalid agg_mode '{agg_mode}'. Must be one of {sorted(VALID_MODES)}.")
@@ -191,6 +192,7 @@ class DivergenceEngine:
         self._start_date = start_date
         self._end_date = end_date
         self._agg_mode = agg_mode
+        self._signal_lookback = signal_lookback
 
     # ------------------------------------------------------------------
     # Public API
@@ -229,7 +231,8 @@ class DivergenceEngine:
                 conn.close()
 
             ca_ver = get_ca_version_string()
-            cache_key = f"de:result:{self.ticker}:{self._start_date or 'all'}:{self._end_date or 'all'}:{self._agg_mode}:{last_date}:{ca_ver}"
+            lookback_str = str(self._signal_lookback) if self._signal_lookback is not None else "full"
+            cache_key = f"de:result:{self.ticker}:{self._start_date or 'all'}:{self._end_date or 'all'}:{self._agg_mode}:{lookback_str}:{last_date}:{ca_ver}"
             cached_df = cache.get(cache_key)
             if cached_df is not None:
                 logger.info("Engine cache HIT for %s", cache_key)
@@ -296,7 +299,23 @@ class DivergenceEngine:
         # Generate signals and probabilities before caching so the UI doesn't have to compute them sequentially
         from src.trading.signals import SignalFactory
         _signal = SignalFactory.get_signal("savgol_cts")
-        df = _signal.tag_signals(df)
+        
+        if self._signal_lookback is not None and len(df) > self._signal_lookback:
+            slice_df = df.tail(self._signal_lookback).copy()
+            slice_df = _signal.tag_signals(slice_df)
+            
+            for col in ["entry_signal", "soft_filters_passed", "rdv_pass", "mcs_pass", "cwc_pass", "grad_pass", "exit_signal"]:
+                df[col] = 0
+            for col in ["entry_reason", "entry_tag", "exit_reason"]:
+                df[col] = None
+            df["cooldown"] = False
+            
+            tail_idx = slice_df.index
+            cols_to_update = ["entry_signal", "entry_reason", "entry_tag", "soft_filters_passed", "rdv_pass", "mcs_pass", "cwc_pass", "grad_pass", "cooldown", "exit_signal", "exit_reason"]
+            for col in cols_to_update:
+                df.loc[tail_idx, col] = slice_df[col]
+        else:
+            df = _signal.tag_signals(df)
 
         if all(col in df.columns for col in ["price_slope_z", "prt", "cts_slope"]):
             psz_cross_up = (df["price_slope_z"] > 0) & (df["price_slope_z"].shift(1) < 0)

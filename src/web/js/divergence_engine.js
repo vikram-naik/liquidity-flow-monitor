@@ -93,6 +93,13 @@
         });
     });
 
+    var cbFullHistory = document.getElementById("cbFullHistory");
+    if (cbFullHistory) {
+        cbFullHistory.addEventListener("change", function () {
+            loadSymbol(symbol);
+        });
+    }
+
     function loadSymbol(targetSymbol) {
         if (!targetSymbol) return;
 
@@ -111,6 +118,7 @@
             apiUrl += "&end_date=" + params.get("end_date");
         }
         if (focusDate) apiUrl += "&focus_date=" + focusDate;
+        if (cbFullHistory && cbFullHistory.checked) apiUrl += "&full_history=true";
 
         loadingEl.style.display = "flex";
         loadingEl.innerHTML = "Loading Engine Data...";
