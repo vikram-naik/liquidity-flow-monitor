@@ -2,6 +2,7 @@ import redis
 import pickle
 import os
 import logging
+import zlib
 from typing import Any, Optional
 from .interface import CacheInterface
 
@@ -37,7 +38,12 @@ class RedisCache(CacheInterface):
         try:
             data = self.client.get(key)
             if data:
-                return pickle.loads(data)
+                try:
+                    decompressed_data = zlib.decompress(data)
+                except zlib.error:
+                    # Fallback for old uncompressed data
+                    decompressed_data = data
+                return pickle.loads(decompressed_data)
         except Exception as e:
             logger.error(f"Error getting key {key} from Redis: {e}")
         return None
@@ -48,9 +54,10 @@ class RedisCache(CacheInterface):
         
         try:
             data = pickle.dumps(value)
+            compressed_data = zlib.compress(data)
             if ttl > 0:
-                return self.client.setex(key, ttl, data)
-            return self.client.set(key, data)
+                return self.client.setex(key, ttl, compressed_data)
+            return self.client.set(key, compressed_data)
         except Exception as e:
             logger.error(f"Error setting key {key} in Redis: {e}")
             return False

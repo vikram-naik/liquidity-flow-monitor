@@ -43,7 +43,7 @@
             var conf = JSON.parse(localStorage.getItem("de_panel_config"));
             if (Array.isArray(conf) && conf.length > 0) return conf;
         } catch (e) { }
-        return ["cts", "cts_accel", "cwc", "psz", "fas"]; // updated defaults
+        return ["cts"]; // Only CTS by default
     }
 
     var params = new URLSearchParams(window.location.search);
