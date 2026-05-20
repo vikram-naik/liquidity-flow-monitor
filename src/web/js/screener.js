@@ -1,3 +1,83 @@
+class SelectFilter {
+  init(params) {
+    this.params = params;
+    this.filterValues = [];
+    this.gui = document.createElement('div');
+    this.gui.style.padding = '12px';
+    this.gui.style.background = '#0d1117';
+    this.gui.style.minWidth = '150px';
+    
+    const options = params.options || (params.filterParams && params.filterParams.options) || [];
+    
+    let html = '<div style="display:flex; flex-direction:column; gap:8px;">';
+    options.forEach(opt => {
+        html += `
+          <label style="display:flex; align-items:center; gap:8px; color:#c9d1d9; font-size:13px; cursor:pointer; user-select:none;">
+            <input type="checkbox" value="${opt.value}" class="ag-filter-checkbox" style="cursor:pointer; width:14px; height:14px; accent-color:#58a6ff;" />
+            ${opt.label}
+          </label>
+        `;
+    });
+    html += '</div>';
+
+    this.gui.innerHTML = html;
+    
+    this.checkboxes = this.gui.querySelectorAll('input[type="checkbox"]');
+    this.checkboxes.forEach(cb => {
+      cb.addEventListener('change', () => {
+        this.filterValues = Array.from(this.checkboxes)
+          .filter(c => c.checked)
+          .map(c => c.value);
+        this.params.filterChangedCallback();
+      });
+    });
+  }
+
+  getGui() { return this.gui; }
+  
+  isFilterActive() { 
+    return this.filterValues.length > 0; 
+  }
+  
+  doesFilterPass(params) {
+    try {
+      let value;
+      if (typeof this.params.getValue === 'function') {
+         value = this.params.getValue(params.node);
+      } else if (typeof this.params.valueGetter === 'function') {
+         value = this.params.valueGetter(params.node);
+      } else {
+         value = params.node.data[this.params.colDef.field];
+      }
+      
+      if (this.filterValues.length === 0) return true;
+      if (value == null) return false;
+      
+      const cellValue = value.toString().toLowerCase();
+      
+      // OR logic: match if the cellValue includes ANY of the selected filter values
+      return this.filterValues.some(fv => cellValue.includes(fv.toLowerCase()));
+    } catch (e) {
+      console.error("Filter Error in doesFilterPass:", e);
+      return false;
+    }
+  }
+
+  getModel() {
+    return this.isFilterActive() ? { values: this.filterValues } : null;
+  }
+
+  setModel(model) {
+    this.filterValues = model && model.values ? model.values : [];
+    this.checkboxes.forEach(cb => {
+      cb.checked = this.filterValues.includes(cb.value);
+    });
+  }
+
+  afterGuiAttached() {
+  }
+}
+
 const columnDefs = [
   { 
       field: 'symbol', 
@@ -15,13 +95,54 @@ const columnDefs = [
   { 
       field: 'signal_type', 
       headerName: 'State', 
-      width: 150,
+      width: 120,
+      filter: SelectFilter,
+      filterParams: {
+          options: [
+              { label: 'ENTRY', value: 'entry' },
+              { label: 'IN-TRADE', value: 'in-trade' },
+              { label: 'EXIT', value: 'exit' },
+              { label: 'TECH-ONLY', value: 'none' }
+          ]
+      },
       cellRenderer: params => {
           const val = params.value;
-          if (val === 'entry') return '<span class="signal-entry">ENTRY</span>';
-          if (val === 'exit') return '<span class="signal-exit">EXIT</span>';
-          if (val === 'in-trade') return '<span class="signal-in-trade">IN-TRADE</span>';
-          return val;
+          if (val === 'entry') return '<span class="signal-entry" style="color:#3fb950; font-weight:bold">ENTRY</span>';
+          if (val === 'exit') return '<span class="signal-exit" style="color:#f85149; font-weight:bold">EXIT</span>';
+          if (val === 'in-trade') return '<span class="signal-in-trade" style="color:#d29922; font-weight:bold">IN-TRADE</span>';
+          return val === 'none' ? '-' : val;
+      }
+  },
+  { 
+      colId: 'tech_signals',
+      headerName: 'Tech Signals',
+      width: 250,
+      filter: SelectFilter,
+      filterParams: {
+          options: [
+              { label: 'C-UP', value: 'C-UP' },
+              { label: 'C-DOWN', value: 'C-DOWN' },
+              { label: 'MAX-CTS', value: 'MAX-CTS' },
+              { label: 'MIN-CTS', value: 'MIN-CTS' }
+          ]
+      },
+      valueGetter: p => {
+          let res = [];
+          if (p.data.c_up) res.push('C-UP');
+          if (p.data.c_down) res.push('C-DOWN');
+          if (p.data.max_cts) res.push('MAX-CTS');
+          if (p.data.min_cts) res.push('MIN-CTS');
+          return res.join(', ');
+      },
+      cellRenderer: params => {
+          const data = params.data;
+          let html = '<div style="display:flex; gap:4px; align-items:center; height:100%">';
+          if (data.c_up) html += '<span style="background:#238636; color:#fff; padding:2px 6px; border-radius:4px; font-size:10px; font-weight:bold">C-UP</span>';
+          if (data.c_down) html += '<span style="background:#da3633; color:#fff; padding:2px 6px; border-radius:4px; font-size:10px; font-weight:bold">C-DOWN</span>';
+          if (data.max_cts) html += '<span style="background:#0d419d; color:#fff; padding:2px 6px; border-radius:4px; font-size:10px; font-weight:bold">MAX-CTS</span>';
+          if (data.min_cts) html += '<span style="background:#30363d; color:#8b949e; padding:2px 6px; border-radius:4px; font-size:10px; font-weight:bold">MIN-CTS</span>';
+          html += '</div>';
+          return html;
       }
   },
   { field: 'entry_date', headerName: 'Entry Date', width: 120 },
@@ -77,17 +198,20 @@ const gridOptions = {
 document.addEventListener('DOMContentLoaded', () => {
   const gridDiv = document.querySelector('#screener-grid');
   const gridApi = agGrid.createGrid(gridDiv, gridOptions);
+  window.gridApi = gridApi;
   let allData = [];
 
   window.applyFilters = function() {
       const showEntries = document.getElementById('chk-entries')?.checked;
       const showInTrade = document.getElementById('chk-intrade')?.checked;
       const showExits = document.getElementById('chk-exits')?.checked;
+      const showTech = document.getElementById('chk-tech')?.checked;
 
       const filteredData = allData.filter(d => {
           if (d.signal_type === 'entry' && showEntries) return true;
           if (d.signal_type === 'in-trade' && showInTrade) return true;
           if (d.signal_type === 'exit' && showExits) return true;
+          if (d.signal_type === 'none' && showTech) return true;
           return false;
       });
 
@@ -100,11 +224,12 @@ document.addEventListener('DOMContentLoaded', () => {
           allData = data;
           gridApi.setGridOption('rowData', data);
           
-          let entries = 0, exits = 0, inTrade = 0;
+          let entries = 0, exits = 0, inTrade = 0, techOnly = 0;
           data.forEach(d => {
               if (d.signal_type === 'entry') entries++;
               else if (d.signal_type === 'exit') exits++;
               else if (d.signal_type === 'in-trade') inTrade++;
+              else if (d.signal_type === 'none') techOnly++;
           });
           
           const summaryDiv = document.getElementById('screener-summary');
@@ -134,6 +259,13 @@ document.addEventListener('DOMContentLoaded', () => {
                         <input type="checkbox" id="chk-exits" checked onchange="window.applyFilters()">
                     </div>
                     <div class="value" style="color:#f85149">${exits}</div>
+                  </label>
+                  <label class="card" style="border-color:#58a6ff; cursor:pointer; user-select:none; display:flex; flex-direction:column;">
+                    <div class="label" style="display:flex; justify-content:space-between; align-items:center;">
+                        <span>Tech Only</span>
+                        <input type="checkbox" id="chk-tech" checked onchange="window.applyFilters()">
+                    </div>
+                    <div class="value" style="color:#58a6ff">${techOnly}</div>
                   </label>
               `;
           }

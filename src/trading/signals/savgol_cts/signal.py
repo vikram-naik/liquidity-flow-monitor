@@ -54,8 +54,20 @@ class SavgolCTSSignal(SignalInterface):
         if getattr(cfg, "universal_cross", None) and cfg.universal_cross.enabled:
             passed, intensity, meta = entry_universal_cross(row, prev_row, cfg, records, idx)
             if passed:
+                # Augment reason for UI visibility
+                raw = meta.get("raw_ml_score", 0)
+                thr = meta.get("ml_guard_threshold", 0)
+                meta["reason"] = f"{meta.get('reason')} | RawScore: {raw:.4f} | Threshold: {thr:.2f}"
                 return True, intensity, meta
-            return False, 0, {"reason": f"UniversalCross: {meta.get('reason', 'Rejected')}"}
+            
+            # Augment rejection reason for UI visibility
+            raw = meta.get("raw_ml_score")
+            thr = meta.get("ml_guard_threshold")
+            reason = meta.get("reason", "Rejected")
+            if raw is not None:
+                reason = f"{reason} | Original ML Score: {raw:.4f} | Threshold: {thr:.2f}"
+            
+            return False, 0, {"reason": f"UniversalCross: {reason}"}
 
         return False, 0, {"reason": "Universal path disabled"}
 
@@ -104,3 +116,12 @@ class SavgolCTSSignal(SignalInterface):
             return str(final_reason), st_val
 
         return None, st_val
+
+    def get_default_entry_config(self) -> BaseEntryConfig:
+        from src.trading.signals.savgol_cts.config import SavgolCTSEntryConfig
+        return SavgolCTSEntryConfig()
+
+    def get_default_exit_config(self) -> BaseExitConfig:
+        from src.trading.signals.savgol_cts.config import SavgolCTSExitConfig
+        return SavgolCTSExitConfig()
+

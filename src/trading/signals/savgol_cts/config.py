@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 
 from src.trading.signals.base import BaseEntryConfig, BaseExitConfig
 from src.trading.signals.enums import ExitReason
+from src.database import get_user_setting
 
 
 # ---------------------------------------------------------------------------
@@ -20,7 +21,10 @@ from src.trading.signals.enums import ExitReason
 class UniversalCrossEntryConfig:
     """Universal ML Master Path — Catches any structural inflection and relies purely on ML Guard."""
     enabled: bool = True
-    min_ml_score: float = 85.0
+    min_ml_score: float = field(default_factory=lambda: float(get_user_setting("ml_guard_threshold", "85.0")))
+    gap_down_lookback: int = 10  # Lookback window for recent gap downs (bars)
+
+
 
 
 # ---------------------------------------------------------------------------
@@ -49,8 +53,20 @@ class SavgolCTSEntryConfig(BaseEntryConfig):
 class UniversalCrossExitConfig:
     """Universal Cross exit: Pure CTS Trailing Logic."""
     enabled: bool = True
-    hard_stop_enabled: bool = True
+    hard_stop_enabled: bool = False
     hard_stop_pct: float = 8.0
+    gap_down_enabled: bool = False
+    gap_down_atr_mult: float = 0.30
+    cwvap_lost_enabled: bool = False
+    negative_pnl_timeout_enabled: bool = False
+    negative_pnl_timeout_days: int = 15
+    pnl_cap_enabled: bool = False
+    pnl_cap_threshold: float = 8.0
+    chandelier_stop_enabled: bool = True
+    chandelier_stop_k: float = 3.5
+    chandelier_stop_activation_pct: float = 5.0
+    panic_exit_suppression_enabled: bool = True
+    panic_exit_rdv_threshold: float = 2.0
 
 
 @dataclass

@@ -53,6 +53,10 @@ class ExitReason(str, Enum):
     INSIDE_BAR_REJECTION = "Inside bar on extreme volume at CWVAP"
     CWVAP_REJECTION = "CWVAP rejection limit reached"
     STRUCTURAL_CLIMAX = "Structural climax (Range exhaustion + Overextension)"
+    GAP_DOWN_LOSS = "Gap down while in loss"
+    NEGATIVE_PNL_TIMEOUT = "Negative PnL timeout exit"
+    PRT_ST_CROSS = "PRT crossed PRT_ST down"
+    ATR_CHANDELIER = "ATR Chandelier Stop Hit"
     
     # Universal / Generic
     END_OF_DATA = "End of Data (Open Trade)"

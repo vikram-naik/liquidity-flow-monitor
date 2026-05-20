@@ -27,6 +27,33 @@ def get_ca_version_string() -> str:
         conn.close()
 
 
+def get_user_setting(key: str, default: str = None) -> str:
+    """Fetch a value from user_settings table by key."""
+    conn = get_db_connection()
+    try:
+        row = conn.execute("SELECT value FROM user_settings WHERE key = ?", (key,)).fetchone()
+        if row:
+            return row[0]
+        return default
+    except Exception:
+        return default
+    finally:
+        conn.close()
+
+
+def set_user_setting(key: str, value: str) -> None:
+    """Insert or update a key-value pair in user_settings table."""
+    conn = get_db_connection()
+    try:
+        conn.execute(
+            "INSERT OR REPLACE INTO user_settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)",
+            (key, str(value))
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def _migrate_add_column(cursor, table: str, column: str, col_type: str) -> None:
     """Add a column to an existing table if it doesn't exist (safe migration)."""
     cols = [row[1] for row in cursor.execute(f"PRAGMA table_info({table})").fetchall()]
@@ -232,11 +259,6 @@ def init_db():
         atr_at_entry REAL,
         quantity INTEGER,
         -- Signal context
-        soft_filters_passed INTEGER,
-        rdv_pass INTEGER DEFAULT 0,
-        mcs_pass INTEGER DEFAULT 0,
-        cwc_pass INTEGER DEFAULT 0,
-        grad_pass INTEGER DEFAULT 0,
         regime_at_entry TEXT,
         psz_at_entry REAL,
         signal_strategy TEXT,
@@ -383,6 +405,10 @@ def init_db():
     _migrate_add_column(cursor, "screener_signals", "bars_held", "INTEGER")
     _migrate_add_column(cursor, "screener_signals", "mfe_pct", "REAL")
     _migrate_add_column(cursor, "screener_signals", "mae_pct", "REAL")
+    _migrate_add_column(cursor, "screener_signals", "c_up", "INTEGER")
+    _migrate_add_column(cursor, "screener_signals", "c_down", "INTEGER")
+    _migrate_add_column(cursor, "screener_signals", "max_cts", "INTEGER")
+    _migrate_add_column(cursor, "screener_signals", "min_cts", "INTEGER")
 
     # Trading indices
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_trading_positions_status ON trading_positions (status);")

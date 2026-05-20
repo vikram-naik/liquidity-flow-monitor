@@ -28,11 +28,13 @@ from scripts.walk_forward import get_watchlist_symbols, today_str
 from src.trading.signals import SignalFactory, Trade
 from src.trading.signals.savgol_cts.config import SavgolCTSExitConfig
 from src.trading.signals.enums import EntryTag, ExitReason
+from src.trading.signals.savgol_cts.entries.utils import evaluate_spearman_trend, is_flattish_line_adaptive
 
 EXCLUDE_COLS = [
     "date", "symbol", "regime", "gradient_shape", 
     "oracle_trough", "oracle_peak", "oracle_smooth",
-    "entry_signal", "entry_reason", "exit_signal", "exit_reason", "cooldown"
+    "entry_signal", "entry_reason", "exit_signal", "exit_reason", "cooldown",
+    "regime", "typical_price", "prev_low" # Explicitly exclude regime and temp cols
 ]
 
 class VirtualTrade:
@@ -56,11 +58,14 @@ class VirtualTrade:
 def main():
     parser = argparse.ArgumentParser(description="Dense feature extraction for Universal ML Model.")
     parser.add_argument("--watchlist", type=str, default="NIFTY 50", help="Watchlist to process.")
-    parser.add_argument("--threshold", type=float, default=4.0, help="PnL threshold for Good Trade (1). Default: 4.0%")
+    parser.add_argument("--exclude-cols", type=str, default="", help="Comma separated list of extra columns to exclude")
     args = parser.parse_args()
 
+    if args.exclude_cols:
+        extra = [c.strip() for c in args.exclude_cols.split(",") if c.strip()]
+        EXCLUDE_COLS.extend(extra)
+
     watchlist = args.watchlist
-    threshold = args.threshold
     print(f"Fetching symbols for {watchlist}...")
     symbols = get_watchlist_symbols(watchlist)
     
@@ -75,7 +80,7 @@ def main():
 
     all_features = []
     
-    print(f"Running dense extraction (Threshold: {threshold}%) capturing overlapping crosses...")
+    print(f"Running dense extraction capturing overlapping crosses...")
 
     for sym in symbols:
         try:
@@ -86,6 +91,54 @@ def main():
             if df is None or df.empty:
                 continue
                 
+            # --- Calculate OHLC Geometric Features ---
+            # 1. Typical Price Spearman
+            df["typical_price"] = (df["high"] + df["low"] + df["close"]) / 3.0
+            df["typical_price_spearman_5"] = df["typical_price"].rolling(window=5).apply(
+                lambda x: evaluate_spearman_trend(x.tolist()), raw=False
+            )
+            
+            # 2. Geometric Ratios
+            h_l = (df["high"] - df["low"]).replace(0, np.nan)
+            df["ibs"] = (df["close"] - df["low"]) / h_l
+            df["wick_ratio"] = (df["high"] - np.maximum(df["open"], df["close"])) / h_l
+            
+            # 3. Close to Prev Low (using ATR normalization)
+            df["prev_low"] = df["low"].shift(1)
+            atr = df.get("atr_20", pd.Series(np.nan, index=df.index)).replace(0, np.nan)
+            df["close_to_prev_low"] = (df["close"] - df["prev_low"]) / atr
+            
+            # 4. Multi-Bar Trajectories & Inflections
+            if "psz_v" in df.columns:
+                df["psz_v_rising_2"] = (df["psz_v"] > df["psz_v"].shift(1)).astype(int)
+                df["psz_v_rising_3"] = ((df["psz_v"] > df["psz_v"].shift(1)) & (df["psz_v"].shift(1) > df["psz_v"].shift(2))).astype(int)
+            
+            if "cts_accel" in df.columns:
+                df["cts_accel_rising_2"] = (df["cts_accel"] > df["cts_accel"].shift(1)).astype(int)
+                df["cts_accel_rising_3"] = ((df["cts_accel"] > df["cts_accel"].shift(1)) & (df["cts_accel"].shift(1) > df["cts_accel"].shift(2))).astype(int)
+                
+            if "cts_accel" in df.columns and "cts_accel_threshold" in df.columns:
+                df["cts_accel_above_threshold"] = (df["cts_accel"] > df["cts_accel_threshold"]).astype(int)
+
+            if "cts_accel" in df.columns:
+                def check_flat(w):
+                    if len(w) < 10: return 0
+                    res = is_flattish_line_adaptive(w[-3], w[-2], w[-1], w, sensitivity=0.05)
+                    return 1 if res["is_valid"] else 0
+                df["is_cts_accel_flat"] = df["cts_accel"].rolling(window=10).apply(check_flat, raw=True).fillna(0).astype(int)
+
+            if "fas" in df.columns:
+                df["fas_negative"] = (df["fas"] < 0).astype(int)
+                def check_fas_flat(w):
+                    if len(w) < 10: return 0
+                    res = is_flattish_line_adaptive(w[-3], w[-2], w[-1], w, sensitivity=0.05)
+                    return 1 if res["is_valid"] else 0
+                df["fas_is_flat"] = df["fas"].rolling(window=10).apply(check_fas_flat, raw=True).fillna(0).astype(int)
+
+            if "cts" in df.columns:
+                df["cts_negative"] = (df["cts"] < 0).astype(int)
+            # -----------------------------------------
+            
             records = df.to_dict("records")
             n = len(records)
             cwvap_values = []
@@ -115,10 +168,11 @@ def main():
                     bars_held = i - vt.entry_idx
                     mfe = max(vt.mfe_pct, (close / vt.entry_price - 1) * 100)
                     mae_val = (close / vt.entry_price - 1) * 100
-                    mae = min(-vt.mae_pct, mae_val)
+                    
                     vt.mfe_pct = mfe
-                    if -mae > vt.mae_pct:
-                        vt.mae_pct = -mae
+                    # Update MAE (stored as positive distance from entry)
+                    if mae_val < 0:
+                        vt.mae_pct = max(vt.mae_pct, abs(mae_val))
 
                     # We must mock a standard Trade object for the signal logic to consume
                     mock_trade = Trade(
@@ -127,7 +181,6 @@ def main():
                         entry_price=vt.entry_price,
                         entry_idx=vt.entry_idx,
                         atr_at_entry=0.0,
-                        soft_filters_passed=0,
                         entry_tag=EntryTag.UNIVERSAL_CROSS.value,
                         mfe_pct=vt.mfe_pct,
                         mae_pct=vt.mae_pct
@@ -183,7 +236,12 @@ def main():
                     accel = sig_row.get("cts_accel", np.nan)
                     trigger_accel = 1 if (not any(np.isnan([prev_accel, accel, accel_bt])) and prev_accel <= accel_bt and accel > accel_bt) else 0
                     
-                    if any([trigger_prt, trigger_fas, trigger_cts, trigger_accel]):
+                    # CTS Slope Cross (Zero-Cross)
+                    prev_cts_slope = sig_prev.get("cts_slope", np.nan)
+                    cts_slope = sig_row.get("cts_slope", np.nan)
+                    trigger_cts_slope = 1 if (not any(np.isnan([prev_cts_slope, cts_slope])) and prev_cts_slope <= 0 and cts_slope > 0) else 0
+                    
+                    if any([trigger_prt, trigger_fas, trigger_cts, trigger_accel, trigger_cts_slope]):
                         # Entry happens on NEXT bar (i+1)
                         next_row = records[i+1]
                         entry_price = next_row.get("open", np.nan)
@@ -195,7 +253,8 @@ def main():
                                 "trigger_prt": trigger_prt,
                                 "trigger_fas": trigger_fas,
                                 "trigger_cts": trigger_cts,
-                                "trigger_accel": trigger_accel
+                                "trigger_accel": trigger_accel,
+                                "trigger_cts_slope": trigger_cts_slope
                             }
                             vt = VirtualTrade(sym, i+1, entry_price, sig_row, triggers)
                             active_trades.append(vt)
@@ -207,14 +266,12 @@ def main():
 
             # Convert completed trades to feature rows
             for vt in completed_trades:
-                label = 1 if vt.pnl_pct >= threshold else 0
-                
                 feature_row = {
                     "symbol": vt.symbol,
                     "date": str(vt.sig_row.get("date", ""))[:10],
                     "pnl_pct": round(vt.pnl_pct, 2),
                     "mfe_pct": round(vt.mfe_pct, 2),
-                    "label": label,
+                    "mae_pct": round(vt.mae_pct, 2),
                 }
                 
                 # Add triggers
@@ -237,18 +294,21 @@ def main():
         out_dir = PROJECT_ROOT / "output" / "ml"
         out_dir.mkdir(parents=True, exist_ok=True)
         date_str = datetime.now().strftime("%Y%m%d")
-        out_path = out_dir / f"dataset_dense_{date_str}.csv"
+        
+        # Sanitize watchlist name for filename
+        wl_tag = watchlist.lower().replace(" ", "_")
+        out_path = out_dir / f"dataset_dense_{wl_tag}_{date_str}.csv"
         out_df.to_csv(out_path, index=False)
         
         print(f"\nExtraction complete! Dataset saved to {out_path}")
         print(f"Total labeled setups: {len(out_df)}")
-        print(f"Class Balance - Good Trades (1): {out_df['label'].sum()}, Bad Trades (0): {len(out_df) - out_df['label'].sum()}")
         
         print("\nTrigger Distribution:")
         print(f"  Universal Inflection (PRT): {out_df['trigger_prt'].sum()}")
         print(f"  Universal Inflection (FAS): {out_df['trigger_fas'].sum()}")
         print(f"  Universal Inflection (CTS): {out_df['trigger_cts'].sum()}")
         print(f"  Universal Inflection (Accel): {out_df['trigger_accel'].sum()}")
+        print(f"  Universal Inflection (CTS Slope): {out_df['trigger_cts_slope'].sum()}")
     else:
         print("\nNo setups were generated.")
 

@@ -225,6 +225,12 @@ body {
   border-color: #7c4dff;
 }
 
+.pill.ov-ts input:checked+span {
+  background: #e040fb;
+  color: #fff;
+  border-color: #e040fb;
+}
+
 .pill.ov-vol input:checked+span {
   background: #78909c;
   color: #fff;
@@ -852,6 +858,25 @@ div[class*="apply-common-tooltip"] {
   color: #c9d1d9;
   min-width: 160px;
   flex-shrink: 0;
+}
+
+.setting-row select,
+.setting-row input[type="number"] {
+  flex: 1;
+  background: #0d1117;
+  border: 1px solid #30363d;
+  color: #e6edf3;
+  padding: 6px 10px;
+  border-radius: 6px;
+  outline: none;
+  font-size: 13px;
+  min-width: 0;
+}
+
+.setting-row select:focus,
+.setting-row input[type="number"]:focus {
+  border-color: #58a6ff;
+  box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.3);
 }
 
 .setting-row input[type="range"] {

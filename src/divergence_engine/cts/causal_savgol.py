@@ -85,27 +85,9 @@ class CausalSavgolStrategy(CTSStrategy):
         df["cts_accel"] = np.where(atr > 0, raw_accel, 0.0)
 
         # Causal Trough Detection (No forward-looking bias)
-        # Condition: slope <= threshold AND accel > 0 AND regime == downtrend
-        if "regime" in df.columns:
-            df["cts_slope_trough"] = (
-                (df["cts_slope"] <= self.trough_threshold) & 
-                (df["cts_accel"] > 0) & 
-                (df["regime"] == "downtrend")
-            ).astype(int)
-        else:
-            df["cts_slope_trough"] = 0
-
-        # 4. Rolling Empirical Threshold (Regime-Adaptive)
-        abs_slope = df["cts_slope"].abs()
-        df["cts_slope_threshold"] = abs_slope.rolling(
-            window=self.threshold_window,
-            min_periods=max(20, self.threshold_window // 2)
-        ).quantile(self.threshold_pct / 100.0).fillna(0.0)
-
         # Fill warm-up period with NaN
         # For a causal filter of length N, the first N-1 outputs are incomplete
         warmup = self.window_length - 1
-        df.iloc[:warmup, df.columns.get_indexer(["smoothed_cwvap", "cts", "cts_slope", "cts_accel", "cts_slope_threshold"])] = np.nan
-        df.iloc[:warmup, df.columns.get_indexer(["cts_slope_trough"])] = 0
+        df.iloc[:warmup, df.columns.get_indexer(["smoothed_cwvap", "cts", "cts_slope", "cts_accel"])] = np.nan
 
         return df

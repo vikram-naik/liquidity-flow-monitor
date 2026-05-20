@@ -9,6 +9,8 @@ Output:
 - **prt**: Price Range Trend (-1 to 1). 
   - Values near 1 indicates price is at the top of all historical ranges (Distribution).
   - Values near -1 indicates price is at the base of all historical ranges (Accumulation).
+- **prt_buy_threshold**: 10th percentile adaptive threshold.
+- **prt_sell_threshold**: 90th percentile adaptive threshold.
 - **prt_slope**: 1st derivative of PRT.
 - **prt_accel**: 2nd derivative of PRT.
 """
@@ -32,9 +34,10 @@ class PriceRangeTrend:
     slope, and acceleration using causal Savitzky-Golay filters.
     """
 
-    def __init__(self, window_length: int = 15, polyorder: int = 2) -> None:
+    def __init__(self, window_length: int = 15, polyorder: int = 2, threshold_window: int = 60) -> None:
         self.window_length = window_length
         self.polyorder = polyorder
+        self.threshold_window = threshold_window
         # Causal coefficients for Smoothing (deriv=0), Slope (deriv=1), Accel (deriv=2)
         self.coeffs_v = savgol_coeffs(window_length, polyorder, deriv=0, pos=window_length - 1)
         self.coeffs_d1 = savgol_coeffs(window_length, polyorder, deriv=1, pos=window_length - 1)
@@ -65,9 +68,19 @@ class PriceRangeTrend:
             df["prt_slope"] = lfilter(self.coeffs_d1, [1.0], vals) * scale_factor
             df["prt_accel"] = lfilter(self.coeffs_d2, [1.0], vals) * scale_factor
             
+            # 3. Adaptive Thresholds
+            min_periods = max(30, self.threshold_window // 2)
+            df["prt_buy_threshold"] = df["prt"].rolling(
+                window=self.threshold_window, min_periods=min_periods
+            ).quantile(0.10).fillna(0.0).round(4)
+            df["prt_sell_threshold"] = df["prt"].rolling(
+                window=self.threshold_window, min_periods=min_periods
+            ).quantile(0.90).fillna(0.0).round(4)
+
             # Handle warm-up
             warmup = self.window_length - 1
-            df.iloc[:warmup, df.columns.get_indexer(["prt", "prt_slope", "prt_accel"])] = np.nan
+            cols = ["prt", "prt_slope", "prt_accel", "prt_buy_threshold", "prt_sell_threshold"]
+            df.iloc[:warmup, df.columns.get_indexer(cols)] = np.nan
         else:
             df["prt"] = raw_score.clip(-1.0, 1.0)
             df["prt_slope"] = 0.0

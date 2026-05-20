@@ -410,17 +410,10 @@ async function loadSignals() {
       return;
     }
     list.innerHTML = recent.map(s => {
-      const filters = [
-        s.rdv_pass ? 'RDV' : null,
-        s.mcs_pass ? 'MCS' : null,
-        s.cwc_pass ? 'CWC' : null,
-        s.grad_pass ? 'GRAD' : null,
-      ].filter(Boolean).join(', ');
       return `<div class="signal-item">
         <a href="/de/dashboard/${s.symbol}?focus=${s.signal_date}" class="back-link"><span class="sym">${s.symbol}</span></a>
         <span class="meta">${s.signal_date} &bull; ${s.signal_type} &bull;
-        PSZ=${(s.psz_at_signal || 0).toFixed(3)} &bull; ${s.regime || ''} &bull;
-        Filters: ${filters || 'none'}</span>
+        PSZ=${(s.psz_at_signal || 0).toFixed(3)} &bull; ${s.regime || ''}</span>
       </div>`;
     }).join('');
   } catch (e) {
@@ -443,17 +436,10 @@ async function loadProposed() {
 
     section.style.display = 'block';
     tbody.innerHTML = data.map(p => {
-      const fpass = c => c ? 'filter-pass' : 'filter-fail';
-      const ftxt = c => c ? 'PASS' : '-';
       return `<tr data-id="${p.id}">
         <td><a href="/de/dashboard/${p.symbol}?focus=${p.signal_date}" class="back-link"><strong>${p.symbol}</strong></a></td>
         <td>${p.signal_date || '-'}</td>
         <td>${p.regime_at_entry || '-'}</td>
-        <td>${p.soft_filters_passed || 0}/4</td>
-        <td class="${fpass(p.rdv_pass)}">${ftxt(p.rdv_pass)}</td>
-        <td class="${fpass(p.mcs_pass)}">${ftxt(p.mcs_pass)}</td>
-        <td class="${fpass(p.cwc_pass)}">${ftxt(p.cwc_pass)}</td>
-        <td class="${fpass(p.grad_pass)}">${ftxt(p.grad_pass)}</td>
         <td>
           <button class="btn btn-approve" onclick="approvePosition(${p.id})">Approve</button>
           <button class="btn btn-reject" onclick="rejectPosition(${p.id})">Skip</button>

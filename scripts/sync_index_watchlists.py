@@ -13,6 +13,7 @@ import pandas as pd
 import requests
 import io
 import traceback
+import argparse
 from datetime import datetime
 
 # Add project root to sys.path
@@ -21,7 +22,10 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
 from src.database import DB_PATH
 from src.api.main import NSE_INDICES
 
-def sync_watchlists():
+def sync_watchlists(quiet=False):
+    if quiet:
+        sys.stdout = open(os.devnull, 'w')
+        
     print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Starting Index Watchlists Sync...")
     
     try:
@@ -117,4 +121,8 @@ def sync_watchlists():
         sys.exit(1)
 
 if __name__ == "__main__":
-    sync_watchlists()
+    parser = argparse.ArgumentParser(description="Sync index constituents with local watchlists.")
+    parser.add_argument("--quiet", "-q", action="store_true", help="Only log errors")
+    args = parser.parse_args()
+    
+    sync_watchlists(quiet=args.quiet)

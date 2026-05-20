@@ -83,6 +83,10 @@ def evaluate_spearman_trend(y_values: list[float]) -> float:
     x_values = list(range(len(y_values)))
     
     # Calculate Spearman correlation
-    spearman_coeff, _ = stats.spearmanr(x_values, y_values)
+    y_arr = np.array(y_values)
+    if np.all(y_arr == y_arr[0]):
+        return 0.0
+        
+    spearman_coeff, _ = stats.spearmanr(x_values, y_arr)
     
     return round(float(spearman_coeff), 4)

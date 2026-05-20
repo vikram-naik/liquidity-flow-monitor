@@ -18,9 +18,9 @@ logger = logging.getLogger(__name__)
 
 def process_symbol(symbol: str) -> dict | None:
     try:
-        # Optimize by restricting the signal tagging to the last 180 bars 
+        # Optimize by restricting the signal tagging to the last 252 bars 
         # (sufficient to determine current entry/exit/in-trade state for screener)
-        engine = DivergenceEngine(symbol, signal_lookback=180)
+        engine = DivergenceEngine(symbol)
         result = engine.run()
         df = result.ledger
         
@@ -47,6 +47,12 @@ def process_symbol(symbol: str) -> dict | None:
         
         last_idx = len(df) - 1
         
+        # New technical signals
+        c_up = 1 if last_row.get('open', 0) < last_row.get('cwvap', 0) and last_row.get('close', 0) > last_row.get('cwvap', 0) else 0
+        c_down = 1 if last_row.get('open', 0) > last_row.get('cwvap', 0) and last_row.get('close', 0) < last_row.get('cwvap', 0) else 0
+        max_cts = 1 if last_row.get('cts', 0) == 1 else 0
+        min_cts = 1 if last_row.get('cts', 0) == -1 else 0
+
         if last_entry_idx == last_idx:
             signal_type = "entry"
             entry_date = str(df.iloc[last_idx].get('date', ''))[:10]
@@ -84,18 +90,23 @@ def process_symbol(symbol: str) -> dict | None:
                     mfe_pct = round((float(highs.max()) / ep - 1) * 100, 2)
                     mae_pct = round((float(lows.min()) / ep - 1) * 100, 2)
         
-        if signal_type:
+        # We store if it has any trade lifecycle signal OR any technical signal
+        if signal_type or c_up or c_down or max_cts or min_cts:
             return {
                 "symbol": symbol,
                 "date": date_str,
                 "price": price,
-                "signal_type": signal_type,
+                "signal_type": signal_type or "none",
                 "pnl": pnl,
                 "entry_date": entry_date,
                 "entry_price": entry_price,
                 "bars_held": bars_held,
                 "mfe_pct": mfe_pct,
-                "mae_pct": mae_pct
+                "mae_pct": mae_pct,
+                "c_up": c_up,
+                "c_down": c_down,
+                "max_cts": max_cts,
+                "min_cts": min_cts
             }
     except Exception as e:
         logger.warning(f"Failed processing {symbol}: {e}")
@@ -103,7 +114,13 @@ def process_symbol(symbol: str) -> dict | None:
 
 def main():
     parser = argparse.ArgumentParser(description="Global Market Screener")
-    parser.parse_args()
+    parser.add_argument("--quiet", "-q", action="store_true", help="Only log errors")
+    args = parser.parse_args()
+
+    if args.quiet:
+        logging.getLogger().setLevel(logging.ERROR)
+        import os
+        sys.stdout = open(os.devnull, 'w')
     
     conn = sqlite3.connect(str(DB_PATH))
     # Clear old data (we only want the latest state)
@@ -125,7 +142,7 @@ def main():
     cores = multiprocessing.cpu_count()
     logger.info(f"Scanning {len(symbols)} NIFTY 500 symbols using {cores} parallel workers...")
     
-    signals_found = {"entry": 0, "exit": 0, "in-trade": 0}
+    signals_found = {"entry": 0, "exit": 0, "in-trade": 0, "none": 0}
     results = []
 
     # Parallelize DivergenceEngine calculations across CPU cores
@@ -140,21 +157,22 @@ def main():
             if res:
                 results.append((
                     res["symbol"], res["date"], res["price"], res["signal_type"], res["pnl"],
-                    res["entry_date"], res["entry_price"], res["bars_held"], res["mfe_pct"], res["mae_pct"]
+                    res["entry_date"], res["entry_price"], res["bars_held"], res["mfe_pct"], res["mae_pct"],
+                    res["c_up"], res["c_down"], res["max_cts"], res["min_cts"]
                 ))
                 signals_found[res["signal_type"]] += 1
 
     # Bulk insert for fast database write
     if results:
         conn.executemany(
-            "INSERT INTO screener_signals (symbol, date, price, signal_type, pnl, entry_date, entry_price, bars_held, mfe_pct, mae_pct) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO screener_signals (symbol, date, price, signal_type, pnl, entry_date, entry_price, bars_held, mfe_pct, mae_pct, c_up, c_down, max_cts, min_cts) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             results
         )
         
     conn.commit()
     conn.close()
     
-    logger.info(f"Screener complete. Entries: {signals_found['entry']}, Exits: {signals_found['exit']}, In-trade: {signals_found['in-trade']}")
+    logger.info(f"Screener complete. Entries: {signals_found['entry']}, Exits: {signals_found['exit']}, In-trade: {signals_found['in-trade']}, Tech-Only: {signals_found['none']}")
 
 if __name__ == "__main__":
     main()

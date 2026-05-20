@@ -282,8 +282,12 @@ if __name__ == "__main__":
     parser.add_argument("--all", action="store_true", help="Sync all symbols found in the delivery log")
     parser.add_argument("--ca-override", type=str, help="Manual ratio factor overrides in format 'YYYY-MM-DD:FACTOR,YYYY-MM-DD:FACTOR' (Only for single symbol sync)")
     parser.add_argument("--yes", action="store_true", help="Automatically confirm updates")
+    parser.add_argument("--quiet", "-q", action="store_true", help="Only log errors")
     
     args = parser.parse_args()
+
+    if args.quiet:
+        sys.stdout = open(os.devnull, 'w')
     
     symbols = []
     if args.symbol:

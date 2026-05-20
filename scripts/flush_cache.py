@@ -26,8 +26,13 @@ def main():
         action="store_true", 
         help="Flush ALL keys in the current Redis database"
     )
+    parser.add_argument("--quiet", "-q", action="store_true", help="Only log errors")
     
     args = parser.parse_args()
+
+    if args.quiet:
+        import os
+        sys.stdout = open(os.devnull, 'w')
     
     cache = get_cache()
     if not hasattr(cache, 'client') or cache.client is None:

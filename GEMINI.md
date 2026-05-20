@@ -1,6 +1,7 @@
 # Liquidity Flow Monitor (LFM) - Core Mandates
 
 ## System Architecture
+- **Database**: The primary SQLite database is located at `liquidity_monitor.db` (referenced as `DB_PATH` in `src/database.py`).
 - **Data Pipeline**: `DivergenceEngine.run()` produces a ledger DataFrame (~40+ columns: CTS, BT, CWVAP, PSZ, coherence, PDD, regime, etc.) using 6 sequential modules.
 - **Signal Package**: `src/trading/signals/savgol_cts/` orchestrates mean-reversion signals.
 - **Execution Model (EOD-Lag)**:
@@ -8,6 +9,11 @@
   - Trade opens on bar `i+1`.
   - Exit checks begin on bar `i+2`.
 - **Simulation**: `scripts/walk_forward.py` is the primary entry point for backtesting.
+- **Cache Warmup**: `scripts/warm_cache.py` parallelizes engine calculations for a watchlist (default: NIFTY 500) to ensure instant UI loads.
+- **Global Market Screener**: `scripts/daily_screener.py` scans the NIFTY 500 universe for:
+  - Trade Lifecycle: `entry`, `exit`, `in-trade` states.
+  - Technical Signals: `C-UP` (Price crossing above CWVAP), `C-DOWN` (Price crossing below CWVAP), `MAX-CTS` (CTS=1), `MIN-CTS` (CTS=-1).
+  - Data is persisted in the `screener_signals` table with trade metrics (`mfe_pct`, `mae_pct`, `bars_held`).
 - **Debugging Universal Scoring**: To inspect the gate checks and detailed scoring telemetry for the ``UniversalCross`` entry on a specific stock and date, run the debug script:
   ```bash
   ./venv/bin/python scripts/debug_universal_scoring.py --symbol <SYMBOL> --date <YYYY-MM-DD>

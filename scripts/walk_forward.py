@@ -143,12 +143,7 @@ def simulate_trades(
                 entry_price=close,
                 entry_idx=i,
                 atr_at_entry=atr,
-                soft_filters_passed=sig.get("soft_count", 0),
                 conviction_score=sig.get("details", {}).get("score", 0),
-                rdv_pass=sig.get("details", {}).get("rdv", False),
-                mcs_pass=sig.get("details", {}).get("mcs", False),
-                cwc_pass=sig.get("details", {}).get("cwc", False),
-                grad_pass=sig.get("details", {}).get("grad", False),
                 regime_at_entry=sig.get("details", {}).get("regime", "-"),
                 entry_tag=sig.get("details", {}).get("entry_tag", ""),
                 psz_at_entry=psz_now if not np.isnan(psz_now) else 0.0,
@@ -210,7 +205,7 @@ def run_period(symbols: list[str], start: str, end: str,
     for sym in symbols:
         try:
             # Always run the engine with full history to ensure indicators are fully warmed up
-            engine = DivergenceEngine(sym, start_date=None, end_date=None, signal_lookback=None)
+            engine = DivergenceEngine(sym, start_date=None, end_date=None)
             result = engine.run()
             
             # The simulator iterates the full history but only returns trades

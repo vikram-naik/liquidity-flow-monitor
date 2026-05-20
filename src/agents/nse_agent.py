@@ -585,7 +585,11 @@ if __name__ == "__main__":
     parser.add_argument("--sync-holidays", action="store_true", help="Fetch and store trading holidays (historical + current year)")
     parser.add_argument("--sync-historical-holidays", action="store_true", help="Sync only historical holidays from local JSON")
     parser.add_argument("--info", action="store_true", help="Show database status (date range, records)")
+    parser.add_argument("--quiet", "-q", action="store_true", help="Only log errors")
     args = parser.parse_args()
+
+    if args.quiet:
+        sys.stdout = open(os.devnull, 'w')
     
     if args.info:
         show_db_status()

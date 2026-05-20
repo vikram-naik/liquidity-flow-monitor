@@ -76,6 +76,7 @@ def main():
     print(f"Passed Gates: {passed}")
     if not passed:
         print(f"Failure Reason: {meta.get('reason', 'Unknown')}")
+        print(f"Meta: {meta}")
     else:
         print(f"Intensity: {intensity}")
         print(f"Meta: {meta}")

@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Divergence Engine</title>
   <link rel="stylesheet" href="/de/static/css/divergence_engine.css?v=2">
-  <script src="https://unpkg.com/lightweight-charts@5.1.0/dist/lightweight-charts.standalone.production.js"></script>
+  <script src="https://unpkg.com/lightweight-charts@5.2.0/dist/lightweight-charts.standalone.production.js"></script>
 </head>
 
 <body>
@@ -30,8 +30,9 @@
       <div class="pill-grp">
         <label class="pill ov-cwvap"><input type="checkbox" id="cbCWVAP" checked><span>CWVAP</span></label>
         <label class="pill ov-va"><input type="checkbox" id="cbVA"><span>VA</span></label>
+        <label class="pill ov-ts"><input type="checkbox" id="cbTS" checked><span>TS</span></label>
         <label class="pill ov-vol"><input type="checkbox" id="cbVol" checked><span>Vol</span></label>
-        <label class="pill ov-fh" title="Recalculate signals for entire history"><input type="checkbox" id="cbFullHistory"><span>Full Hist</span></label>
+        
       </div>
     </div>
     <div id="last-data-date" class="data-date-display" title="Last NSE Data Download Date"></div>
@@ -142,6 +143,20 @@
               <!-- Populated by JS -->
             </select>
             <button id="add-panel-btn" class="btn btn-secondary">Add Panel</button>
+          </div>
+        </div>
+
+        <div class="setting-group">
+          <h4>ML Guard Config</h4>
+          <div class="setting-row">
+            <label for="ml-guard-model">Active Model</label>
+            <select id="ml-guard-model">
+              <!-- Populated by JS -->
+            </select>
+          </div>
+          <div class="setting-row">
+            <label for="ml-guard-threshold">Prob Threshold (%)</label>
+            <input type="number" id="ml-guard-threshold" step="0.5" min="0" max="100">
           </div>
         </div>
       </div>

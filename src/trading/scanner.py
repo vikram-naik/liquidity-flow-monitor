@@ -160,7 +160,6 @@ class Scanner:
                 entry_price=entry_price,
                 entry_idx=0,
                 atr_at_entry=pos["atr_at_entry"],
-                soft_filters_passed=pos.get("soft_filters_passed", 0) or 0,
                 psz_peak=pos.get("psz_peak", 0) or 0,
                 entry_tag=pos.get("entry_tag", ""),
             )
@@ -260,10 +259,6 @@ class Scanner:
                     "reason": entry_reason,
                     "entry_tag": entry_tag,
                     "regime": regime,
-                    "rdv": int(last_row.get("rdv_pass", 0)),
-                    "mcs": int(last_row.get("mcs_pass", 0)),
-                    "cwc": int(last_row.get("cwc_pass", 0)),
-                    "grad": int(last_row.get("grad_pass", 0)),
                 }
 
                 print(f"  {symbol}: SIGNAL (intensity={intensity}, regime={regime}, "
@@ -279,11 +274,6 @@ class Scanner:
                         prev_psz=float(prev_psz) if not np.isnan(prev_psz) else None,
                         pdd_120=float(pdd_120) if not np.isnan(pdd_120) else None,
                         regime=regime,
-                        soft_filters_passed=soft_count,
-                        rdv_pass=int(details.get("rdv", 0)),
-                        mcs_pass=int(details.get("mcs", 0)),
-                        cwc_pass=int(details.get("cwc", 0)),
-                        grad_pass=int(details.get("grad", 0)),
                         acted_upon=1,
                     )
 
@@ -293,11 +283,6 @@ class Scanner:
                         mode=self.execution_mode,
                         status="proposed",
                         signal_date=today,
-                        soft_filters_passed=soft_count,
-                        rdv_pass=int(details.get("rdv", 0)),
-                        mcs_pass=int(details.get("mcs", 0)),
-                        cwc_pass=int(details.get("cwc", 0)),
-                        grad_pass=int(details.get("grad", 0)),
                         regime_at_entry=regime,
                         signal_strategy=self.signal_name,
                         entry_tag=str(entry_tag.value) if hasattr(entry_tag, "value") else str(entry_tag),
@@ -436,7 +421,7 @@ def print_status():
         print("\nProposed (awaiting approval):")
         for p in proposed:
             print(f"  {p['symbol']:12s}  signal_date={p.get('signal_date', 'N/A')}  "
-                  f"regime={p.get('regime_at_entry', '')}  filters={p.get('soft_filters_passed', 0)}")
+                  f"regime={p.get('regime_at_entry', '')}")
 
 
 def main():

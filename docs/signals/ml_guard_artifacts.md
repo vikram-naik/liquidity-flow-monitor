@@ -4,24 +4,21 @@ This document catalogs the scripts, core modules, and output artifacts created t
 
 ## 1. Data Pipeline & Labeling
 
-*   **`scripts/extract_features_from_trades.py`**
+*   **`scripts/extract_dense_universal_features.py`**
     *   *Type*: Study Script
-    *   *Description*: Iterates through all entry paths in historical backtests (siloed). For every mechanically generated entry, it captures the exact state of all normalized technical indicators (the feature vector) and the actual system PnL. Labels the setup as "Good" (1) if PnL $\ge$ 2.5%, else "Bad" (0). This ensures the model trains on the exact systemic reality it will face in live inference.
-*   **`output/ml/dataset_trade_YYYYMMDD.csv`**
+    *   *Description*: Iterates through all entry paths in historical backtests without signal shadowing. For every structural inflection, it spawns a virtual trade and captures the exact state of all normalized technical indicators (the feature vector) along with raw system performance metrics (`pnl_pct`, `mfe_pct`, `mae_pct`).
+*   **`output/ml/dataset_dense_<watchlist>_YYYYMMDD.csv`**
     *   *Type*: Output Artifact
-    *   *Description*: The compiled dataset containing thousands of actual historical trades, primed for machine learning.
-*   **`src/divergence_engine/oracle.py` & `scripts/study_oracle_labelling.py`**
-    *   *Type*: Legacy / Visualization
-    *   *Description*: Previously used to label ground-truth structural troughs. Now maintained primarily for UI visualization and ad-hoc chart studies.
+    *   *Description*: The compiled dense dataset containing thousands of structural setups with raw performance metrics, primed for machine learning and dynamic threshold labeling.
 
 ## 2. Feature Extraction & Model Training
 
 *   **`scripts/train_ml_guard.py`**
     *   *Type*: Training Script
-    *   *Description*: Loads the CSV dataset, splits it (80/20 stratified), and trains an `XGBClassifier`. Applies cost-sensitive learning weights (e.g., `{0: 2, 1: 1}`) to penalize missing a bad setup while handling the real-world class balance. Exports the final model to the source tree.
-*   **`src/trading/signals/savgol_cts/models/model_xgb_YYYYMMDD.joblib`**
+    *   *Description*: Loads the CSV dataset, dynamically labels trades based on the `--threshold` argument, splits it (80/20 stratified), and trains an `XGBClassifier`. Applies cost-sensitive learning weights (e.g., `{0: 2, 1: 1}`) to penalize missing a bad setup while handling the real-world class balance. Exports the final model to the source tree.
+*   **`src/trading/signals/savgol_cts/models/model_xgb_<watchlist>_<threshold>_YYYYMMDD.joblib`**
     *   *Type*: Output Artifact (Version-Controlled)
-    *   *Description*: The serialized XGBoost model, including the trained model and the exact list of normalized feature columns it expects during live inference. Checked into git to ensure backtest reproducibility.
+    *   *Description*: The serialized XGBoost model, including the trained model, the exact list of normalized feature columns it expects during live inference, and extensive metadata (`best_params`, `optimal_n_estimators`, `recommended_cutoff`, `watchlist`, and `threshold`). Checked into git to ensure backtest reproducibility.
 
 ## 3. Inference Validation
 

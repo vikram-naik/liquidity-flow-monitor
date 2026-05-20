@@ -27,15 +27,9 @@ class Trade:
     entry_price: float
     entry_idx: int
     atr_at_entry: float
-    soft_filters_passed: int
     conviction_score: int = 0
     cts_at_signal: float = 0.0
     cts_bt_at_signal: float = 0.0
-    # Individual filter flags
-    rdv_pass: bool = False
-    mcs_pass: bool = False
-    cwc_pass: bool = False
-    grad_pass: bool = False
     regime_at_entry: str = ""
     entry_tag: str = ""               # entry path identifier (e.g. "Universal-Cross")
     psz_at_entry: float = 0.0
@@ -98,6 +92,14 @@ class SignalInterface(ABC):
         """
         pass
 
+    def get_default_entry_config(self) -> BaseEntryConfig | None:
+        """Get the default entry configuration for this signal strategy."""
+        return None
+
+    def get_default_exit_config(self) -> BaseExitConfig | None:
+        """Get the default exit configuration for this signal strategy."""
+        return None
+
     def tag_signals(
         self,
         df: pd.DataFrame,
@@ -108,20 +110,21 @@ class SignalInterface(ABC):
 
         Returns a copy of df with additional signal columns.
         """
+        if entry_cfg is None:
+            entry_cfg = self.get_default_entry_config()
+        if exit_cfg is None:
+            exit_cfg = self.get_default_exit_config()
         records = df.to_dict("records")
         n = len(records)
 
         entry_flags   = [0]    * n
         entry_reasons = [None] * n
         entry_tags    = [None] * n
-        soft_filters  = [0]    * n
-        rdv_passes    = [0]    * n
-        mcs_passes    = [0]    * n
-        cwc_passes    = [0]    * n
-        grad_passes   = [0]    * n
         cooldown_flags = [False] * n
         exit_flags    = [0]    * n
         exit_reasons  = [None] * n
+        in_trade_pnl  = [None] * n
+        trailing_stop_price = [None] * n
 
         in_trade = False
         trade: Trade | None = None
@@ -140,9 +143,22 @@ class SignalInterface(ABC):
                 continue
 
             if in_trade and trade is not None:
+                in_trade_pnl[i] = (close / trade.entry_price - 1) * 100.0
                 if close > peak_close:
                     peak_close = close
                 bars_held = i - trade.entry_idx
+
+                # Check for active trailing stop price floor
+                if exit_cfg is not None and hasattr(exit_cfg, "universal_cross"):
+                    uc_cfg = exit_cfg.universal_cross
+                    if getattr(uc_cfg, "chandelier_stop_enabled", False):
+                        peak_pnl = (peak_close / trade.entry_price - 1) * 100.0
+                        if peak_pnl >= getattr(uc_cfg, "chandelier_stop_activation_pct", 5.0):
+                            atr = row.get("atr_20", np.nan)
+                            if not np.isnan(atr):
+                                k = getattr(uc_cfg, "chandelier_stop_k", 3.5)
+                                trailing_stop_price[i] = peak_close - k * atr
+
                 reason, delivery_bad_count = self.check_exit(
                     row, prev, trade, peak_close, bars_held,
                     delivery_bad_count, cwvap_values, exit_cfg,
@@ -165,7 +181,6 @@ class SignalInterface(ABC):
                     entry_price=close,
                     entry_idx=i,
                     atr_at_entry=atr,
-                    soft_filters_passed=pending_entry["intensity"],
                     conviction_score=pending_entry.get("conv_score", 0),
                     regime_at_entry=str(row.get("regime", "")),
                     entry_tag=pending_entry.get("entry_tag", ""),
@@ -174,6 +189,7 @@ class SignalInterface(ABC):
                 peak_close = close
                 delivery_bad_count = 0
                 in_trade = True
+                in_trade_pnl[i] = 0.0
                 pending_entry = None
 
             else:
@@ -183,11 +199,6 @@ class SignalInterface(ABC):
                 if ok:
                     entry_flags[i] = intensity
                     entry_tags[i] = det.get("entry_tag", "")
-                    soft_filters[i] = intensity
-                    rdv_passes[i] = 1 if det.get("rdv") else 0
-                    mcs_passes[i] = 1 if det.get("mcs") else 0
-                    cwc_passes[i] = 1 if det.get("cwc") else 0
-                    grad_passes[i] = 1 if det.get("grad") else 0
                     pending_entry = {
                         "intensity": intensity,
                         "entry_tag": det.get("entry_tag", ""),
@@ -198,12 +209,9 @@ class SignalInterface(ABC):
         df["entry_signal"] = entry_flags
         df["entry_reason"] = entry_reasons
         df["entry_tag"]    = entry_tags
-        df["soft_filters_passed"] = soft_filters
-        df["rdv_pass"] = rdv_passes
-        df["mcs_pass"] = mcs_passes
-        df["cwc_pass"] = cwc_passes
-        df["grad_pass"] = grad_passes
         df["cooldown"]     = cooldown_flags
         df["exit_signal"]  = exit_flags
         df["exit_reason"]  = exit_reasons
+        df["in_trade_pnl"] = in_trade_pnl
+        df["trailing_stop_price"] = trailing_stop_price
         return df

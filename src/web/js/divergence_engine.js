@@ -34,8 +34,7 @@
         "prt": { label: "PRT — Price Range Trend" },
         "prt_slope": { label: "PRT Slope" },
         "prt_accel": { label: "PRT Acceleration" },
-        "fas": { label: "FAS — Fractal Alignment Score" },
-        "entry_signal_prob": { label: "Entry Signal Prob (PSZ × PRT × CTS)" }
+        "fas": { label: "FAS — Fractal Alignment Score" }
     };
 
     function getActivePanels() {
@@ -93,12 +92,7 @@
         });
     });
 
-    var cbFullHistory = document.getElementById("cbFullHistory");
-    if (cbFullHistory) {
-        cbFullHistory.addEventListener("change", function () {
-            loadSymbol(symbol);
-        });
-    }
+
 
     function loadSymbol(targetSymbol) {
         if (!targetSymbol) return;
@@ -118,7 +112,7 @@
             apiUrl += "&end_date=" + params.get("end_date");
         }
         if (focusDate) apiUrl += "&focus_date=" + focusDate;
-        if (cbFullHistory && cbFullHistory.checked) apiUrl += "&full_history=true";
+
 
         loadingEl.style.display = "flex";
         loadingEl.innerHTML = "Loading Engine Data...";
@@ -170,12 +164,12 @@
 
     function buildCharts(data) {
         var ledger = data.ledger;
-        var ohlc = [], cwvap = [], vaHigh = [], vaLow = [];
+        var ohlc = [], cwvap = [], vaHigh = [], vaLow = [], trailingStop = [];
         var ctsArr = [];
         var deliveryVol = [];
         globalTimeToIndex = {};
         var pZ = [], rZ = [], cRaw = [], cSmooth = [];
-        var rdvArr = [], cwcArr = [], rdvConsArr = [], atrArr = [], distArr = [], delPctArr = [], pddArr = [], prtArr = [], prtSlopeArr = [], prtSlopeBuyThreshArr = [], prtSlopeSellThreshArr = [], prtAccelArr = [], fasArr = [], fasBuyThreshArr = [], fasSellThreshArr = [], entrySignalProbArr = [];
+        var rdvArr = [], cwcArr = [], rdvConsArr = [], atrArr = [], distArr = [], delPctArr = [], pddArr = [], prtArr = [], prtBuyThreshArr = [], prtSellThreshArr = [], prtSlopeArr = [], prtSlopeBuyThreshArr = [], prtSlopeSellThreshArr = [], prtAccelArr = [], fasArr = [], fasBuyThreshArr = [], fasSellThreshArr = [];
         // NextGen gate series
         var ctsSlopeArr = [], ctsAccelArr = [], ctsAccelThreshArr = [], ctsBuyThreshArr = [], ctsSellThreshArr = [];
         var cdvlArr = [], vel60Arr = [], pdd120Arr = [], pdd120ThreshArr = [];
@@ -202,6 +196,7 @@
             if (r.cts != null) ctsArr.push({ time: t, value: r.cts }); else ctsArr.push({ time: t });
             if (r.va_high != null) vaHigh.push({ time: t, value: r.va_high }); else vaHigh.push({ time: t });
             if (r.va_low != null) vaLow.push({ time: t, value: r.va_low }); else vaLow.push({ time: t });
+            if (r.trailing_stop_price != null) trailingStop.push({ time: t, value: r.trailing_stop_price }); else trailingStop.push({ time: t });
 
             if (r.price_slope_z != null) pZ.push({ time: t, value: r.price_slope_z }); else pZ.push({ time: t });
             if (r.rdv_slope_z != null) rZ.push({ time: t, value: r.rdv_slope_z }); else rZ.push({ time: t });
@@ -228,6 +223,8 @@
             if (r.pdd_120 != null) pdd120Arr.push({ time: t, value: r.pdd_120 }); else pdd120Arr.push({ time: t });
             if (r.pdd_120_threshold != null) pdd120ThreshArr.push({ time: t, value: r.pdd_120_threshold }); else pdd120ThreshArr.push({ time: t });
             if (r.prt != null) prtArr.push({ time: t, value: r.prt }); else prtArr.push({ time: t });
+            if (r.prt_buy_threshold != null) prtBuyThreshArr.push({ time: t, value: r.prt_buy_threshold }); else prtBuyThreshArr.push({ time: t });
+            if (r.prt_sell_threshold != null) prtSellThreshArr.push({ time: t, value: r.prt_sell_threshold }); else prtSellThreshArr.push({ time: t });
             if (r.prt_slope != null) prtSlopeArr.push({ time: t, value: r.prt_slope }); else prtSlopeArr.push({ time: t });
             if (r.prt_slope_buy_threshold != null) prtSlopeBuyThreshArr.push({ time: t, value: r.prt_slope_buy_threshold }); else prtSlopeBuyThreshArr.push({ time: t });
             if (r.prt_slope_sell_threshold != null) prtSlopeSellThreshArr.push({ time: t, value: r.prt_slope_sell_threshold }); else prtSlopeSellThreshArr.push({ time: t });
@@ -235,7 +232,6 @@
             if (r.fas != null) fasArr.push({ time: t, value: r.fas }); else fasArr.push({ time: t });
             if (r.fas_buy_threshold != null) fasBuyThreshArr.push({ time: t, value: r.fas_buy_threshold }); else fasBuyThreshArr.push({ time: t });
             if (r.fas_sell_threshold != null) fasSellThreshArr.push({ time: t, value: r.fas_sell_threshold }); else fasSellThreshArr.push({ time: t });
-            if (r.entry_signal_prob != null) entrySignalProbArr.push({ time: t, value: r.entry_signal_prob }); else entrySignalProbArr.push({ time: t });
 
             // PSZ
             if (r.price_slope_z != null) pszArr.push({ time: t, value: r.price_slope_z }); else pszArr.push({ time: t });
@@ -363,11 +359,16 @@
         var sVaLow = pc.addSeries(LC.LineSeries, { color: "#7c4dff", lineWidth: 1, lineStyle: 2, lastValueVisible: false, priceLineVisible: false });
         sVaLow.setData(vaLow);
 
+        // --- ATR Chandelier Trailing Stop Floor ---
+        var sTrailingStop = pc.addSeries(LC.LineSeries, { color: "#e040fb", lineWidth: 1.5, lineStyle: 2, lastValueVisible: false, priceLineVisible: false });
+        sTrailingStop.setData(trailingStop);
+
         var leg1Config = [
             { api: cs, label: "Price", col: "price", color: "#e6edf3" },
             { api: sCwvap, label: "CWVAP", col: "cwvap", color: "#00bfa5" },
             { api: sVaHigh, label: "VA High", col: "va_high", color: "#7c4dff", dashed: true },
             { api: sVaLow, label: "VA Low", col: "va_low", color: "#7c4dff", dashed: true },
+            { api: sTrailingStop, label: "TS Stop", col: "trailing_stop_price", color: "#e040fb", dashed: true },
             { type: "separator" },
             { label: "pw", col: "range_pos_10", color: "#8b949e" },
             { label: "pm", col: "range_pos_22", color: "#8b949e" },
@@ -441,10 +442,18 @@
                 var sPrt = c.addSeries(LC.LineSeries, { color: "#ff8a65", lineWidth: 2, lastValueVisible: false, priceLineVisible: false });
                 sPrt.setData(prtArr);
 
+                var sPrtBuy = c.addSeries(LC.LineSeries, { color: "#42b883", lineWidth: 1, lineStyle: 2, lastValueVisible: false, priceLineVisible: false });
+                sPrtBuy.setData(prtBuyThreshArr);
+
+                var sPrtSell = c.addSeries(LC.LineSeries, { color: "#ef5350", lineWidth: 1, lineStyle: 2, lastValueVisible: false, priceLineVisible: false });
+                sPrtSell.setData(prtSellThreshArr);
+
                 var sPrtZ = c.addSeries(LC.LineSeries, { color: "rgba(139, 148, 158, 0.3)", lineWidth: 1, lineStyle: 0, lastValueVisible: false, priceLineVisible: false });
                 sPrtZ.setData(prtArr.map(d => ({ time: d.time, value: 0 })));
 
                 legConfig.push({ api: sPrt, label: "PRT", col: "prt", color: "#ff8a65" });
+                legConfig.push({ api: sPrtBuy, label: "Buy Thresh (P10)", col: "prt_buy_threshold", color: "#42b883", dashed: true });
+                legConfig.push({ api: sPrtSell, label: "Sell Thresh (P90)", col: "prt_sell_threshold", color: "#ef5350", dashed: true });
             } else if (panelKey === "prt_slope") {
                 // PRT Slope
                 var sPrtSlope = c.addSeries(LC.LineSeries, { color: "#80cbc4", lineWidth: 2, lastValueVisible: false, priceLineVisible: false });
@@ -499,40 +508,6 @@
                 legConfig.push({ api: sFas, label: "FAS", col: "fas", color: "#ffb74d" });
                 legConfig.push({ api: sFasBuy, label: "Buy Thresh (P10)", col: "fas_buy_threshold", color: "#42b883", dashed: true });
                 legConfig.push({ api: sFasSell, label: "Sell Thresh (P90)", col: "fas_sell_threshold", color: "#ef5350", dashed: true });
-            } else if (panelKey === "entry_signal_prob") {
-                // Entry Signal Probability (-1, 0, 1)
-                var pScale = c.priceScale("right");
-                pScale.applyOptions({
-                    autoScale: false,
-                    scaleMargins: { top: 0.1, bottom: 0.1 }
-                });
-                if (pScale.setPriceRange) {
-                    try {
-                        pScale.setPriceRange({ min: -1.2, max: 1.2 });
-                    } catch (e) {
-                        console.error("Failed to set price range for Entry Signal Prob", e);
-                    }
-                }
-
-                var sProb = c.addSeries(LC.HistogramSeries, { color: "#00e676", lastValueVisible: false, priceLineVisible: false });
-                var mappedProb = [];
-                entrySignalProbArr.forEach(d => {
-                    if (d.value != null) {
-                        var cVal;
-                        if (d.value === 1) cVal = "rgba(0, 230, 118, 0.6)";
-                        else if (d.value === 0) cVal = "rgba(255, 183, 77, 0.6)";
-                        else cVal = "rgba(139, 148, 158, 0.2)";
-                        
-                        mappedProb.push({
-                            time: d.time,
-                            value: d.value,
-                            color: cVal
-                        });
-                    }
-                });
-                sProb.setData(mappedProb);
-
-                legConfig.push({ api: sProb, label: "Signal Prob", col: "entry_signal_prob", color: "#00e676" });
             } else if (panelKey === "cts_slope") {
                 // Bull extra gate: cts_slope >= bull_slope_min
                 var sCtsSlope = c.addSeries(LightweightCharts.LineSeries, { color: "#80cbc4", lineWidth: 2, lastValueVisible: false, priceLineVisible: false });
@@ -724,6 +699,7 @@
             sVaHigh.applyOptions({ visible: val });
             sVaLow.applyOptions({ visible: val });
         });
+        bindToggle("cbTS", val => sTrailingStop.applyOptions({ visible: val }));
         bindToggle("cbVol", val => sVol.applyOptions({ visible: val }));
 
         function syncCrosshair(chart, series, param) {
@@ -893,14 +869,40 @@
         var regime = l.regime || "\u2014";
         var regimeColor = regime === "uptrend" ? "#3fb950" : (regime === "downtrend" ? "#ef5350" : (regime === "transition" ? "#d29922" : "#8b949e"));
 
+        var statusHtml = "";
+        if (l.in_trade_pnl != null) {
+            var pnl = parseFloat(l.in_trade_pnl);
+            var pnlColor = pnl >= 0 ? "#3fb950" : "#ef5350";
+            statusHtml = "<tr><td>Current PnL</td><td class='val' style='color:" + pnlColor + "'>" + pnl.toFixed(2) + "%</td></tr>";
+        } else {
+            statusHtml = "<tr><td>Regime</td><td class='val' style='color:" + regimeColor + "'>" + regime + "</td></tr>";
+        }
+
         document.getElementById("state-table").innerHTML =
             "<tr><td>Date</td><td class='val'>" + (l.date ? l.date.split("T")[0] : "\u2014") + "</td></tr>" +
-            "<tr><td>Regime</td><td class='val' style='color:" + regimeColor + "'>" + regime + "</td></tr>" +
+            statusHtml +
             (function () {
                 if (!l.entry_reason || l.entry_reason === "Neutral/No Entry" || l.entry_reason === "Hold") return "";
                 
                 if (l.entry_signal) {
-                    return "<tr><td>Signal Reason</td><td class='val' style='color:#00e676; font-size:11px; vertical-align:top'>" + l.entry_reason + "</td></tr>";
+                    var html = "";
+                    if (l.entry_reason.includes(" | ")) {
+                        var parts = l.entry_reason.split(" | ");
+                        var mainReason = parts[0];
+                        html += "<tr><td>Signal Reason</td><td class='val' style='color:#00e676; font-size:11px; vertical-align:top'>" + mainReason + "</td></tr>";
+                        
+                        parts.slice(1).forEach(function(p) {
+                            var kv = p.split(": ");
+                            if (kv.length > 1) {
+                                var label = kv[0].trim();
+                                if (label === "RawScore") label = "Original ML Score";
+                                html += "<tr><td>" + label + "</td><td class='val'>" + kv[1].trim() + "</td></tr>";
+                            }
+                        });
+                    } else {
+                        html = "<tr><td>Signal Reason</td><td class='val' style='color:#00e676; font-size:11px; vertical-align:top'>" + l.entry_reason + "</td></tr>";
+                    }
+                    return html;
                 } else {
                     var reasons = l.entry_reason.split(" | ");
                     var rowsHtml = reasons.map(function(r) {
@@ -1193,6 +1195,22 @@
     function renderPanelsSettings() {
         currentPanelsConfig = getActivePanels();
         updatePanelsUI();
+
+        // Fetch ML Guard settings from API
+        fetch('/de/api/settings')
+            .then(function (res) { return res.json(); })
+            .then(function (data) {
+                var modelSelect = document.getElementById("ml-guard-model");
+                if (!modelSelect) return;
+                var modelHtml = "";
+                data.models.forEach(function (m) {
+                    var selected = (m === data.ml_guard_model) ? "selected" : "";
+                    modelHtml += '<option value="' + m + '" ' + selected + '>' + m + '</option>';
+                });
+                modelSelect.innerHTML = modelHtml;
+                document.getElementById("ml-guard-threshold").value = data.ml_guard_threshold;
+            })
+            .catch(function (err) { console.error("Error loading settings:", err); });
     }
 
     function updatePanelsUI() {
@@ -1267,9 +1285,30 @@
     var btnSaveSettings = document.getElementById("settings-save");
     if (btnSaveSettings) {
         btnSaveSettings.onclick = function () {
+            // Save UI Panels
             localStorage.setItem("de_panel_config", JSON.stringify(currentPanelsConfig));
-            closeSettings();
-            loadSymbol(symbol);
+
+            // Save ML Guard Settings to Backend
+            var payload = {
+                ml_guard_model: document.getElementById("ml-guard-model").value,
+                ml_guard_threshold: parseFloat(document.getElementById("ml-guard-threshold").value)
+            };
+
+            fetch('/de/api/settings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            })
+                .then(function (res) { return res.json(); })
+                .then(function (data) {
+                    console.log("Settings saved:", data.message);
+                    closeSettings();
+                    loadSymbol(symbol);
+                })
+                .catch(function (err) {
+                    alert("Failed to save settings: " + err);
+                    console.error(err);
+                });
         };
     }
 

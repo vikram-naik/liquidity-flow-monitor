@@ -19,15 +19,15 @@ from src.trading.signals.enums import EntryTag
 def main():
     entry_cfg = SavgolCTSEntryConfig()
     exit_cfg = SavgolCTSExitConfig()
-    # Ensure threshold is 80 to get a wide range of trades
-    entry_cfg.universal_cross.min_ml_score = 80.0
+    # Ensure threshold is low to get a wide range of trades
+    entry_cfg.universal_cross.min_ml_score = 40.0
     signal = SignalFactory.get_signal("savgol_cts")
 
     symbols = get_watchlist_symbols("NIFTY 50")
     test_end = today_str()
 
-    print("Running TEST period to generate trades...", flush=True)
-    all_trades = run_period(symbols, "2024-01-01", test_end, entry_cfg, exit_cfg, "TEST", signal)
+    print("Running TRAIN period to generate trades...", flush=True)
+    all_trades = run_period(symbols, "2019-01-01", "2023-12-31", entry_cfg, exit_cfg, "TRAIN", signal)
 
     # Filter for UNIVERSAL_CROSS
     universal_trades = [t for t in all_trades if t.entry_tag == EntryTag.UNIVERSAL_CROSS.value]
@@ -40,7 +40,7 @@ def main():
 
     # We will analyze the impact of different min score thresholds.
     # Because UNIVERSAL_CROSS override_score maps ML score exactly to conviction_score
-    thresholds = [80.0, 85.0, 90.0, 92.0, 94.0, 95.0, 96.0, 97.0, 98.0, 99.0]
+    thresholds = [40.0, 50.0, 60.0, 70.0, 80.0, 85.0, 90.0, 95.0]
     
     print("\n--- PnL Distribution by Minimum ML Score Threshold ---")
     print(f"{'Threshold':>10} | {'Trades':>6} | {'Win Rate':>8} | {'Avg PnL%':>9} | {'Max PnL%':>9} | {'Min PnL%':>9}")

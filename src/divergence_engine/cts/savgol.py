@@ -71,16 +71,8 @@ class SavgolStrategy(CTSStrategy):
         df["cts_slope"] = np.where(atr > 0, raw_slope, 0.0)
         df["cts_accel"] = np.where(atr > 0, raw_accel, 0.0)
 
-        # 4. Rolling Empirical Threshold (Regime-Adaptive)
-        # Rolling percentile of |cts_slope| adapts to the current volatility regime
-        abs_slope = df["cts_slope"].abs()
-        df["cts_slope_threshold"] = abs_slope.rolling(
-            window=self.threshold_window,
-            min_periods=max(20, self.threshold_window // 2)
-        ).quantile(self.threshold_pct / 100.0).fillna(0.0)
-
         # Fill first few entries with NaN
         half_win = self.window_length // 2
-        df.iloc[:half_win, df.columns.get_indexer(["smoothed_cwvap", "cts", "cts_slope", "cts_accel", "cts_slope_threshold"])] = np.nan
+        df.iloc[:half_win, df.columns.get_indexer(["smoothed_cwvap", "cts", "cts_slope", "cts_accel"])] = np.nan
 
         return df

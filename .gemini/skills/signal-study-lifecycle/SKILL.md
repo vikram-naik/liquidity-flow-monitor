@@ -41,5 +41,6 @@ When sharing results, you MUST report the following comparison metrics for the T
 
 ## Pitfalls & Failure Shields
 - **EOD-Lag Error:** Ensure signals trigger on bar `i` and entries happen on bar `i+1` open.
+- **Index Out of Bounds:** When simulating entry at `i+1`, always check `if i + 1 >= len(records): continue` to avoid `IndexError` on the most recent data bar.
 - **Premature Exit Bias:** Use MFE analysis to detect if a logic change is "cutting winners too short" (evidenced by a sharp drop in MFE on winning trades).
 - **NaN Handling:** Always use `not np.isnan(val)` guards before comparing metrics like `cts` or `fas`.

@@ -10,7 +10,7 @@ The `Universal Cross` entry path implements a "Model-in-the-Loop" architecture. 
 ### `src/trading/signals/savgol_cts/ml_guard.py`
 This module defines the `MLGuard` class, which operates as a **Singleton** to ensure efficient model resource management.
 
-- **Initialization**: Loads the serialized model artifact (`src/trading/signals/savgol_cts/models/model_xgb_YYYYMMDD.joblib`) once upon first access.
+- **Initialization**: Loads the serialized model artifact (`src/trading/signals/savgol_cts/models/model_xgb_<watchlist>_<threshold>_YYYYMMDD.joblib`) once upon first access.
 - **Inference**: The `score_setup(row)` method:
     1.  Maps the input `row` (current market state, including boolean trigger columns) to the exact `feature_cols` expected by the model.
     2.  Handles missing values by imputing `0` (neutral state), matching training-time preprocessing.
@@ -31,9 +31,9 @@ This module implements the entry logic, orchestrating the mechanical triggers an
 ## 3. Workflow Integration
 
 ### Data Pipeline (Dense Extraction)
-1. **Dense Extraction Script**: `extract_dense_universal_features.py` iterates over history without signal shadowing. It spawns overlapping virtual trades for every structural inflection.
-2. **Standardized Exits**: Every virtual trade is resolved using the Pure CTS Trailing logic to ensure the ML target variable represents the exact same systemic reality.
-3. **Cost-Sensitive Training**: An XGBoost classifier (`max_depth=7`) is trained with heavy class weighting (e.g., `{0: 2, 1: 1}`) to prioritize detecting failure-prone "Bad" setups.
+1. **Dense Extraction Script**: `extract_dense_universal_features.py` iterates over history without signal shadowing. It spawns overlapping virtual trades for every structural inflection and records raw performance metrics (`pnl_pct`, `mfe_pct`, `mae_pct`).
+2. **Standardized Exits**: Every virtual trade is resolved using the Pure CTS Trailing logic to ensure the metrics represent the exact same systemic reality.
+3. **Dynamic Labeling & Training**: At training time, setups are dynamically labeled "Good" or "Bad" based on a specified PnL threshold. An XGBoost classifier (`max_depth=7`) is trained with heavy class weighting (e.g., `{0: 2, 1: 1}`) to prioritize detecting failure-prone "Bad" setups.
 
 ### Live Inference
 When the `SavgolCTSSignal` orchestrator evaluates a bar:

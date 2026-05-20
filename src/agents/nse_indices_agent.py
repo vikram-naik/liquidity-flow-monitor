@@ -310,7 +310,12 @@ if __name__ == "__main__":
     parser.add_argument("--start-date", type=str, help="Start date to backfill from (YYYY-MM-DD)")
     parser.add_argument("--force", action="store_true", help="Force refill even if data exists")
     parser.add_argument("--sync", action="store_true", help="Smart sync: fetch from last available date to today")
+    parser.add_argument("--quiet", "-q", action="store_true", help="Only log errors")
     args = parser.parse_args()
+
+    if args.quiet:
+        import sys, os
+        sys.stdout = open(os.devnull, 'w')
     
     if args.backfill > 0 or args.start_date:
         backfill_data(days=args.backfill, start_date=args.start_date, force=args.force)

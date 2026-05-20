@@ -41,6 +41,13 @@ def apply_cwvap_guard(
 
     # If a path proposed an exit, mark suppression state
     if res is not None:
+        # Loss prevention rules bypass CWVAP suppression
+        bypass_reasons = [ExitReason.PRT_ST_CROSS, ExitReason.CWVAP_LOST, ExitReason.GAP_DOWN_LOSS, ExitReason.HARD_STOP, ExitReason.PNL_CAP]
+        if res in bypass_reasons:
+            st.exit_suppressed = False
+            st.suppressed_this_bar = False
+            return res, st.to_int()
+            
         st.exit_suppressed = True
         st.suppressed_this_bar = True
 
@@ -152,9 +159,22 @@ def apply_cwvap_guard(
         return None, st.to_int()
 
     # --- Below CWVAP ---
+    gc = cfg.cwvap_guard
+
+    if getattr(gc, "hybrid_exit_enabled", False):
+        pnl_pct = ((close - trade.entry_price) / trade.entry_price) * 100.0 if trade and trade.entry_price > 0 else 0.0
+        if pnl_pct < 0.0:
+            fas = row.get("fas", np.nan)
+            psz_v = row.get("psz_v", np.nan)
+            fas_neg = not np.isnan(fas) and fas < 0
+            psz_v_neg = not np.isnan(psz_v) and psz_v < 0
+            if fas_neg or psz_v_neg:
+                st.suppressed_this_bar = False
+                st.exit_suppressed = False
+                return ExitReason.CWVAP_EXHAUSTION, st.to_int()
+
     if st.exit_suppressed:
         st.suppressed_this_bar = True
-        gc = cfg.cwvap_guard
 
         if gc.tolerance_pct > 0.0 and gc.tolerance_bars > 0:
             dist_pct = (close - cwvap) / cwvap * 100.0

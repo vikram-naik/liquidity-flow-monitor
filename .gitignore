@@ -113,3 +113,4 @@ wf_output.txt
 STUDY_CTS_ACCEL_SUMMARY.md
 node_modules/
 node_modules/*.*
+.antigravitycli/

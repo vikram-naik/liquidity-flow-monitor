@@ -202,19 +202,6 @@ class CompositeVWAP:
 
         df["cwvap"] = np.where(denominator > 0, numerator / denominator, close)
 
-        # CWVAP slope: linear regression over last 10 bars
-        cwvap_vals = df["cwvap"].values.astype(float)
-        slopes = np.full(len(cwvap_vals), np.nan)
-        x = np.arange(10, dtype=float)
-        for i in range(9, len(cwvap_vals)):
-            y = cwvap_vals[i - 9 : i + 1]
-            if not np.any(np.isnan(y)):
-                coeffs = np.polyfit(x, y, 1)
-                slopes[i] = coeffs[0]
-
-        df["cwvap_slope"] = slopes
-        df["cwvap_slope_norm"] = np.where(atr > 0, df["cwvap_slope"] / atr, 0.0)
-
         # Delegate CTS, CTS slope, and CTS acceleration to the selected strategy
         df = self.cts_strategy.compute(df)
         if "cts" in df.columns:
@@ -252,10 +239,5 @@ class CompositeVWAP:
 
         df["va_high"] = np.where(denom > 0, num_high / denom, np.nan)
         df["va_low"] = np.where(denom > 0, num_low / denom, np.nan)
-        df["va_profile_width"] = np.where(
-            (denom > 0) & (atr > 0),
-            (df["va_high"] - df["va_low"]) / atr,
-            0.0,
-        )
         return df
 

@@ -260,8 +260,14 @@ def main():
                         help=f"Percentage change threshold for whip-saw (default: {DEFAULT_THRESHOLD}%)")
     parser.add_argument("--auto-fix", action="store_true", help="Automatically trigger CA sync on whip-saw")
     parser.add_argument("--auto-patch", action="store_true", help="Automatically update ca_overrides.json on mismatch")
+    parser.add_argument("--quiet", "-q", action="store_true", help="Only log errors")
     
     args = parser.parse_args()
+
+    if args.quiet:
+        logging.getLogger().setLevel(logging.ERROR)
+        # Also silence stdout if any prints are used
+        sys.stdout = open(os.devnull, 'w')
 
     if args.symbol:
         symbols = [args.symbol.upper()]

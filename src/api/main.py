@@ -16,11 +16,58 @@ import traceback
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
 
 # Import DB path from analytics or database if possible
-from src.database import DB_PATH, init_db
+from src.database import DB_PATH, init_db, get_user_setting, set_user_setting
 from src.cache import get_cache
 from src.api.trading_routes import router as trading_router
+from src.trading.signals.savgol_cts.ml_guard import MLGuard
+from fastapi.middleware.gzip import GZipMiddleware
 
 cache = get_cache()
+
+app = FastAPI(title="LFM Divergence Engine", docs_url="/de/api/docs", openapi_url="/de/api/openapi.json")
+app.add_middleware(GZipMiddleware, minimum_size=1000)
+
+class SettingsUpdate(BaseModel):
+    ml_guard_model: str
+    ml_guard_threshold: float
+
+@app.get("/de/api/settings")
+async def get_settings():
+    """Fetch current engine settings and available models."""
+    from pathlib import Path
+    models_dir = Path(__file__).resolve().parent.parent / "trading" / "signals" / "savgol_cts" / "models"
+    joblib_files = sorted([f.name for f in models_dir.glob("*.joblib")])
+    
+    current_model = get_user_setting("ml_guard_model", MLGuard.DEFAULT_MODEL)
+    current_threshold = float(get_user_setting("ml_guard_threshold", "85.0"))
+    
+    return {
+        "models": joblib_files,
+        "ml_guard_model": current_model,
+        "ml_guard_threshold": current_threshold
+    }
+
+@app.post("/de/api/settings")
+async def update_settings(settings: SettingsUpdate):
+    """Update engine settings and flush cache."""
+    old_model = get_user_setting("ml_guard_model", MLGuard.DEFAULT_MODEL)
+    old_threshold = float(get_user_setting("ml_guard_threshold", "85.0"))
+    
+    set_user_setting("ml_guard_model", settings.ml_guard_model)
+    set_user_setting("ml_guard_threshold", str(settings.ml_guard_threshold))
+    
+    # Check for changes to trigger reloads/flushes
+    model_changed = (old_model != settings.ml_guard_model)
+    threshold_changed = (old_threshold != settings.ml_guard_threshold)
+    
+    if model_changed:
+        MLGuard.get_instance().reload()
+    
+    if model_changed or threshold_changed:
+        cache.clear()
+        return {"status": "success", "message": "Settings updated, cache flushed."}
+    
+    return {"status": "success", "message": "Settings saved."}
 
 NSE_INDICES = {
     "NIFTY 50": "ind_nifty50list.csv",
@@ -42,11 +89,6 @@ NSE_INDICES = {
     "NIFTY DEFENCE": "ind_niftyindiadefence_list.csv",
 }
 
-
-from fastapi.middleware.gzip import GZipMiddleware
-
-app = FastAPI(title="LFM Divergence Engine", docs_url="/de/api/docs", openapi_url="/de/api/openapi.json")
-app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
@@ -118,13 +160,12 @@ def health_check():
 from fastapi.responses import HTMLResponse
 
 @app.get("/de/api/divergence-engine/{symbol}")
-def divergence_engine_data(
+async def divergence_engine_data(
     symbol: str,
     start_date: Optional[str] = Query(None, description="ISO date YYYY-MM-DD"),
     end_date: Optional[str] = Query(None, description="ISO date YYYY-MM-DD"),
     agg_mode: str = Query("daily", description="Aggregation mode: daily, weekly, monthly"),
     focus_date: Optional[str] = Query(None, description="ISO date YYYY-MM-DD"),
-    full_history: bool = Query(False, description="Recalculate signals for entire history"),
 ):
     """Run the divergence engine and return JSON ledger + state summary."""
     if agg_mode not in ("daily", "weekly", "monthly"):
@@ -138,7 +179,6 @@ def divergence_engine_data(
             start_date=start_date,
             end_date=end_date,
             agg_mode=agg_mode,
-            signal_lookback=None if full_history else 252,
         )
         result = engine.run()
 
