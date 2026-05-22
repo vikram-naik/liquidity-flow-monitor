@@ -23,6 +23,10 @@ class UniversalCrossEntryConfig:
     enabled: bool = True
     min_ml_score: float = field(default_factory=lambda: float(get_user_setting("ml_guard_threshold", "85.0")))
     gap_down_lookback: int = 10  # Lookback window for recent gap downs (bars)
+    cwc_basing_filter_enabled: bool = True
+    cwc_basing_cwc_threshold: float = 0.10
+    cwc_basing_slope_threshold: float = -0.02
+
 
 
 
@@ -62,11 +66,15 @@ class UniversalCrossExitConfig:
     negative_pnl_timeout_days: int = 15
     pnl_cap_enabled: bool = False
     pnl_cap_threshold: float = 8.0
-    chandelier_stop_enabled: bool = True
-    chandelier_stop_k: float = 3.5
-    chandelier_stop_activation_pct: float = 5.0
+
     panic_exit_suppression_enabled: bool = True
     panic_exit_rdv_threshold: float = 2.0
+    prt_slope_exit_enabled: bool = True
+    prt_st_cross_enabled: bool = True
+    cts_st_cross_enabled: bool = True
+    cwc_slope_neg_exit_enabled: bool = False
+    cwc_neg_exit_enabled: bool = False
+
 
 
 @dataclass
@@ -84,6 +92,8 @@ class CwvapGuardConfig:
     climax_rp_threshold: float = 0.95    # Requires RP_63 and RP_252 > 0.95
     climax_cwvap_dist: float = 10.0      # Requires distance > 10%
     climax_fas_threshold: float = 1.11    # OR FAS > 1.0
+    cwc_slope_early_release_enabled: bool = True
+    cwc_slope_early_release_threshold: float = -0.01
 
 
 # ---------------------------------------------------------------------------

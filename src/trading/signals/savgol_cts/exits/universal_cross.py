@@ -50,19 +50,6 @@ def exit_universal_cross(
     if cfg.pnl_cap_enabled and pnl_pct >= cfg.pnl_cap_threshold:
         return ExitReason.PNL_CAP, st.to_int()
 
-    # 0b. ATR Chandelier Trail Stop
-    if getattr(cfg, "chandelier_stop_enabled", False):
-        atr = row.get("atr_20", np.nan)
-        if not np.isnan(atr):
-            peak_pnl = (peak_close / trade.entry_price - 1) * 100.0
-            if peak_pnl >= getattr(cfg, "chandelier_stop_activation_pct", 5.0):
-                stop_price = peak_close - getattr(cfg, "chandelier_stop_k", 3.5) * atr
-                if close_now <= stop_price:
-                    if is_panic_bar:
-                        # Suppress panic exits on trailing stop
-                        pass
-                    else:
-                        return ExitReason.ATR_CHANDELIER, st.to_int()
 
     # 1. Hard Stop
     if cfg.hard_stop_enabled and pnl_pct <= -cfg.hard_stop_pct:
@@ -86,16 +73,45 @@ def exit_universal_cross(
     prt = row.get("prt", np.nan)
     prev_prt = prev_row.get("prt", np.nan)
     prt_st = row.get("prt_sell_threshold", np.nan)
+    prt_bt = row.get("prt_buy_threshold", np.nan)
     prev_prt_st = prev_row.get("prt_sell_threshold", np.nan)
 
-    if any(np.isnan(x) for x in [prt, prev_prt, prt_st, prev_prt_st]):
-        return None, st.to_int()
+    prt_slope = row.get("prt_slope", np.nan)
 
     # 2. PRT Trail (Exit on cross down through ST)
-    if prev_prt >= prev_prt_st and prt < prt_st:
-        if is_panic_bar:
-            return None, st.to_int()
+    if getattr(cfg, "prt_st_cross_enabled", True):
+        if not any(np.isnan(x) for x in [prt, prev_prt, prt_st, prev_prt_st]):
+            if prev_prt >= prev_prt_st and prt < prt_st:
+                if is_panic_bar:
+                    return None, st.to_int()
+                return ExitReason.PRT_ST_CROSS, st.to_int()
 
-        return ExitReason.PRT_ST_CROSS, st.to_int()
+    # 3. CTS Trail (Exit on cross down through ST)
+    if getattr(cfg, "cts_st_cross_enabled", True):
+        cts = row.get("cts", np.nan)
+        prev_cts = prev_row.get("cts", np.nan)
+        cts_st = row.get("cts_sell_threshold", np.nan)
+        prev_cts_st = prev_row.get("cts_sell_threshold", np.nan)
+        if not any(np.isnan(x) for x in [cts, prev_cts, cts_st, prev_cts_st]):
+            if prev_cts >= prev_cts_st and cts < cts_st:
+                if is_panic_bar:
+                    return None, st.to_int()
+                return ExitReason.ST_CROSS, st.to_int()
 
+    # 4. CWC Slope Negative Exit
+    if getattr(cfg, "cwc_slope_neg_exit_enabled", False):
+        cwc_slope = row.get("cwc_slope", np.nan)
+        if not np.isnan(cwc_slope) and cwc_slope < 0:
+            if is_panic_bar:
+                return None, st.to_int()
+            return ExitReason.CWVAP_EXHAUSTION, st.to_int()
+
+    # 5. CWC Negative Exit
+    if getattr(cfg, "cwc_neg_exit_enabled", False):
+        cwc = row.get("cwc", np.nan)
+        if not np.isnan(cwc) and cwc < 0:
+            if is_panic_bar:
+                return None, st.to_int()
+            return ExitReason.FAS_FLOOR, st.to_int()
+            
     return None, st.to_int()

@@ -25,7 +25,7 @@ UI_COLUMNS = [
     "coherence_raw", "coherence",
     "regime",
     # Delivery metrics
-    "cwvap_dist", "rdv", "cwc", "cdvl", "gradient_shape", "pdd_30", "pdd_120", "mcs_composite", "prt", "prt_slope", "prt_accel",
+    "cwvap_dist", "rdv", "cwc", "cwc_slope", "cdvl", "gradient_shape", "pdd_30", "pdd_120", "mcs_composite", "prt", "prt_slope", "prt_accel",
     "range_pos_10", "range_pos_22", "range_pos_63", "range_pos_252", "is_ath",
     "cts", "cts_slope", "cts_accel",
     "velocity_60_norm", "vel_dp5",
@@ -50,7 +50,6 @@ UI_COLUMNS = [
     "entry_signal", "entry_reason",
     "exit_signal", "exit_reason",
     "cooldown", "in_trade_pnl",
-    "trailing_stop_price",
 ]
 
 def _nan_safe(val: Any) -> Any:

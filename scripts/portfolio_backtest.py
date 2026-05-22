@@ -942,17 +942,8 @@ def main():
     filename = f"{sanitized_wl}_pbt_{ts}.txt"
     outpath = OUTPUT_DIR / filename
     outpath.write_text(report)
-    print(f"\nReport saved to {outpath}")
-
-
-if __name__ == "__main__":
-    main()
-= args.watchlist.replace(" ", "_")
-    filename = f"{sanitized_wl}_pbt_{ts}.txt"
-    outpath = OUTPUT_DIR / filename
-    outpath.write_text(report)
-    print(f"\nReport saved to {outpath}")
-
+    
 
 if __name__ == "__main__":
     main()
+

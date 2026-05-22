@@ -56,7 +56,8 @@ class ExitReason(str, Enum):
     GAP_DOWN_LOSS = "Gap down while in loss"
     NEGATIVE_PNL_TIMEOUT = "Negative PnL timeout exit"
     PRT_ST_CROSS = "PRT crossed PRT_ST down"
-    ATR_CHANDELIER = "ATR Chandelier Stop Hit"
+    PRT_SLOPE_NEGATIVE = "PRT slope turned negative"
+    CWC_SLOPE_EARLY_RELEASE = "CWC slope early release"
     
     # Universal / Generic
     END_OF_DATA = "End of Data (Open Trade)"

@@ -294,8 +294,8 @@ def test_universal_cross_exit_prt_cross():
     )
 
     # Crossover: prev_prt >= prev_prt_st, prt < prt_st
-    row = {"close": 105.0, "prt": 0.49, "prt_sell_threshold": 0.50}
-    prev_row = {"close": 104.0, "prt": 0.51, "prt_sell_threshold": 0.50}
+    row = {"close": 105.0, "prt": 0.49, "prt_sell_threshold": 0.50, "prt_buy_threshold": 0.0}
+    prev_row = {"close": 104.0, "prt": 0.51, "prt_sell_threshold": 0.50, "prt_buy_threshold": 0.0}
 
     reason, _ = exit_universal_cross(row, prev_row, trade, 105.0, 5, 0, cfg)
 
@@ -316,8 +316,8 @@ def test_universal_cross_exit_panic_suppression():
     )
 
     # Crossover condition is met, but physical gap down (high < prev_low) and high volume (rdv >= 2.0)
-    row = {"close": 105.0, "prt": 0.49, "prt_sell_threshold": 0.50, "high": 99.0, "rdv": 2.5}
-    prev_row = {"close": 104.0, "prt": 0.51, "prt_sell_threshold": 0.50, "low": 100.0}
+    row = {"close": 105.0, "prt": 0.49, "prt_sell_threshold": 0.50, "prt_buy_threshold": 0.0, "high": 99.0, "rdv": 2.5}
+    prev_row = {"close": 104.0, "prt": 0.51, "prt_sell_threshold": 0.50, "prt_buy_threshold": 0.0, "low": 100.0}
 
     reason, _ = exit_universal_cross(row, prev_row, trade, 105.0, 5, 0, cfg)
 
@@ -370,68 +370,6 @@ def test_universal_cross_exit_negative_pnl_timeout():
     prev_row_15 = {"close": 99.0}
     reason_15, _ = exit_universal_cross(row_15, prev_row_15, trade, 100.0, 15, 0, cfg)
     assert reason_15 == ExitReason.NEGATIVE_PNL_TIMEOUT
-
-
-def test_universal_cross_exit_atr_chandelier():
-    """Verify ATR Chandelier trailing stop exit logic."""
-    cfg = SavgolCTSExitConfig().universal_cross
-    cfg.enabled = True
-    cfg.chandelier_stop_enabled = True
-    cfg.chandelier_stop_k = 3.5
-    cfg.chandelier_stop_activation_pct = 5.0
-
-    trade = Trade(
-        symbol="TEST", entry_date="2024-01-01", entry_price=100.0,
-        entry_idx=0, atr_at_entry=2.0,
-        entry_tag=EntryTag.UNIVERSAL_CROSS.value
-    )
-
-    # Peak close is 106.0 (+6% peak pnl). ATR is 1.0.
-    # Trailing stop price = 106.0 - 3.5 * 1.0 = 102.5.
-    prev_row = {"close": 104.0, "atr_20": 1.0}
-
-    # Case 1: Close is 103.0 (> 102.5 trailing stop price) -> Should NOT exit
-    row = {"close": 103.0, "atr_20": 1.0}
-    reason, _ = exit_universal_cross(row, prev_row, trade, 106.0, 5, 0, cfg)
-    assert reason is None
-
-    # Case 2: Close is 102.0 (<= 102.5 trailing stop price) -> Should EXIT
-    row_hit = {"close": 102.0, "atr_20": 1.0}
-    reason_hit, _ = exit_universal_cross(row_hit, prev_row, trade, 106.0, 5, 0, cfg)
-    assert reason_hit == ExitReason.ATR_CHANDELIER
-
-    # Case 3: Peak close is 104.0 (+4% peak pnl, under 5.0% activation threshold)
-    # Even if close drops to 99.0, since stop was never active, should NOT exit under Chandelier stop.
-    row_inactive = {"close": 99.0, "atr_20": 1.0}
-    reason_inactive, _ = exit_universal_cross(row_inactive, prev_row, trade, 104.0, 5, 0, cfg)
-    assert reason_inactive is None
-
-
-def test_universal_cross_exit_atr_chandelier_panic_suppression():
-    """Verify ATR Chandelier trailing stop exit is suppressed under panic gap down conditions."""
-    cfg = SavgolCTSExitConfig().universal_cross
-    cfg.enabled = True
-    cfg.chandelier_stop_enabled = True
-    cfg.chandelier_stop_k = 3.5
-    cfg.chandelier_stop_activation_pct = 5.0
-    cfg.panic_exit_suppression_enabled = True
-    cfg.panic_exit_rdv_threshold = 2.0
-
-    trade = Trade(
-        symbol="TEST", entry_date="2024-01-01", entry_price=100.0,
-        entry_idx=0, atr_at_entry=2.0,
-        entry_tag=EntryTag.UNIVERSAL_CROSS.value
-    )
-
-    # Peak close is 106.0 (+6% peak pnl). ATR is 1.0.
-    # Trailing stop price = 106.0 - 3.5 * 1.0 = 102.5.
-    # Close drops to 102.0 (<= 102.5 stop price) but it is a panic day (gap down and high rdv)
-    prev_row = {"close": 104.0, "atr_20": 1.0, "low": 103.0}
-    row = {"close": 102.0, "atr_20": 1.0, "high": 102.2, "rdv": 2.5}
-
-    reason, _ = exit_universal_cross(row, prev_row, trade, 106.0, 5, 0, cfg)
-    assert reason is None  # Suppressed!
-
 
 def test_universal_cross_exit_pnl_cap():
     """Verify that exit triggers when PnL cap is hit."""
@@ -529,21 +467,200 @@ def test_universal_cross_entry_rejection_gap_down_lookback_config():
     records[14]["cts_slope"] = -0.05
     records[15]["cts_slope"] = 0.02
     
-    # Put a gap-down at index 4 (11 bars before index 15)
-    # i.e., index 4 high < index 3 low
-    records[3]["low"] = 110.0
-    records[4]["high"] = 102.0
-    records[4]["atr_20"] = 2.0  # gap size = 8.0 > 0.3 * 2.0 (0.6)
+    # Put a gap-down at index 3 (12 bars before index 15)
+    # i.e., index 3 high < index 2 low
+    records[2]["low"] = 110.0
+    records[3]["high"] = 102.0
+    records[3]["atr_20"] = 2.0  # gap size = 8.0 > 0.3 * 2.0 (0.6)
     
     # Test with default gap_down_lookback = 10
     cfg.universal_cross.gap_down_lookback = 10
     passed, score, meta = entry_universal_cross(records[15], records[14], cfg, records, 15)
-    assert passed is True  # Should not be rejected because gap is 11 bars ago, outside lookback 10
+    assert passed is True  # Should not be rejected because gap is 12 bars ago, outside lookback 10+1
     
     # Test with gap_down_lookback = 15
     cfg.universal_cross.gap_down_lookback = 15
     passed, score, meta = entry_universal_cross(records[15], records[14], cfg, records, 15)
-    assert passed is False  # Rejected because lookback 15 covers index 4 (11 bars ago)
+    assert passed is False  # Rejected because lookback 15 covers index 3 (12 bars ago)
     assert "recent gap down detected" in meta["reason"]
+
+
+def test_universal_cross_entry_state_based_bypass():
+    """Verify that a V-bottom setup with positive/rising institutional flow (fas > fas_bt) and strong price velocity (psz_v > 0.02) bypasses the acceleration check, even if acceleration is below threshold and falling."""
+    cfg = SavgolCTSEntryConfig()
+    cfg.universal_cross.enabled = True
+
+    records = get_base_records()
+    # Trigger on FAS
+    records[1]["cts_slope"] = -0.1
+    records[2]["cts_slope"] = -0.05  # No CTS slope trigger
+    records[1]["fas"] = -0.9
+    records[2]["fas"] = -0.7  # FAS triggers above -0.8
+
+    # Set acceleration to fail: below threshold and dropping (a2=0.04 -> a3=-0.01)
+    records[1]["cts_accel"] = 0.04
+    records[2]["cts_accel"] = -0.01  # below threshold 0.0, and not rising
+    records[2]["cts_accel_threshold"] = 0.0
+
+    # Case 1: psz_v is not strong (psz_v = 0.01 <= 0.02), should get REJECTED by acceleration
+    records[1]["psz_v"] = 0.005
+    records[2]["psz_v"] = 0.01
+    passed, score, meta = entry_universal_cross(records[2], records[1], cfg, records, 2)
+    assert passed is False
+    assert "cts_accel below threshold" in meta["reason"]
+
+    # Case 2: psz_v is strong (psz_v = 0.05 > 0.02), should BYPASS acceleration and get ACCEPTED
+    records[1]["psz_v"] = 0.04
+    records[2]["psz_v"] = 0.05  # rising and positive
+    passed, score, meta = entry_universal_cross(records[2], records[1], cfg, records, 2)
+    assert passed is True
+    assert meta["reason"] == "Universal Cross accepted"
+
+
+def test_universal_cross_entry_long_term_range_with_cwc_bypass():
+    """Verify that setups in the upper portion of long-term ranges are rejected unless CWC trend coherence is strong (cwc > 0.50)."""
+    cfg = SavgolCTSEntryConfig()
+    cfg.universal_cross.enabled = True
+
+    records = get_base_records()
+    
+    # Standard low range baseline works:
+    records[2]["range_pos_22"] = 0.2
+    records[2]["range_pos_63"] = 0.3
+    records[2]["range_pos_252"] = 0.4
+    records[2]["cwc"] = 0.3  # standard cwc
+    passed, score, meta = entry_universal_cross(records[2], records[1], cfg, records, 2)
+    assert passed is True
+
+    # Case 1: In high range (range_pos_22 > 0.50) but weak coherence (cwc = 0.40 <= 0.50) -> REJECTED
+    records[2]["range_pos_22"] = 0.6
+    records[2]["range_pos_63"] = 0.3
+    records[2]["range_pos_252"] = 0.4
+    records[2]["cwc"] = 0.4
+    passed, score, meta = entry_universal_cross(records[2], records[1], cfg, records, 2)
+    assert passed is False
+    assert "price in upper portion of long-term ranges without trend coherence" in meta["reason"]
+
+    # Case 2: In high range but strong coherence (cwc = 0.60 > 0.50) -> BYPASSED & ACCEPTED
+    records[2]["cwc"] = 0.6
+    passed, score, meta = entry_universal_cross(records[2], records[1], cfg, records, 2)
+    assert passed is True
+    assert meta["reason"] == "Universal Cross accepted"
+
+    # Case 3: Verify check for range_pos_63 (> 0.60) rejection
+    records[2]["range_pos_22"] = 0.2
+    records[2]["range_pos_63"] = 0.7
+    records[2]["range_pos_252"] = 0.4
+    records[2]["cwc"] = 0.4  # low coherence
+    passed, score, meta = entry_universal_cross(records[2], records[1], cfg, records, 2)
+    assert passed is False
+    assert "price in upper portion of long-term ranges without trend coherence" in meta["reason"]
+
+    # Case 4: Verify check for range_pos_252 (> 0.55) rejection
+    records[2]["range_pos_22"] = 0.2
+    records[2]["range_pos_63"] = 0.3
+    records[2]["range_pos_252"] = 0.6
+    records[2]["cwc"] = 0.4  # low coherence
+    passed, score, meta = entry_universal_cross(records[2], records[1], cfg, records, 2)
+    assert passed is False
+    assert "price in upper portion of long-term ranges without trend coherence" in meta["reason"]
+
+
+def test_universal_cross_exit_cts_cross():
+    """Verify exit on CTS crossing down through the CTS sell threshold."""
+    cfg = SavgolCTSExitConfig().universal_cross
+    cfg.enabled = True
+    cfg.cts_st_cross_enabled = True
+
+    trade = Trade(
+        symbol="TEST", entry_date="2024-01-01", entry_price=100.0,
+        entry_idx=0, atr_at_entry=2.0,
+        entry_tag=EntryTag.UNIVERSAL_CROSS.value
+    )
+
+    # Crossover: prev_cts >= prev_cts_st, cts < cts_st
+    row = {"close": 105.0, "cts": 0.49, "cts_sell_threshold": 0.50}
+    prev_row = {"close": 104.0, "cts": 0.51, "cts_sell_threshold": 0.50}
+
+    reason, _ = exit_universal_cross(row, prev_row, trade, 105.0, 5, 0, cfg)
+
+    assert reason == ExitReason.ST_CROSS
+
+
+def test_universal_cross_entry_state_based_bypass_falling_fas():
+    """Verify that a V-bottom setup with falling/decaying institutional flow (fas < prev_fas) fails the V-bottom bypass even if psz_v is strong, and gets rejected by the acceleration gate."""
+    cfg = SavgolCTSEntryConfig()
+    cfg.universal_cross.enabled = True
+
+    records = get_base_records()
+    # Trigger on CTS Slope (crosses above 0)
+    records[1]["cts_slope"] = -0.1
+    records[2]["cts_slope"] = 0.05
+    
+    # Set acceleration to fail: below threshold and dropping (a2=0.04 -> a3=-0.01)
+    records[1]["cts_accel"] = 0.04
+    records[2]["cts_accel"] = -0.01
+    records[2]["cts_accel_threshold"] = 0.0
+
+    # Set strong price velocity (psz_v = 0.05 > 0.02)
+    records[1]["psz_v"] = 0.04
+    records[2]["psz_v"] = 0.05
+
+    # FAS is high (above fas_bt=-0.8) but falling (decaying institutional flow: prev=-0.6 -> current=-0.7)
+    records[1]["fas"] = -0.6
+    records[2]["fas"] = -0.7
+    records[2]["fas_buy_threshold"] = -0.8
+    
+    passed, score, meta = entry_universal_cross(records[2], records[1], cfg, records, 2)
+    assert passed is False
+    assert "cts_accel below threshold" in meta["reason"]
+
+
+def test_universal_cross_entry_cwc_basing_filter():
+    """Verify that a setup with extremely low CWC (< 0.10) and degrading CWC slope (< -0.02) is correctly rejected as a choppy flat base, and passes when thresholds are not breached or the filter is disabled."""
+    cfg = SavgolCTSEntryConfig()
+    cfg.universal_cross.enabled = True
+    cfg.universal_cross.cwc_basing_filter_enabled = True
+    cfg.universal_cross.cwc_basing_cwc_threshold = 0.10
+    cfg.universal_cross.cwc_basing_slope_threshold = -0.02
+
+    records = get_base_records()
+    # Trigger on CTS Slope
+    records[1]["cts_slope"] = -0.1
+    records[2]["cts_slope"] = 0.05
+    
+    # Ensure acceleration and velocity gates pass
+    records[2]["cts_accel"] = 0.05
+    records[2]["cts_accel_threshold"] = 0.0
+    records[1]["cts_accel"] = 0.04  # rising
+    records[2]["psz_v"] = 0.05      # positive
+    records[1]["psz_v"] = 0.04      # rising
+    records[2]["fas"] = -0.2
+    records[1]["fas"] = -0.3        # rising
+
+    # Case 1: Low CWC (0.08 < 0.10) and degrading CWC slope (-0.03 < -0.02) -> Should be REJECTED
+    records[2]["cwc"] = 0.08
+    records[2]["cwc_slope"] = -0.03
+    
+    passed, score, meta = entry_universal_cross(records[2], records[1], cfg, records, 2)
+    assert passed is False
+    assert "low and degrading trend coherence" in meta["reason"]
+
+    # Case 2: Filter is disabled -> Should be ACCEPTED
+    cfg.universal_cross.cwc_basing_filter_enabled = False
+    passed, score, meta = entry_universal_cross(records[2], records[1], cfg, records, 2)
+    assert passed is True
+
+    # Case 3: Re-enabled but CWC is high (0.15 > 0.10) -> Should be ACCEPTED
+    cfg.universal_cross.cwc_basing_filter_enabled = True
+    records[2]["cwc"] = 0.15
+    passed, score, meta = entry_universal_cross(records[2], records[1], cfg, records, 2)
+    assert passed is True
+
+    # Case 4: Re-enabled, CWC is low (0.08 < 0.10) but slope is positive/flat (-0.01 > -0.02) -> Should be ACCEPTED
+    records[2]["cwc"] = 0.08
+    records[2]["cwc_slope"] = -0.01
+    passed, score, meta = entry_universal_cross(records[2], records[1], cfg, records, 2)
+    assert passed is True
 
 

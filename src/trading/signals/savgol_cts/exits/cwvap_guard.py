@@ -42,7 +42,14 @@ def apply_cwvap_guard(
     # If a path proposed an exit, mark suppression state
     if res is not None:
         # Loss prevention rules bypass CWVAP suppression
-        bypass_reasons = [ExitReason.PRT_ST_CROSS, ExitReason.CWVAP_LOST, ExitReason.GAP_DOWN_LOSS, ExitReason.HARD_STOP, ExitReason.PNL_CAP]
+        bypass_reasons = [ExitReason.CWVAP_LOST, ExitReason.GAP_DOWN_LOSS, ExitReason.HARD_STOP, ExitReason.PNL_CAP]
+        
+        gc = cfg.cwvap_guard
+        early_release_active = getattr(gc, "cwc_slope_early_release_enabled", True)
+        if not early_release_active:
+            bypass_reasons.append(ExitReason.PRT_ST_CROSS)
+            bypass_reasons.append(ExitReason.ST_CROSS)
+            
         if res in bypass_reasons:
             st.exit_suppressed = False
             st.suppressed_this_bar = False
@@ -140,6 +147,17 @@ def apply_cwvap_guard(
                 st.suppressed_this_bar = False
                 st.exit_suppressed = False
                 return ExitReason.STRUCTURAL_CLIMAX, st.to_int()
+
+        # Rule PREEMPT 3: CWC Slope Early Release
+        if getattr(gc, "cwc_slope_early_release_enabled", True):
+            cwc_slope = row.get("cwc_slope", np.nan)
+            thr = getattr(gc, "cwc_slope_early_release_threshold", -0.01)
+            if not np.isnan(cwc_slope) and cwc_slope < thr:
+                if res is not None or st.exit_suppressed:
+                    st.suppressed_this_bar = False
+                    st.exit_suppressed = False
+                    final_res = res if res else ExitReason.CWC_SLOPE_EARLY_RELEASE
+                    return final_res, st.to_int()
 
         # Rule A: Suppress exit while momentum positive above CWVAP.
         psz_strong = not np.isnan(psz_raw) and psz_raw > 0.00

@@ -119,6 +119,7 @@ class EngineResult:
             "date": str(row["date"]),
             "close": _safe(row.get("close"), decimals=2),
             "cwc": _safe(row.get("cwc", 0), decimals=4),
+            "cwc_slope": _safe(row.get("cwc_slope", 0), decimals=6),
             "rdv": _safe(row.get("rdv", 0), decimals=4),
             "cwvap_dist": _safe(row.get("cwvap_dist", 0), decimals=4),
             "delivery_pct": _safe(row.get("delivery_pct", 0), decimals=2),

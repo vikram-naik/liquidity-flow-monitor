@@ -70,6 +70,20 @@ def check_basing(records, idx):
     return False
 
 
+def check_long_term_range(row, cwc_threshold=0.50):
+    """
+    Checks if the price is in the upper portion of long-term ranges without strong trend coherence.
+    Returns True if rejected, False if passed.
+    """
+    range_pos_22 = row.get("range_pos_22", 0.0)
+    range_pos_63 = row.get("range_pos_63", 0.0)
+    range_pos_252 = row.get("range_pos_252", 0.0)
+    cwc = row.get("cwc", 0.0)
+
+    in_high_range = (range_pos_22 > 0.50 or range_pos_63 > 0.60 or range_pos_252 > 0.55)
+    strong_coherent_trend = (cwc > cwc_threshold)
+
+    return in_high_range and not strong_coherent_trend
 
 
 def entry_universal_cross(row, prev_row, cfg, records, idx):
@@ -89,11 +103,24 @@ def entry_universal_cross(row, prev_row, cfg, records, idx):
     fas = row.get("fas", 0)
     trigger_fas = 1 if (prev_fas <= fas_bt and fas > fas_bt) else 0
 
-
-    prt = row.get("prt", 0)
-    prev_prt = prev_row.get("prt", 0)
+    prt = row.get("prt_slope", 0)
+    prev_prt = prev_row.get("prt_slope", 0)
     prt_bt = row.get("prt_buy_threshold", 0.0)
-    trigger_prt = 1 if (prev_prt <= prt_bt and prt > prt_bt) else 0
+    trigger_prt = 1 if (prev_prt <= 0 and prt > 0) else 0
+
+    # 4th trigger: CWC Consolidation + Rise (Top Alpha configuration)
+    trigger_cwc = 0
+    if idx >= 3:
+        cwc_vals = [records[k].get("cwc", 0.0) for k in range(idx - 3, idx)]
+        cwc_curr = row.get("cwc", 0.0)
+        cwc_avg = sum(cwc_vals) / len(cwc_vals)
+        cwc_disp = max(cwc_vals) - min(cwc_vals)
+        regime = row.get("regime", "notrend")
+        if 0.80 <= cwc_avg <= 1.00:
+            if cwc_disp <= 0.10:
+                if cwc_curr > cwc_avg and (cwc_curr - cwc_avg) >= 0.01:
+                    if regime != "downtrend":
+                        trigger_cwc = 1
 
     cts_bt = row.get("cts_buy_threshold", -0.8)
     prev_cts = prev_row.get("cts", 0)
@@ -102,22 +129,27 @@ def entry_universal_cross(row, prev_row, cfg, records, idx):
 
     accel_bt = row.get("cts_accel_threshold", 0.0)
     accel = row.get("cts_accel", 0)
+    psz_v = row.get("psz_v", 0)
 
-    if not any([trigger_cs, trigger_fas, trigger_prt]):
+    if not any([trigger_cs, trigger_fas, trigger_prt, trigger_cwc]):
         return False, 0, {"reason": "No structural inflection"}
 
        
     # 1. Acceleration Trend
-    # cts_accel should be above accel_bt
-    if accel <= accel_bt:
-        return False, 0, {"reason": "cts_accel below threshold"}
+    # State-based Flow-Velocity Bypass: Bypass acceleration checks if institutional flow is actively positive, rising, and price velocity is strong
+    prev_fas = prev_row.get("fas", 0.0)
+    strong_institutional_turn = (fas > fas_bt and fas >= prev_fas and psz_v > 0.02)
+    
+    if not strong_institutional_turn:
+        if accel <= accel_bt:
+            return False, 0, {"reason": "cts_accel below threshold"}
 
-    if idx >= 2:
-        a1 = records[idx-2].get("cts_accel", 0)
-        a2 = records[idx-1].get("cts_accel", 0)
-        a3 = records[idx].get("cts_accel", 0)
-        if a3 < a2:
-            return False, 0, {"reason": "cts_accel not rising"}
+        if idx >= 2:
+            a1 = records[idx-2].get("cts_accel", 0)
+            a2 = records[idx-1].get("cts_accel", 0)
+            a3 = records[idx].get("cts_accel", 0)
+            if a3 < a2:
+                return False, 0, {"reason": "cts_accel not rising"}
         
     # 2. PSZ Velocity Trend should be positive and rising.
     psz_v = row.get("psz_v", 0)
@@ -144,10 +176,15 @@ def entry_universal_cross(row, prev_row, cfg, records, idx):
             return False, 0, {"reason": "fas_bt not in expected range"}
 
     # 4. price location should be lower half of range_pos_10 
-    # We should ignore price location check if both fas and cts_slope trigger together.
+    # We should ignore price location check if both fas and cts_slope trigger together, or if CWC trigger is active.
     range_pos_10 = row.get("range_pos_10", 0)
-    if range_pos_10 > 0.5 and not (trigger_fas and trigger_cs):
+    if range_pos_10 > 0.5 and not (trigger_fas and trigger_cs) and not trigger_cwc:
         return False, 0, {"reason": "price not in lower half of weekly range"}
+
+    # 4b. Dynamic Long-term Range Gate with Cross-Window Coherence (CWC) Bypass
+    # We ignore this range gate if CWC trigger is active.
+    if check_long_term_range(row, cwc_threshold=0.50) and not trigger_cwc:
+        return False, 0, {"reason": "price in upper portion of long-term ranges without trend coherence"}
     
     # 5. Check for recent gap downs which could indicate a strong downtrend and invalidate the signal
     lookback = getattr(cfg.universal_cross, "gap_down_lookback", 10)
@@ -162,6 +199,38 @@ def entry_universal_cross(row, prev_row, cfg, records, idx):
     # 7. Check for basing patterns - if the price has been basing, a cross might be more significant
     if check_basing(records, idx):
         return False, 0, {"reason": "price has been basing recently, cross less reliable"}
+
+    # 7b. Choppy Flat Basing Check using CWC (Cross-Window Coherence)
+    if getattr(cfg.universal_cross, "cwc_basing_filter_enabled", True):
+        cwc = row.get("cwc", 0.0)
+        cwc_slope = row.get("cwc_slope", 0.0)
+        cwc_thr = getattr(cfg.universal_cross, "cwc_basing_cwc_threshold", 0.10)
+        slope_thr = getattr(cfg.universal_cross, "cwc_basing_slope_threshold", -0.02)
+        if cwc < cwc_thr and cwc_slope < slope_thr:
+            return False, 0, {"reason": "low and degrading trend coherence (choppy flat basing)"}
+
+
+    
+    # 8. Anti-Trap: Distribution Trap Gate
+    # Rejects loose, choppy bases under strong distribution (avoiding WIPRO, TRENT, CIPLA failed breakouts)
+    pdd_30 = row.get("pdd_30", 0.0)
+    base_tightness = row.get("base_tightness", 1.0)
+    if pdd_30 <= -5.5 and 0.40 <= base_tightness <= 0.46:
+        return False, 0, {"reason": "Distribution Trap: choppy base under heavy distribution"}
+
+    score = 70
+
+    details = {
+        "reason": "Universal Cross accepted",
+        "entry_tag": EntryTag.UNIVERSAL_CROSS.value,
+        "score": score,
+        "raw_ml_score": 0,
+        "ml_guard_threshold": 0,
+    }
+
+    return True, score, details
+
+
 
     
     # 8. Anti-Trap: Distribution Trap Gate

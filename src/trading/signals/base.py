@@ -124,7 +124,7 @@ class SignalInterface(ABC):
         exit_flags    = [0]    * n
         exit_reasons  = [None] * n
         in_trade_pnl  = [None] * n
-        trailing_stop_price = [None] * n
+
 
         in_trade = False
         trade: Trade | None = None
@@ -148,16 +148,6 @@ class SignalInterface(ABC):
                     peak_close = close
                 bars_held = i - trade.entry_idx
 
-                # Check for active trailing stop price floor
-                if exit_cfg is not None and hasattr(exit_cfg, "universal_cross"):
-                    uc_cfg = exit_cfg.universal_cross
-                    if getattr(uc_cfg, "chandelier_stop_enabled", False):
-                        peak_pnl = (peak_close / trade.entry_price - 1) * 100.0
-                        if peak_pnl >= getattr(uc_cfg, "chandelier_stop_activation_pct", 5.0):
-                            atr = row.get("atr_20", np.nan)
-                            if not np.isnan(atr):
-                                k = getattr(uc_cfg, "chandelier_stop_k", 3.5)
-                                trailing_stop_price[i] = peak_close - k * atr
 
                 reason, delivery_bad_count = self.check_exit(
                     row, prev, trade, peak_close, bars_held,
@@ -213,5 +203,4 @@ class SignalInterface(ABC):
         df["exit_signal"]  = exit_flags
         df["exit_reason"]  = exit_reasons
         df["in_trade_pnl"] = in_trade_pnl
-        df["trailing_stop_price"] = trailing_stop_price
         return df

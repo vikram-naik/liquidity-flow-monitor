@@ -27,6 +27,7 @@
         "cts_slope": { label: "CTS Slope (Bull Gate)" },
         "cts_accel": { label: "CTS Acceleration (Gate 1)" },
         "cwc": { label: "CWC — Composite Coherence" },
+        "cwc_slope": { label: "CWC Slope" },
         "psz": { label: "PSZ — Price Slope Z" },
         "price_slope_z": { label: "Price Slope Z (Raw)" },
         "rsz": { label: "RSZ — RDV Slope Z" },
@@ -164,14 +165,14 @@
 
     function buildCharts(data) {
         var ledger = data.ledger;
-        var ohlc = [], cwvap = [], vaHigh = [], vaLow = [], trailingStop = [];
+        var ohlc = [], cwvap = [], vaHigh = [], vaLow = [];
         var ctsArr = [];
         var deliveryVol = [];
         globalTimeToIndex = {};
         var pZ = [], rZ = [], cRaw = [], cSmooth = [];
         var rdvArr = [], cwcArr = [], rdvConsArr = [], atrArr = [], distArr = [], delPctArr = [], pddArr = [], prtArr = [], prtBuyThreshArr = [], prtSellThreshArr = [], prtSlopeArr = [], prtSlopeBuyThreshArr = [], prtSlopeSellThreshArr = [], prtAccelArr = [], fasArr = [], fasBuyThreshArr = [], fasSellThreshArr = [];
         // NextGen gate series
-        var ctsSlopeArr = [], ctsAccelArr = [], ctsAccelThreshArr = [], ctsBuyThreshArr = [], ctsSellThreshArr = [];
+        var ctsSlopeArr = [], ctsAccelArr = [], ctsAccelThreshArr = [], ctsBuyThreshArr = [], ctsSellThreshArr = [], cwcSlopeArr = [];
         var cdvlArr = [], vel60Arr = [], pdd120Arr = [], pdd120ThreshArr = [];
         // PSZ series
         var pszArr = [], pszSmoothArr = [], pszVArr = [], pszBuyThreshArr = [], pszSellThreshArr = [];
@@ -196,7 +197,6 @@
             if (r.cts != null) ctsArr.push({ time: t, value: r.cts }); else ctsArr.push({ time: t });
             if (r.va_high != null) vaHigh.push({ time: t, value: r.va_high }); else vaHigh.push({ time: t });
             if (r.va_low != null) vaLow.push({ time: t, value: r.va_low }); else vaLow.push({ time: t });
-            if (r.trailing_stop_price != null) trailingStop.push({ time: t, value: r.trailing_stop_price }); else trailingStop.push({ time: t });
 
             if (r.price_slope_z != null) pZ.push({ time: t, value: r.price_slope_z }); else pZ.push({ time: t });
             if (r.rdv_slope_z != null) rZ.push({ time: t, value: r.rdv_slope_z }); else rZ.push({ time: t });
@@ -206,6 +206,7 @@
 
             if (r.rdv != null) rdvArr.push({ time: t, value: r.rdv }); else rdvArr.push({ time: t });
             if (r.cwc != null) cwcArr.push({ time: t, value: r.cwc }); else cwcArr.push({ time: t });
+            if (r.cwc_slope != null) cwcSlopeArr.push({ time: t, value: r.cwc_slope }); else cwcSlopeArr.push({ time: t });
             if (r.rdv_consistency != null) rdvConsArr.push({ time: t, value: r.rdv_consistency }); else rdvConsArr.push({ time: t });
             if (r.atr_20 != null) atrArr.push({ time: t, value: r.atr_20 }); else atrArr.push({ time: t });
             if (r.cwvap_dist != null) distArr.push({ time: t, value: r.cwvap_dist }); else distArr.push({ time: t });
@@ -359,16 +360,11 @@
         var sVaLow = pc.addSeries(LC.LineSeries, { color: "#7c4dff", lineWidth: 1, lineStyle: 2, lastValueVisible: false, priceLineVisible: false });
         sVaLow.setData(vaLow);
 
-        // --- ATR Chandelier Trailing Stop Floor ---
-        var sTrailingStop = pc.addSeries(LC.LineSeries, { color: "#e040fb", lineWidth: 1.5, lineStyle: 2, lastValueVisible: false, priceLineVisible: false });
-        sTrailingStop.setData(trailingStop);
-
         var leg1Config = [
             { api: cs, label: "Price", col: "price", color: "#e6edf3" },
             { api: sCwvap, label: "CWVAP", col: "cwvap", color: "#00bfa5" },
             { api: sVaHigh, label: "VA High", col: "va_high", color: "#7c4dff", dashed: true },
             { api: sVaLow, label: "VA Low", col: "va_low", color: "#7c4dff", dashed: true },
-            { api: sTrailingStop, label: "TS Stop", col: "trailing_stop_price", color: "#e040fb", dashed: true },
             { type: "separator" },
             { label: "pw", col: "range_pos_10", color: "#8b949e" },
             { label: "pm", col: "range_pos_22", color: "#8b949e" },
@@ -552,6 +548,15 @@
                 var sCwcZ = c.addSeries(LC.LineSeries, { color: "#424242", lineWidth: 1, lineStyle: 2, lastValueVisible: false, priceLineVisible: false });
                 sCwcZ.setData(cwcArr.map(d => ({ time: d.time, value: 0 })));
                 legConfig.push({ api: sCwc, label: "CWC", col: "cwc", color: "#a5d6a7" });
+            } else if (panelKey === "cwc_slope") {
+                // CWC Slope
+                var sCwcSlope = c.addSeries(LC.LineSeries, { color: "#81c784", lineWidth: 2, lastValueVisible: false, priceLineVisible: false });
+                sCwcSlope.setData(cwcSlopeArr);
+                
+                var sCwcSZ = c.addSeries(LC.LineSeries, { color: "#424242", lineWidth: 1, lineStyle: 2, lastValueVisible: false, priceLineVisible: false });
+                sCwcSZ.setData(cwcSlopeArr.map(d => ({ time: d.time, value: 0 })));
+                
+                legConfig.push({ api: sCwcSlope, label: "CWC Slope", col: "cwc_slope", color: "#81c784" });
             } else if (panelKey === "psz") {
                 // PSZ: psz_v velocity histogram + zero line
                 var sPszV = c.addSeries(LC.HistogramSeries, {
@@ -699,7 +704,6 @@
             sVaHigh.applyOptions({ visible: val });
             sVaLow.applyOptions({ visible: val });
         });
-        bindToggle("cbTS", val => sTrailingStop.applyOptions({ visible: val }));
         bindToggle("cbVol", val => sVol.applyOptions({ visible: val }));
 
         function syncCrosshair(chart, series, param) {

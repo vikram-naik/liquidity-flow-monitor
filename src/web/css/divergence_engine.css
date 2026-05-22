@@ -225,12 +225,6 @@ body {
   border-color: #7c4dff;
 }
 
-.pill.ov-ts input:checked+span {
-  background: #e040fb;
-  color: #fff;
-  border-color: #e040fb;
-}
-
 .pill.ov-vol input:checked+span {
   background: #78909c;
   color: #fff;
