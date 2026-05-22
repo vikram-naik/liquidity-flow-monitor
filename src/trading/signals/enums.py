@@ -58,6 +58,7 @@ class ExitReason(str, Enum):
     PRT_ST_CROSS = "PRT crossed PRT_ST down"
     PRT_SLOPE_NEGATIVE = "PRT slope turned negative"
     CWC_SLOPE_EARLY_RELEASE = "CWC slope early release"
+    CTS_NEAR_MISS_ROLLOVER = "CTS near-miss rollover"
     
     # Universal / Generic
     END_OF_DATA = "End of Data (Open Trade)"

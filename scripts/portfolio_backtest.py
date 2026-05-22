@@ -543,6 +543,58 @@ def compute_portfolio_stats(
     }
 
 
+def get_index_symbol_for_watchlist(watchlist_name: str) -> str:
+    wl_upper = watchlist_name.upper().strip()
+    if "500" in wl_upper:
+        return "NIFTY 500"
+    elif "100" in wl_upper:
+        return "NIFTY 100"
+    elif "200" in wl_upper:
+        return "NIFTY 200"
+    elif "BANK" in wl_upper:
+        return "NIFTY BANK"
+    elif "IT" in wl_upper:
+        return "NIFTY IT"
+    return "NIFTY 50"
+
+
+def compute_index_performance(index_symbol: str, start_date: str, end_date: str) -> dict:
+    conn = sqlite3.connect(str(DB_PATH))
+    query = """
+        SELECT record_date as date, price_close as close 
+        FROM nse_delivery_log 
+        WHERE symbol = ? AND record_date >= ? AND record_date <= ?
+        ORDER BY record_date ASC
+    """
+    df = pd.read_sql_query(query, conn, params=[index_symbol, start_date, end_date])
+    conn.close()
+    
+    if df.empty:
+        return {}
+        
+    start_val = df.iloc[0]["close"]
+    end_val = df.iloc[-1]["close"]
+    total_return = (end_val / start_val - 1) * 100
+    
+    # CAGR
+    first_dt = datetime.strptime(df.iloc[0]["date"], "%Y-%m-%d")
+    last_dt = datetime.strptime(df.iloc[-1]["date"], "%Y-%m-%d")
+    years = (last_dt - first_dt).days / 365.25
+    cagr = ((end_val / start_val) ** (1 / years) - 1) * 100 if years > 0 else 0.0
+    
+    # Max Drawdown
+    df["peak"] = df["close"].cummax()
+    df["drawdown"] = (df["peak"] - df["close"]) / df["peak"] * 100
+    max_dd = df["drawdown"].max()
+    
+    return {
+        "symbol": index_symbol,
+        "total_return": round(total_return, 2),
+        "cagr": round(cagr, 2),
+        "max_drawdown": round(max_dd, 2),
+    }
+
+
 # ── Report Formatting ──────────────────────────────────────────────────────
 
 def format_section_stats(
@@ -692,17 +744,27 @@ def format_kelly_evolution(records: list[PortfolioTradeRecord], out: io.StringIO
                tablefmt="simple"))
 
 
-def format_comparison(kelly_stats: dict, ew_stats: dict, out: io.StringIO):
-    """Side-by-side comparison of Kelly vs Equal-Weight."""
+def format_comparison(kelly_stats: dict, ew_stats: dict, out: io.StringIO, index_stats: dict | None = None):
+    """Side-by-side comparison of Kelly vs Equal-Weight (and optional Index benchmark)."""
     def w(line: str = ""):
         out.write(line + "\n")
 
     w(f"\n{SEP}")
-    w("  COMPARISON: KELLY vs EQUAL-WEIGHT")
+    if index_stats:
+        idx_sym = index_stats.get("symbol", "Index")
+        w(f"  COMPARISON: PORTFOLIO vs BENCHMARK ({idx_sym})")
+    else:
+        w("  COMPARISON: KELLY vs EQUAL-WEIGHT")
     w(SEP)
     w()
-    w(f"  {'Metric':<22} {'Kelly':>14} {'Equal-Wt':>14} {'Delta':>14}")
-    w(f"  {THIN_SEP[:66]}")
+    
+    if index_stats:
+        idx_label = f"{index_stats.get('symbol', 'Index')} (B&H)"
+        w(f"  {'Metric':<22} {'Kelly':>14} {'Equal-Wt':>14} {idx_label:>22}")
+        w(f"  {THIN_SEP[:76]}")
+    else:
+        w(f"  {'Metric':<22} {'Kelly':>14} {'Equal-Wt':>14} {'Delta':>14}")
+        w(f"  {THIN_SEP[:66]}")
 
     metrics = [
         ("Final Equity", "final_equity", INR, ""),
@@ -719,11 +781,24 @@ def format_comparison(kelly_stats: dict, ew_stats: dict, out: io.StringIO):
     for label, key, fmt, suffix in metrics:
         kv = kelly_stats.get(key, 0)
         ev = ew_stats.get(key, 0)
-        delta = kv - ev
-        if fmt == INR:
-            w(f"  {label:<22} {fmt(kv):>14} {fmt(ev):>14} {fmt(delta):>14}")
+        
+        if index_stats:
+            if key in ["total_return", "cagr", "max_drawdown"]:
+                idx_v = index_stats.get(key, 0)
+                idx_str = f"{idx_v:+.2f}%" if key in ["total_return", "cagr"] else f"{idx_v:.2f}%"
+            else:
+                idx_str = "—"
+            
+            if fmt == INR:
+                w(f"  {label:<22} {fmt(kv):>14} {fmt(ev):>14} {idx_str:>22}")
+            else:
+                w(f"  {label:<22} {fmt(kv) + suffix:>14} {fmt(ev) + suffix:>14} {idx_str:>22}")
         else:
-            w(f"  {label:<22} {fmt(kv) + suffix:>14} {fmt(ev) + suffix:>14} {fmt(delta) + suffix:>14}")
+            delta = kv - ev
+            if fmt == INR:
+                w(f"  {label:<22} {fmt(kv):>14} {fmt(ev):>14} {fmt(delta):>14}")
+            else:
+                w(f"  {label:<22} {fmt(kv) + suffix:>14} {fmt(ev) + suffix:>14} {fmt(delta) + suffix:>14}")
 
 
 def format_trade_log(records: list[PortfolioTradeRecord], out: io.StringIO, limit: int = 50):
@@ -808,6 +883,7 @@ def format_report(
     watchlist_name: str,
     signal_name: str,
     num_symbols: int,
+    index_stats: dict | None = None,
 ) -> str:
     out = io.StringIO()
 
@@ -830,6 +906,9 @@ def format_report(
     w(f"  Capital:        {INR(config.starting_capital)}")
     w(f"  Kelly fraction: {config.kelly_fraction} (quarter Kelly)")
     w(f"  Max positions:  {config.max_positions}")
+    if index_stats:
+        idx_sym = index_stats.get("symbol", "Index")
+        w(f"  Benchmark:      {idx_sym} (+{index_stats.get('total_return', 0):+.2f}% Return, {index_stats.get('cagr', 0):+.2f}% CAGR)")
     w()
     w(f"  Note: Open positions valued at cost basis (no intra-trade mark-to-market)")
 
@@ -844,7 +923,7 @@ def format_report(
 
     # Comparison
     if kelly_stats and ew_stats:
-        format_comparison(kelly_stats, ew_stats, out)
+        format_comparison(kelly_stats, ew_stats, out, index_stats=index_stats)
 
     # Trade log (Kelly)
     if kelly_records:
@@ -926,11 +1005,25 @@ def main():
 
     # Phase C: format report
     print("\nPhase C: Generating report...")
+    
+    # Calculate index performance benchmark
+    index_stats = None
+    if kelly_records:
+        first_date = kelly_records[0].trade.entry_date
+        last_date = kelly_records[-1].trade.exit_date
+        index_symbol = get_index_symbol_for_watchlist(args.watchlist)
+        print(f"  Computing benchmark index ({index_symbol}) performance...")
+        try:
+            index_stats = compute_index_performance(index_symbol, first_date, last_date)
+        except Exception as e:
+            print(f"  Warning: Could not compute index performance benchmark: {e}")
+
     report = format_report(
         kelly_records, kelly_curve, kelly_stats, kelly_skip,
         ew_records, ew_curve, ew_stats, ew_skip,
         config, entry_cfg, exit_cfg,
         args.watchlist, args.signal, len(symbols),
+        index_stats=index_stats,
     )
 
     print(report)

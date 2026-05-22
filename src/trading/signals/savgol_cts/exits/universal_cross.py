@@ -71,47 +71,77 @@ def exit_universal_cross(
         return ExitReason.NEGATIVE_PNL_TIMEOUT, st.to_int()
 
     prt = row.get("prt", np.nan)
-    prev_prt = prev_row.get("prt", np.nan)
+    prev_prt = prev_row.get("prt", np.nan) if prev_row else np.nan
     prt_st = row.get("prt_sell_threshold", np.nan)
     prt_bt = row.get("prt_buy_threshold", np.nan)
-    prev_prt_st = prev_row.get("prt_sell_threshold", np.nan)
+    prev_prt_st = prev_row.get("prt_sell_threshold", np.nan) if prev_row else np.nan
 
     prt_slope = row.get("prt_slope", np.nan)
+
+    cts = row.get("cts", np.nan)
+    cts_st = row.get("cts_sell_threshold", np.nan)
+
+    # CTS Near-Miss Detection
+    if getattr(cfg, "cts_near_miss_exit_enabled", True):
+        if not any(np.isnan(x) for x in [cts, cts_st]):
+            if cts >= cts_st:
+                st.cts_reached_st = True
+                st.cts_near_miss = False
+            else:
+                prev_cts = prev_row.get("cts", np.nan) if prev_row else np.nan
+                prev_cts_st = prev_row.get("cts_sell_threshold", np.nan) if prev_row else np.nan
+                if not any(np.isnan(x) for x in [prev_cts, prev_cts_st]) and prev_cts >= prev_cts_st:
+                    st.cts_reached_st = True
+            
+                # If CTS has ever reached ST, it cannot be a near-miss setup
+                if st.cts_reached_st:
+                    st.cts_near_miss = False
+                else:
+                    gap = getattr(cfg, "cts_near_miss_gap", 0.10)
+                    if 0 < (cts_st - cts) <= gap:
+                        st.cts_near_miss = True
+
+    exit_reason = None
 
     # 2. PRT Trail (Exit on cross down through ST)
     if getattr(cfg, "prt_st_cross_enabled", True):
         if not any(np.isnan(x) for x in [prt, prev_prt, prt_st, prev_prt_st]):
             if prev_prt >= prev_prt_st and prt < prt_st:
-                if is_panic_bar:
-                    return None, st.to_int()
-                return ExitReason.PRT_ST_CROSS, st.to_int()
+                cts_above_st = not np.isnan(cts) and not np.isnan(cts_st) and cts >= cts_st
+                if not cts_above_st and not is_panic_bar:
+                    exit_reason = ExitReason.PRT_ST_CROSS
 
     # 3. CTS Trail (Exit on cross down through ST)
-    if getattr(cfg, "cts_st_cross_enabled", True):
-        cts = row.get("cts", np.nan)
-        prev_cts = prev_row.get("cts", np.nan)
-        cts_st = row.get("cts_sell_threshold", np.nan)
-        prev_cts_st = prev_row.get("cts_sell_threshold", np.nan)
+    if not exit_reason and getattr(cfg, "cts_st_cross_enabled", True):
+        prev_cts = prev_row.get("cts", np.nan) if prev_row else np.nan
+        prev_cts_st = prev_row.get("cts_sell_threshold", np.nan) if prev_row else np.nan
         if not any(np.isnan(x) for x in [cts, prev_cts, cts_st, prev_cts_st]):
             if prev_cts >= prev_cts_st and cts < cts_st:
-                if is_panic_bar:
-                    return None, st.to_int()
-                return ExitReason.ST_CROSS, st.to_int()
+                if not is_panic_bar:
+                    exit_reason = ExitReason.ST_CROSS
 
     # 4. CWC Slope Negative Exit
-    if getattr(cfg, "cwc_slope_neg_exit_enabled", False):
+    if not exit_reason and getattr(cfg, "cwc_slope_neg_exit_enabled", False):
         cwc_slope = row.get("cwc_slope", np.nan)
         if not np.isnan(cwc_slope) and cwc_slope < 0:
-            if is_panic_bar:
-                return None, st.to_int()
-            return ExitReason.CWVAP_EXHAUSTION, st.to_int()
+            if not is_panic_bar:
+                exit_reason = ExitReason.CWVAP_EXHAUSTION
 
     # 5. CWC Negative Exit
-    if getattr(cfg, "cwc_neg_exit_enabled", False):
+    if not exit_reason and getattr(cfg, "cwc_neg_exit_enabled", False):
         cwc = row.get("cwc", np.nan)
         if not np.isnan(cwc) and cwc < 0:
-            if is_panic_bar:
-                return None, st.to_int()
-            return ExitReason.FAS_FLOOR, st.to_int()
-            
+            if not is_panic_bar:
+                exit_reason = ExitReason.FAS_FLOOR
+
+    # 6. CTS Near-Miss Rollover Check
+    if not exit_reason and getattr(cfg, "cts_near_miss_exit_enabled", True) and st.cts_near_miss:
+        rollover_level = getattr(cfg, "cts_near_miss_rollover_level", 0.50)
+        if not np.isnan(cts) and cts < rollover_level:
+            if not is_panic_bar:
+                exit_reason = ExitReason.CTS_NEAR_MISS_ROLLOVER
+
+    if exit_reason:
+        return exit_reason, st.to_int()
+
     return None, st.to_int()

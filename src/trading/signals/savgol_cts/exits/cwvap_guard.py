@@ -18,7 +18,7 @@ from src.trading.signals.savgol_cts.config import SavgolCTSExitConfig
 from src.trading.signals.savgol_cts.state import SavgolCTSExitState
 
 
-def apply_cwvap_guard(
+def _apply_cwvap_guard_raw(
     row: dict, trade: Trade,
     res: str | None, state_val: int,
     cfg: SavgolCTSExitConfig,
@@ -44,11 +44,23 @@ def apply_cwvap_guard(
         # Loss prevention rules bypass CWVAP suppression
         bypass_reasons = [ExitReason.CWVAP_LOST, ExitReason.GAP_DOWN_LOSS, ExitReason.HARD_STOP, ExitReason.PNL_CAP]
         
+        # Crossover exits bypass CWVAP suppression if cts is below sell threshold (real crossovers),
+        # but NOT when the climax trail is active — that state already committed to trailing until
+        # price falls below va_high, and a single CTS tick below threshold shouldn't override it.
+        cts = row.get("cts", np.nan)
+        cts_st = row.get("cts_sell_threshold", np.nan)
+        if not any(np.isnan(x) for x in [cts, cts_st]) and cts < cts_st:
+            if not st.climax_hit_above_va:
+                bypass_reasons.append(ExitReason.PRT_ST_CROSS)
+                bypass_reasons.append(ExitReason.ST_CROSS)
+            
         gc = cfg.cwvap_guard
         early_release_active = getattr(gc, "cwc_slope_early_release_enabled", True)
         if not early_release_active:
-            bypass_reasons.append(ExitReason.PRT_ST_CROSS)
-            bypass_reasons.append(ExitReason.ST_CROSS)
+            if ExitReason.PRT_ST_CROSS not in bypass_reasons:
+                bypass_reasons.append(ExitReason.PRT_ST_CROSS)
+            if ExitReason.ST_CROSS not in bypass_reasons:
+                bypass_reasons.append(ExitReason.ST_CROSS)
             
         if res in bypass_reasons:
             st.exit_suppressed = False
@@ -144,20 +156,41 @@ def apply_cwvap_guard(
 
             # VA High Trail for marked climax exits
             if st.climax_hit_above_va and not np.isnan(va_high) and close < va_high:
-                st.suppressed_this_bar = False
-                st.exit_suppressed = False
-                return ExitReason.STRUCTURAL_CLIMAX, st.to_int()
+                # Guard 1 — Intraday High Guard: if the bar's high touched above va_high, this is a
+                # wick/pullback scenario (e.g. opened above VA High, sold off to close just below).
+                # Do not release the trail on a wick — only exit when the entire bar is below va_high.
+                high_px = row.get("high", np.nan)
+                intraday_held = (
+                    getattr(gc, "climax_va_intraday_guard_enabled", True)
+                    and not np.isnan(high_px)
+                    and high_px > va_high
+                )
+
+                # Guard 2 — CTS Peak Guard: if CTS is at its maximum value (1.0), momentum is still
+                # fully intact. Keep trailing rather than exiting — we'd leave too much on the table.
+                cts_maxed = not np.isnan(cts) and cts >= 1.0
+
+                if intraday_held or cts_maxed:
+                    pass  # suppress release — price still in play
+                else:
+                    st.suppressed_this_bar = False
+                    st.exit_suppressed = False
+                    return ExitReason.STRUCTURAL_CLIMAX, st.to_int()
 
         # Rule PREEMPT 3: CWC Slope Early Release
         if getattr(gc, "cwc_slope_early_release_enabled", True):
             cwc_slope = row.get("cwc_slope", np.nan)
             thr = getattr(gc, "cwc_slope_early_release_threshold", -0.01)
             if not np.isnan(cwc_slope) and cwc_slope < thr:
-                if res is not None or st.exit_suppressed:
-                    st.suppressed_this_bar = False
-                    st.exit_suppressed = False
-                    final_res = res if res else ExitReason.CWC_SLOPE_EARLY_RELEASE
-                    return final_res, st.to_int()
+                # Disable early release if CTS is above or equal to the CTS sell threshold
+                cts_st = row.get("cts_sell_threshold", np.nan)
+                cts_above_st = not np.isnan(cts) and not np.isnan(cts_st) and cts >= cts_st
+                if not cts_above_st:
+                    if res is not None or st.exit_suppressed:
+                        st.suppressed_this_bar = False
+                        st.exit_suppressed = False
+                        final_res = res if res else ExitReason.CWC_SLOPE_EARLY_RELEASE
+                        return final_res, st.to_int()
 
         # Rule A: Suppress exit while momentum positive above CWVAP.
         psz_strong = not np.isnan(psz_raw) and psz_raw > 0.00
@@ -227,3 +260,41 @@ def apply_cwvap_guard(
             return final_res, st.to_int()
 
     return res, st.to_int()
+
+
+def apply_cwvap_guard(
+    row: dict, trade: Trade,
+    res: str | None, state_val: int,
+    cfg: SavgolCTSExitConfig,
+    records: list[dict] | None, idx: int,
+    tag: str = "",
+) -> tuple[str | None, int]:
+    """Wrapper to apply VA High Breakout Trailing Guard to proposed exits."""
+    # 1. Run raw guard logic
+    final_res, st_val = _apply_cwvap_guard_raw(row, trade, res, state_val, cfg, records, idx, tag)
+
+    # 2. Apply VA High Breakout Suppression
+    if final_res is not None:
+        gc = cfg.cwvap_guard
+        if getattr(gc, "va_high_breakout_suppression_enabled", True):
+            # Define critical bypass reasons that should never be suppressed
+            bypass = [
+                ExitReason.CWVAP_LOST,
+                ExitReason.GAP_DOWN_LOSS,
+                ExitReason.HARD_STOP,
+                ExitReason.PNL_CAP,
+                ExitReason.STRUCTURAL_CLIMAX,
+                ExitReason.CANDLE_REJECTION,
+                ExitReason.INSIDE_BAR_REJECTION,
+            ]
+            if final_res not in bypass:
+                close = row.get("close", np.nan)
+                va_high = row.get("va_high", np.nan)
+                if not np.isnan(close) and not np.isnan(va_high) and close > va_high:
+                    st = SavgolCTSExitState.from_int(st_val)
+                    st.exit_suppressed = True
+                    st.suppressed_this_bar = True
+                    return None, st.to_int()
+
+    return final_res, st_val
+

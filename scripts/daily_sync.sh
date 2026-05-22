@@ -55,10 +55,10 @@ if [[ $QUIET -eq 0 ]]; then echo "[5/8] Syncing Index Watchlists..."; fi
 python scripts/sync_index_watchlists.py $QUIET_FLAG
 
 if [[ $QUIET -eq 0 ]]; then echo "[6/8] Validating Data Integrity & Reconciliation..."; fi
-python scripts/validate_data_integrity.py --watchlist "NIFTY 500" --auto-fix --auto-patch $QUIET_FLAG
+python scripts/validate_data_integrity.py --watchlist "NIFTY 50" --auto-fix --auto-patch $QUIET_FLAG
 
 if [[ $QUIET -eq 0 ]]; then echo "[7/8] Warming Engine Cache (NIFTY 500)..."; fi
-python scripts/warm_cache.py --watchlist "NIFTY 500" $QUIET_FLAG
+python scripts/warm_cache.py --watchlist "NIFTY 50" $QUIET_FLAG
 
 if [[ $QUIET -eq 0 ]]; then echo "[8/8] Running Global Market Screener..."; fi
 python scripts/daily_screener.py $QUIET_FLAG

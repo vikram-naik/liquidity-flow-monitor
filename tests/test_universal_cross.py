@@ -664,3 +664,278 @@ def test_universal_cross_entry_cwc_basing_filter():
     assert passed is True
 
 
+def test_universal_cross_exit_cts_near_miss_rollover():
+    """Verify CTS near-miss detection and rollover exit logic in exit_universal_cross."""
+    cfg = SavgolCTSExitConfig().universal_cross
+    cfg.enabled = True
+    cfg.cts_near_miss_exit_enabled = True
+    cfg.cts_near_miss_gap = 0.10
+    cfg.cts_near_miss_rollover_level = 0.50
+
+    trade = Trade(
+        symbol="TECHM",
+        entry_date="2026-03-09",
+        entry_price=100.0,
+        entry_idx=0,
+        atr_at_entry=2.0
+    )
+
+    # 1. Initially far from sell threshold, no near-miss
+    # Gap: 1.0 - 0.20 = 0.80 > 0.10
+    row = {"close": 100.0, "cts": 0.20, "cts_sell_threshold": 1.00}
+    prev_row = {"close": 100.0, "cts": 0.15, "cts_sell_threshold": 1.00}
+    reason, state_val = exit_universal_cross(row, prev_row, trade, 100.0, 1, 0, cfg)
+    assert reason is None
+    st = SavgolCTSExitState.from_int(state_val)
+    assert st.cts_near_miss is False
+
+    # Try dropping below rollover level (0.45 < 0.50) without near-miss active -> no exit
+    row_drop = {"close": 98.0, "cts": 0.45, "cts_sell_threshold": 1.00}
+    prev_drop = {"close": 100.0, "cts": 0.20, "cts_sell_threshold": 1.00}
+    reason_drop, state_val_drop = exit_universal_cross(row_drop, prev_drop, trade, 100.0, 2, state_val, cfg)
+    assert reason_drop is None
+    assert SavgolCTSExitState.from_int(state_val_drop).cts_near_miss is False
+
+    # 2. Enter near-miss range: gap = 1.00 - 0.92 = 0.08 <= 0.10
+    row_near = {"close": 110.0, "cts": 0.92, "cts_sell_threshold": 1.00}
+    prev_near = {"close": 108.0, "cts": 0.85, "cts_sell_threshold": 1.00}
+    reason_near, state_val_near = exit_universal_cross(row_near, prev_near, trade, 110.0, 3, state_val, cfg)
+    assert reason_near is None
+    st_near = SavgolCTSExitState.from_int(state_val_near)
+    assert st_near.cts_near_miss is True
+
+    # 3. Drops a bit but not below rollover level (0.75 >= 0.50) -> near-miss stays True, no exit
+    row_mid = {"close": 108.0, "cts": 0.75, "cts_sell_threshold": 1.00}
+    prev_mid = {"close": 110.0, "cts": 0.92, "cts_sell_threshold": 1.00}
+    reason_mid, state_val_mid = exit_universal_cross(row_mid, prev_mid, trade, 110.0, 4, state_val_near, cfg)
+    assert reason_mid is None
+    st_mid = SavgolCTSExitState.from_int(state_val_mid)
+    assert st_mid.cts_near_miss is True
+
+    # 4. Drops below rollover level (0.45 < 0.50) -> triggers CTS_NEAR_MISS_ROLLOVER
+    row_roll = {"close": 102.0, "cts": 0.45, "cts_sell_threshold": 1.00}
+    prev_roll = {"close": 108.0, "cts": 0.75, "cts_sell_threshold": 1.00}
+    reason_roll, state_val_roll = exit_universal_cross(row_roll, prev_roll, trade, 110.0, 5, state_val_mid, cfg)
+    assert reason_roll == ExitReason.CTS_NEAR_MISS_ROLLOVER
+
+    # 5. Bypassed if disabled
+    cfg.cts_near_miss_exit_enabled = False
+    reason_dis, _ = exit_universal_cross(row_roll, prev_roll, trade, 110.0, 5, state_val_mid, cfg)
+    assert reason_dis is None
+    cfg.cts_near_miss_exit_enabled = True
+
+    # 6. Bypassed on panic bar
+    row_panic = {"close": 95.0, "high": 95.0, "low": 90.0, "cts": 0.45, "cts_sell_threshold": 1.00, "rdv": 3.0}
+    prev_panic = {"close": 102.0, "high": 102.0, "low": 98.0, "cts": 0.75, "cts_sell_threshold": 1.00}
+    reason_panic, _ = exit_universal_cross(row_panic, prev_panic, trade, 110.0, 5, state_val_mid, cfg)
+    assert reason_panic is None
+
+
+def test_universal_cross_entry_technical_momentum_bypass():
+    """Verify that a stock in upper range_pos_10 is accepted if it meets the technical momentum bypass (cwc >= 0.40 and pdd_30 < -3.5)."""
+    cfg = SavgolCTSEntryConfig()
+    cfg.universal_cross.enabled = True
+
+    records = get_base_records()
+    
+    # Put in upper range (>0.5)
+    records[2]["range_pos_10"] = 0.6
+    
+    # Scenario A: Bypassed because cwc >= 0.40 and pdd_30 < -3.5
+    records[2]["cwc"] = 0.45
+    records[2]["pdd_30"] = -4.0
+    
+    passed_a, score_a, meta_a = entry_universal_cross(records[2], records[1], cfg, records, 2)
+    assert passed_a is True
+    assert score_a == 70
+
+    # Scenario B: Rejected because cwc is too low (< 0.40)
+    records[2]["cwc"] = 0.35
+    records[2]["pdd_30"] = -4.0
+    
+    passed_b, score_b, meta_b = entry_universal_cross(records[2], records[1], cfg, records, 2)
+    assert passed_b is False
+    assert "price not in lower half of weekly range" in meta_b["reason"]
+
+    # Scenario C: Rejected because pdd_30 is too high (>= -3.5)
+    records[2]["cwc"] = 0.45
+    records[2]["pdd_30"] = -3.0
+    
+    passed_c, score_c, meta_c = entry_universal_cross(records[2], records[1], cfg, records, 2)
+    assert passed_c is False
+    assert "price not in lower half of weekly range" in meta_c["reason"]
+
+
+def test_universal_cross_exit_cts_near_miss_crossover_reset():
+    """Verify that cts_near_miss is cleared if cts >= st or if it crosses down from above st."""
+    cfg = SavgolCTSExitConfig().universal_cross
+    cfg.enabled = True
+    cfg.cts_near_miss_exit_enabled = True
+    cfg.cts_near_miss_gap = 0.10
+
+    trade = Trade(
+        symbol="TECHM",
+        entry_date="2026-03-09",
+        entry_price=100.0,
+        entry_idx=0,
+        atr_at_entry=2.0
+    )
+
+    # 1. Start with near-miss active
+    # Gap: 1.0 - 0.92 = 0.08 <= 0.10
+    row_near = {"close": 110.0, "cts": 0.92, "cts_sell_threshold": 1.00}
+    prev_near = {"close": 108.0, "cts": 0.85, "cts_sell_threshold": 1.00}
+    reason, state_val = exit_universal_cross(row_near, prev_near, trade, 110.0, 1, 0, cfg)
+    st = SavgolCTSExitState.from_int(state_val)
+    assert st.cts_near_miss is True
+
+    # 2. CTS rises at or above sell threshold -> near_miss must reset to False
+    row_high = {"close": 112.0, "cts": 1.00, "cts_sell_threshold": 1.00}
+    reason_high, state_val_high = exit_universal_cross(row_high, row_near, trade, 112.0, 2, state_val, cfg)
+    st_high = SavgolCTSExitState.from_int(state_val_high)
+    assert st_high.cts_near_miss is False
+
+    # 3. CTS crosses down from above sell threshold -> should NOT activate near-miss
+    # (Because it is a cross-down from above, not a near-miss from below)
+    row_cross = {"close": 111.0, "cts": 0.95, "cts_sell_threshold": 1.00}
+    prev_cross = {"close": 112.0, "cts": 1.00, "cts_sell_threshold": 1.00}
+    reason_cross, state_val_cross = exit_universal_cross(row_cross, prev_cross, trade, 112.0, 3, state_val_high, cfg)
+    st_cross = SavgolCTSExitState.from_int(state_val_cross)
+    assert st_cross.cts_near_miss is False
+
+
+def test_universal_cross_exit_cts_near_miss_persistence_regression():
+    """Verify that if cts reaches or exceeds st, near_miss is permanently locked out (stays False)
+    even if the trade stays within the gap region for multiple subsequent bars after crossing down,
+    and dropping below the rollover level later does not trigger CTS_NEAR_MISS_ROLLOVER.
+    """
+    cfg = SavgolCTSExitConfig().universal_cross
+    cfg.enabled = True
+    cfg.cts_near_miss_exit_enabled = True
+    cfg.cts_near_miss_gap = 0.10
+    cfg.cts_near_miss_rollover_level = 0.50
+    cfg.cts_st_cross_enabled = False
+    cfg.prt_st_cross_enabled = False
+
+    trade = Trade(
+        symbol="CIPLA",
+        entry_date="2026-04-06",
+        entry_price=100.0,
+        entry_idx=0,
+        atr_at_entry=2.0
+    )
+
+    # 1. Bar 1: CTS is close to ST but not yet crossed (gap <= 0.10)
+    # CTS: 0.92, ST: 1.00 -> Near Miss active
+    row1 = {"close": 100.0, "cts": 0.92, "cts_sell_threshold": 1.00}
+    prev1 = {"close": 100.0, "cts": 0.80, "cts_sell_threshold": 1.00}
+    reason1, state1 = exit_universal_cross(row1, prev1, trade, 100.0, 1, 0, cfg)
+    assert reason1 is None
+    assert SavgolCTSExitState.from_int(state1).cts_near_miss is True
+    assert SavgolCTSExitState.from_int(state1).cts_reached_st is False
+
+    # 2. Bar 2: CTS crosses above ST (CTS: 1.05, ST: 1.00)
+    # Near Miss should clear, reached_st becomes True
+    row2 = {"close": 102.0, "cts": 1.05, "cts_sell_threshold": 1.00}
+    reason2, state2 = exit_universal_cross(row2, row1, trade, 102.0, 2, state1, cfg)
+    assert reason2 is None
+    assert SavgolCTSExitState.from_int(state2).cts_near_miss is False
+    assert SavgolCTSExitState.from_int(state2).cts_reached_st is True
+
+    # 3. Bar 3: CTS crosses down below ST, landing in the gap region (CTS: 0.95, ST: 1.00)
+    # Near Miss must remain False because we reached ST earlier (not a near-miss setup!)
+    row3 = {"close": 101.0, "cts": 0.95, "cts_sell_threshold": 1.00}
+    reason3, state3 = exit_universal_cross(row3, row2, trade, 102.0, 3, state2, cfg)
+    assert reason3 is None
+    assert SavgolCTSExitState.from_int(state3).cts_near_miss is False
+    assert SavgolCTSExitState.from_int(state3).cts_reached_st is True
+
+    # 4. Bar 4: CTS remains below ST in the gap region for another bar (CTS: 0.96, ST: 1.00)
+    # Near Miss must remain False (persistence regression check)
+    row4 = {"close": 101.5, "cts": 0.96, "cts_sell_threshold": 1.00}
+    reason4, state4 = exit_universal_cross(row4, row3, trade, 102.0, 4, state3, cfg)
+    assert reason4 is None
+    assert SavgolCTSExitState.from_int(state4).cts_near_miss is False
+    assert SavgolCTSExitState.from_int(state4).cts_reached_st is True
+
+    # 5. Bar 5: CTS drops below rollover level (CTS: 0.40 < 0.50)
+    # Should NOT trigger CTS_NEAR_MISS_ROLLOVER exit because near_miss is False
+    row5 = {"close": 98.0, "cts": 0.40, "cts_sell_threshold": 1.00}
+    reason5, state5 = exit_universal_cross(row5, row4, trade, 102.0, 5, state4, cfg)
+    assert reason5 is None
+    assert SavgolCTSExitState.from_int(state5).cts_near_miss is False
+    assert SavgolCTSExitState.from_int(state5).cts_reached_st is True
+
+
+def test_universal_cross_exit_cipla_regression():
+    """Verify that CIPLA trade lifecycle is correctly handled, particularly that:
+    1. Early near-miss is cleared once CTS >= ST.
+    2. When CTS crosses down below ST, st.cts_near_miss remains False.
+    3. PRT_ST_CROSS or ST_CROSS are allowed to trigger on the cross-down day,
+       rather than triggering CTS_NEAR_MISS_ROLLOVER.
+    """
+    cfg = SavgolCTSExitConfig().universal_cross
+    cfg.enabled = True
+    cfg.cts_near_miss_exit_enabled = True
+    cfg.cts_near_miss_gap = 0.10
+    cfg.cts_near_miss_rollover_level = 0.50
+    cfg.cts_st_cross_enabled = True
+    cfg.prt_st_cross_enabled = True
+
+    trade = Trade(
+        symbol="CIPLA",
+        entry_date="2026-04-06",
+        entry_price=1000.0,
+        entry_idx=0,
+        atr_at_entry=20.0
+    )
+
+    # Day 1: CTS is negative (-1.0), not near-miss
+    row1 = {"close": 1000.0, "cts": -1.0, "cts_sell_threshold": 0.6733}
+    reason1, state1 = exit_universal_cross(row1, None, trade, 1000.0, 1, 0, cfg)
+    assert reason1 is None
+    assert SavgolCTSExitState.from_int(state1).cts_near_miss is False
+    assert SavgolCTSExitState.from_int(state1).cts_reached_st is False
+
+    # Day 2: CTS approaches ST (CTS: 0.6846, ST: 0.7133 -> gap = 0.0287)
+    # Near Miss should activate
+    row2 = {"close": 1010.0, "cts": 0.6846, "cts_sell_threshold": 0.7133}
+    reason2, state2 = exit_universal_cross(row2, row1, trade, 1010.0, 2, state1, cfg)
+    assert reason2 is None
+    assert SavgolCTSExitState.from_int(state2).cts_near_miss is True
+    assert SavgolCTSExitState.from_int(state2).cts_reached_st is False
+
+    # Day 3: CTS rises above ST (CTS: 0.9903, ST: 0.9740)
+    # Near Miss must clear, reached_st becomes True
+    row3 = {"close": 1020.0, "cts": 0.9903, "cts_sell_threshold": 0.9740}
+    reason3, state3 = exit_universal_cross(row3, row2, trade, 1020.0, 3, state2, cfg)
+    assert reason3 is None
+    assert SavgolCTSExitState.from_int(state3).cts_near_miss is False
+    assert SavgolCTSExitState.from_int(state3).cts_reached_st is True
+
+    # Day 4: CTS crosses down below ST (CTS: 0.9620, ST: 1.0000)
+    # Near Miss must remain False. And since CTS crossed below ST and PRT crossed below ST,
+    # it should trigger PRT_ST_CROSS (or ST_CROSS if prt was not crossing).
+    row4 = {
+        "close": 1015.0,
+        "cts": 0.9620,
+        "cts_sell_threshold": 1.0000,
+        "prt": 0.4808,
+        "prt_sell_threshold": 0.4824,
+    }
+    prev4 = {
+        "close": 1020.0,
+        "cts": 1.0000,
+        "cts_sell_threshold": 1.0000,
+        "prt": 0.5726,
+        "prt_sell_threshold": 0.4648,
+    }
+    reason4, state4 = exit_universal_cross(row4, prev4, trade, 1020.0, 4, state3, cfg)
+    assert reason4 == ExitReason.PRT_ST_CROSS
+    assert SavgolCTSExitState.from_int(state4).cts_near_miss is False
+    assert SavgolCTSExitState.from_int(state4).cts_reached_st is True
+
+
+
+
+

@@ -23,6 +23,7 @@ class SavgolCTSExitState:
     exit_suppressed_ext: bool = False  # Track if a path-specific exit was suppressed
     fas_crossed_zero: bool = False     # Track if FAS crossed above zero
     extreme_bottom_extension: bool = False # Track if trade hit absolute floor (grant 2x timeout)
+    cts_reached_st: bool = False       # Track if CTS has reached or exceeded ST during the trade
     cwf_count: int = 0            # Counter for High > CWVAP and Close < CWVAP (4 bits: 0-15)
     climax_hit_above_va: bool = False # Track if structural climax hit while price > va_high
     cts_near_miss: bool = False    # Track if CTS barely touched ST (Bare-Touch persistence)
@@ -41,6 +42,7 @@ class SavgolCTSExitState:
             exit_suppressed_ext=bool((val >> 7) & 1),
             fas_crossed_zero=bool((val >> 8) & 1),
             extreme_bottom_extension=bool((val >> 9) & 1),
+            cts_reached_st=bool((val >> 10) & 1),
             cwf_count=int((val >> 13) & 0xF),
             climax_hit_above_va=bool((val >> 17) & 1),
             cts_near_miss=bool((val >> 18) & 1),
@@ -53,6 +55,7 @@ class SavgolCTSExitState:
             | (int(self.cts_near_miss) << 18)
             | (int(self.climax_hit_above_va) << 17)
             | ((self.cwf_count & 0xF) << 13)
+            | (int(self.cts_reached_st) << 10)
             | (int(self.extreme_bottom_extension) << 9)
             | (int(self.fas_crossed_zero) << 8)
             | (int(self.exit_suppressed_ext) << 7) 

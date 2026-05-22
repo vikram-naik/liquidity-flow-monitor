@@ -1,4 +1,3 @@
-from src.trading.signals.savgol_cts.ml_guard import MLGuard
 from src.trading.signals.enums import EntryTag
 from src.database import get_user_setting
 from src.trading.signals.savgol_cts.entries.utils import is_flattish_line_adaptive, evaluate_spearman_trend
@@ -177,8 +176,14 @@ def entry_universal_cross(row, prev_row, cfg, records, idx):
 
     # 4. price location should be lower half of range_pos_10 
     # We should ignore price location check if both fas and cts_slope trigger together, or if CWC trigger is active.
+    # OR if we meet the breakout/momentum bypass condition: CWC >= 0.40 AND pdd_30 < -3.5 (high trend coherence and peak-overextension safety)
     range_pos_10 = row.get("range_pos_10", 0)
-    if range_pos_10 > 0.5 and not (trigger_fas and trigger_cs) and not trigger_cwc:
+    cwc = row.get("cwc", 0.0)
+    pdd_30 = row.get("pdd_30", 0.0)
+    
+    momentum_bypass = (cwc >= 0.40 and pdd_30 < -3.5)
+    
+    if range_pos_10 > 0.5 and not (trigger_fas and trigger_cs) and not trigger_cwc and not momentum_bypass:
         return False, 0, {"reason": "price not in lower half of weekly range"}
 
     # 4b. Dynamic Long-term Range Gate with Cross-Window Coherence (CWC) Bypass
@@ -208,28 +213,6 @@ def entry_universal_cross(row, prev_row, cfg, records, idx):
         slope_thr = getattr(cfg.universal_cross, "cwc_basing_slope_threshold", -0.02)
         if cwc < cwc_thr and cwc_slope < slope_thr:
             return False, 0, {"reason": "low and degrading trend coherence (choppy flat basing)"}
-
-
-    
-    # 8. Anti-Trap: Distribution Trap Gate
-    # Rejects loose, choppy bases under strong distribution (avoiding WIPRO, TRENT, CIPLA failed breakouts)
-    pdd_30 = row.get("pdd_30", 0.0)
-    base_tightness = row.get("base_tightness", 1.0)
-    if pdd_30 <= -5.5 and 0.40 <= base_tightness <= 0.46:
-        return False, 0, {"reason": "Distribution Trap: choppy base under heavy distribution"}
-
-    score = 70
-
-    details = {
-        "reason": "Universal Cross accepted",
-        "entry_tag": EntryTag.UNIVERSAL_CROSS.value,
-        "score": score,
-        "raw_ml_score": 0,
-        "ml_guard_threshold": 0,
-    }
-
-    return True, score, details
-
 
 
     

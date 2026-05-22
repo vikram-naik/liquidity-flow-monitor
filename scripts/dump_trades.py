@@ -20,7 +20,6 @@ from src.divergence_engine.engine import DivergenceEngine
 from src.trading.signals import SignalFactory
 from src.trading.signals.savgol_cts.config import SavgolCTSEntryConfig, SavgolCTSExitConfig
 from src.trading.signals.enums import EntryTag
-from src.trading.signals.savgol_cts.ml_guard import MLGuard
 
 ENTRY_ALIASES = {
     "universal":    EntryTag.UNIVERSAL_CROSS.value,
@@ -160,11 +159,7 @@ def main():
                             t.above_va_high = "no"
                         
                         t.regime_signal = sig_row.get("regime", "N/A")
-
-                        # Score with ML Guard if not already scored
-                        if t.entry_tag == EntryTag.UNIVERSAL_CROSS.value:
-                            prob = MLGuard.get_instance().score_setup(sig_row.to_dict())
-                            t.ml_score = prob * 100.0 if prob is not None else 0.0
+                        t.ml_score = 0.0
 
                     # Trade active from entry_idx to entry_idx + duration
                     # We use entry_idx_in_ledger to ensure we are in the right spot

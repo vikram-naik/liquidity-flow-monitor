@@ -75,6 +75,11 @@ class UniversalCrossExitConfig:
     cwc_slope_neg_exit_enabled: bool = False
     cwc_neg_exit_enabled: bool = False
 
+    # CTS Near-Miss Rollover Exit parameters
+    cts_near_miss_exit_enabled: bool = True
+    cts_near_miss_gap: float = 0.10
+    cts_near_miss_rollover_level: float = 0.50
+
 
 
 @dataclass
@@ -94,6 +99,10 @@ class CwvapGuardConfig:
     climax_fas_threshold: float = 1.11    # OR FAS > 1.0
     cwc_slope_early_release_enabled: bool = True
     cwc_slope_early_release_threshold: float = -0.01
+    va_high_breakout_suppression_enabled: bool = True
+    # Climax VA High trail guards
+    climax_va_intraday_guard_enabled: bool = True  # Suppress trail release when high > va_high (wick scenario)
+
 
 
 # ---------------------------------------------------------------------------
