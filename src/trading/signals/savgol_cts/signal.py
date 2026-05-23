@@ -15,6 +15,7 @@ from src.trading.signals.savgol_cts.config import SavgolCTSEntryConfig, SavgolCT
 
 # Entry path checkers
 from src.trading.signals.savgol_cts.entries.universal_cross import entry_universal_cross
+from src.trading.signals.savgol_cts.entries.trend_pullback import entry_trend_pullback
 
 # Exit path checkers
 from src.trading.signals.savgol_cts.exits.cwvap_guard import apply_cwvap_guard
@@ -50,6 +51,7 @@ class SavgolCTSSignal(SignalInterface):
         if np.isnan(cts):
             return False, 0, {"reason": "Missing CTS data"}
 
+        uc_reason = "Universal path disabled"
         # Path 0: Universal ML Master Path (The primary funnel)
         if getattr(cfg, "universal_cross", None) and cfg.universal_cross.enabled:
             passed, intensity, meta = entry_universal_cross(row, prev_row, cfg, records, idx)
@@ -66,10 +68,18 @@ class SavgolCTSSignal(SignalInterface):
             reason = meta.get("reason", "Rejected")
             if raw is not None:
                 reason = f"{reason} | Original ML Score: {raw:.4f} | Threshold: {thr:.2f}"
-            
-            return False, 0, {"reason": f"UniversalCross: {reason}"}
+            uc_reason = f"UniversalCross: {reason}"
 
-        return False, 0, {"reason": "Universal path disabled"}
+        # Path 1: Secular Trend Pullback Path (Independent path)
+        if getattr(cfg, "trend_pullback_enabled", True):
+            passed, intensity, meta = entry_trend_pullback(row, prev_row, cfg, records, idx)
+            if passed:
+                return True, intensity, meta
+            tp_reason = f"TrendPullback: {meta.get('reason', 'Rejected')}"
+        else:
+            tp_reason = "TrendPullback path disabled"
+
+        return False, 0, {"reason": f"{uc_reason} | {tp_reason}"}
 
     def check_exit(
         self,

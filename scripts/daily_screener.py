@@ -53,6 +53,17 @@ def process_symbol(symbol: str) -> dict | None:
         max_cts = 1 if last_row.get('cts', 0) == 1 else 0
         min_cts = 1 if last_row.get('cts', 0) == -1 else 0
 
+        import pandas as pd
+        import numpy as np
+
+        def get_tag_str(row_data):
+            t = row_data.get('entry_tag')
+            if t is None or t == '' or (isinstance(t, float) and np.isnan(t)):
+                return None
+            return str(t)
+
+        entry_tag = None
+
         if last_entry_idx == last_idx:
             signal_type = "entry"
             entry_date = str(df.iloc[last_idx].get('date', ''))[:10]
@@ -60,6 +71,7 @@ def process_symbol(symbol: str) -> dict | None:
             bars_held = 0
             mfe_pct = 0.0
             mae_pct = 0.0
+            entry_tag = get_tag_str(df.iloc[last_idx])
         elif last_exit_idx == last_idx:
             signal_type = "exit"
             if last_entry_idx != -1 and last_entry_idx < last_exit_idx:
@@ -69,6 +81,7 @@ def process_symbol(symbol: str) -> dict | None:
                     entry_date = str(df.iloc[last_entry_idx].get('date', ''))[:10]
                     entry_price = ep
                     bars_held = last_exit_idx - last_entry_idx
+                    entry_tag = get_tag_str(df.iloc[last_entry_idx])
                     if ep > 0:
                         pnl = round((price / ep - 1) * 100, 2)
                         highs = df.iloc[entry_exec_idx:last_exit_idx+1]['high']
@@ -83,6 +96,7 @@ def process_symbol(symbol: str) -> dict | None:
                 entry_date = str(df.iloc[last_entry_idx].get('date', ''))[:10]
                 entry_price = ep
                 bars_held = last_idx - last_entry_idx
+                entry_tag = get_tag_str(df.iloc[last_entry_idx])
                 if ep > 0:
                     pnl = round((price / ep - 1) * 100, 2)
                     highs = df.iloc[entry_exec_idx:last_idx+1]['high']
@@ -106,7 +120,8 @@ def process_symbol(symbol: str) -> dict | None:
                 "c_up": c_up,
                 "c_down": c_down,
                 "max_cts": max_cts,
-                "min_cts": min_cts
+                "min_cts": min_cts,
+                "entry_tag": entry_tag
             }
     except Exception as e:
         logger.warning(f"Failed processing {symbol}: {e}")
@@ -158,14 +173,14 @@ def main():
                 results.append((
                     res["symbol"], res["date"], res["price"], res["signal_type"], res["pnl"],
                     res["entry_date"], res["entry_price"], res["bars_held"], res["mfe_pct"], res["mae_pct"],
-                    res["c_up"], res["c_down"], res["max_cts"], res["min_cts"]
+                    res["c_up"], res["c_down"], res["max_cts"], res["min_cts"], res["entry_tag"]
                 ))
                 signals_found[res["signal_type"]] += 1
 
     # Bulk insert for fast database write
     if results:
         conn.executemany(
-            "INSERT INTO screener_signals (symbol, date, price, signal_type, pnl, entry_date, entry_price, bars_held, mfe_pct, mae_pct, c_up, c_down, max_cts, min_cts) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO screener_signals (symbol, date, price, signal_type, pnl, entry_date, entry_price, bars_held, mfe_pct, mae_pct, c_up, c_down, max_cts, min_cts, entry_tag) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             results
         )
         

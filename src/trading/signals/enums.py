@@ -4,6 +4,7 @@ class EntryTag(str, Enum):
     """Strongly typed entry tags with presentation-friendly strings."""
     # Active Paths
     UNIVERSAL_CROSS = "SavgolCTS Universal-Cross"
+    TREND_PULLBACK = "SavgolCTS Trend-Pullback"
     
     # Generic / Fallback
     UNKNOWN = "Unknown Entry"

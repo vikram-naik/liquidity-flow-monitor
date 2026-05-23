@@ -85,6 +85,46 @@ def check_long_term_range(row, cwc_threshold=0.50):
     return in_high_range and not strong_coherent_trend
 
 
+def check_trigger_5(row, records, idx):
+    """
+    5th Trigger: CWC Accumulation Exhaustion
+    Fires on deep flow drawdown under active accumulation and acceleration.
+    """
+    cwc = row.get("cwc", 0.0)
+    cts_accel = row.get("cts_accel", 0.0)
+    pdd_120 = row.get("pdd_120", 0.0)
+    bt = row.get("base_tightness", 1.0)
+    price_slope_z = row.get("price_slope_z", 0.0)
+
+    # Core thresholds
+    if cwc < 0.40:
+        return False
+    if cts_accel < 0.01:
+        return False
+    if pdd_120 > -4.0:
+        return False
+    if bt > 0.45:
+        return False
+    if price_slope_z > -0.15:
+        return False
+
+    # Falling Knife Guard: typical price spearman over 10 bars
+    tps_10 = []
+    for k in range(max(0, idx - 9), idx + 1):
+        r = records[k]
+        tp = (r.get("high", 0.0) + r.get("low", 0.0) + r.get("close", 0.0)) / 3.0
+        tps_10.append(tp)
+        
+    if len(tps_10) >= 5:
+        spearman_10 = evaluate_spearman_trend(tps_10)
+        if spearman_10 <= -0.90:
+            return False
+    else:
+        return False
+
+    return True
+
+
 def entry_universal_cross(row, prev_row, cfg, records, idx):
     """
     Path: Universal Cross for CTS Slope.
@@ -130,7 +170,10 @@ def entry_universal_cross(row, prev_row, cfg, records, idx):
     accel = row.get("cts_accel", 0)
     psz_v = row.get("psz_v", 0)
 
-    if not any([trigger_cs, trigger_fas, trigger_prt, trigger_cwc]):
+    # 5th trigger: CWC Accumulation Exhaustion
+    trigger_5 = check_trigger_5(row, records, idx)
+
+    if not any([trigger_cs, trigger_fas, trigger_prt, trigger_cwc, trigger_5]):
         return False, 0, {"reason": "No structural inflection"}
 
        

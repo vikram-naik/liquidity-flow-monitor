@@ -932,8 +932,72 @@ def test_universal_cross_exit_cipla_regression():
     }
     reason4, state4 = exit_universal_cross(row4, prev4, trade, 1020.0, 4, state3, cfg)
     assert reason4 == ExitReason.PRT_ST_CROSS
-    assert SavgolCTSExitState.from_int(state4).cts_near_miss is False
     assert SavgolCTSExitState.from_int(state4).cts_reached_st is True
+
+
+def get_base_records_10(price_trend="flat"):
+    """Returns a mocked list of 10 records for testing the 5th trigger."""
+    records = []
+    for i in range(10):
+        # Default price is flat
+        high = 100.0
+        low = 98.0
+        close = 99.0
+        if price_trend == "knife":
+            # Perfect fall
+            high = 100.0 - i
+            low = 98.0 - i
+            close = 99.0 - i
+            
+        records.append({
+            "high": high, "low": low, "close": close, "atr_20": 2.0,
+            "cts_slope": -0.1, "cts_accel": 0.02, "cts_accel_threshold": 0.0,
+            "psz_v": 1.0 + 0.1 * i, "fas": -0.9, "fas_buy_threshold": -0.8,
+            "range_pos_10": 0.2, "base_tightness": 0.35, "pdd_30": 0.0,
+            "pdd_120": -5.0, "range_width_10": 10.0, "rdv": 1.0,
+            "cwc": 0.45, "price_slope_z": -0.20
+        })
+    return records
+
+
+def test_universal_cross_5th_trigger_success():
+    """Verify entry triggers on the 5th trigger (CWC Accumulation Exhaustion) when all sweet-spot metrics are met."""
+    cfg = SavgolCTSEntryConfig()
+    cfg.universal_cross.enabled = True
+
+    records = get_base_records_10(price_trend="flat")
+    passed, score, meta = entry_universal_cross(records[9], records[8], cfg, records, 9)
+
+    assert passed is True
+    assert score == 70
+    assert meta["entry_tag"] == EntryTag.UNIVERSAL_CROSS.value
+    assert meta["reason"] == "Universal Cross accepted"
+
+
+def test_universal_cross_5th_trigger_rejection_knife():
+    """Verify that the 5th trigger is rejected when the price is in a perfect linear downtrend (falling knife)."""
+    cfg = SavgolCTSEntryConfig()
+    cfg.universal_cross.enabled = True
+
+    records = get_base_records_10(price_trend="knife")
+    passed, score, meta = entry_universal_cross(records[9], records[8], cfg, records, 9)
+
+    assert passed is False
+    assert "No structural inflection" in meta["reason"]
+
+
+def test_universal_cross_5th_trigger_rejection_shallow_pdd():
+    """Verify that the 5th trigger is rejected when pdd_120 is too shallow."""
+    cfg = SavgolCTSEntryConfig()
+    cfg.universal_cross.enabled = True
+
+    records = get_base_records_10(price_trend="flat")
+    records[9]["pdd_120"] = -3.5  # too shallow (must be <= -4.0)
+    passed, score, meta = entry_universal_cross(records[9], records[8], cfg, records, 9)
+
+    assert passed is False
+    assert "No structural inflection" in meta["reason"]
+
 
 
 

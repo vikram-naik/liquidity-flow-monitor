@@ -23,6 +23,7 @@ from src.trading.signals.enums import EntryTag
 
 ENTRY_ALIASES = {
     "universal":    EntryTag.UNIVERSAL_CROSS.value,
+    "pullback":     EntryTag.TREND_PULLBACK.value,
 }
 
 def main():

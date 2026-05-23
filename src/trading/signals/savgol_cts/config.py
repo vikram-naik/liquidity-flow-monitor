@@ -47,6 +47,7 @@ class SavgolCTSEntryConfig(BaseEntryConfig):
     )
 
     universal_cross: UniversalCrossEntryConfig = field(default_factory=UniversalCrossEntryConfig)
+    trend_pullback_enabled: bool = True
 
 
 # ---------------------------------------------------------------------------

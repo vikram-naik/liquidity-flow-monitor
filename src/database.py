@@ -377,6 +377,7 @@ def init_db():
         price REAL,
         signal_type TEXT NOT NULL,
         pnl REAL,
+        entry_tag TEXT,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
     """)
@@ -409,6 +410,7 @@ def init_db():
     _migrate_add_column(cursor, "screener_signals", "c_down", "INTEGER")
     _migrate_add_column(cursor, "screener_signals", "max_cts", "INTEGER")
     _migrate_add_column(cursor, "screener_signals", "min_cts", "INTEGER")
+    _migrate_add_column(cursor, "screener_signals", "entry_tag", "TEXT")
 
     # Trading indices
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_trading_positions_status ON trading_positions (status);")
