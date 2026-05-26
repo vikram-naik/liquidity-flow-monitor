@@ -11,6 +11,7 @@ alignment scoring.
 
 import pandas as pd
 import numpy as np
+import importlib.metadata
 import pandas_ta as ta
 
 

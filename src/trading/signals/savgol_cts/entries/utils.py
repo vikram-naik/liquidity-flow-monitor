@@ -90,3 +90,59 @@ def evaluate_spearman_trend(y_values: list[float]) -> float:
     spearman_coeff, _ = stats.spearmanr(x_values, y_arr)
     
     return round(float(spearman_coeff), 4)
+
+
+def check_gap_down(records, idx, lookback=10):
+    """
+    Checks if a significant gap down occurred in the recent lookback window.
+    Gap down: prev_low > current_high AND gap > 0.3 * ATR.
+    """
+    # To cover T and T-1, we check the last lookback potential gaps
+    start = max(1, idx - lookback)
+    for i in range(start, idx + 1):
+        prev_low = records[i-1].get("low", 0)
+        curr_high = records[i].get("high", 0)
+        atr = records[i].get("atr_20", 0)
+        if prev_low > curr_high:
+            gap_size = prev_low - curr_high
+            if atr > 0 and gap_size > (0.3 * atr):
+                return True
+    return False
+
+
+def check_basing(records, idx):
+    """
+    Evaluates typical price basing for either T or T-1 over a 5-bar window.
+    Uses precomputed engine features (base_tightness, range_width_10).
+    If it detects the basing condition (score >= 2/3), returns True (reject entry).
+    """
+    for i in [idx, idx - 1]:
+        if i < 4: continue
+        row = records[i]
+
+        close = row.get("close", 0.0)
+        if close <= 0.0: continue
+
+        atr = row.get("atr_20", 0.0)
+
+        # 1. Tightness
+        bt = row.get("base_tightness", 1.0)
+        is_tight = bt < 0.35
+
+        # 2. Narrowness
+        rw10 = row.get("range_width_10", 0.0)
+        rw10_abs = (rw10 * close) / 100.0
+        rw_atrs = rw10_abs / atr if atr > 0 else 10.0
+        is_narrow = rw_atrs < 1.5
+
+        # 3. Flatness (Typical Price Spearman over 5 bars)
+        tps = []
+        for k in range(i - 4, i + 1):
+            r = records[k]
+            tp = (r.get("high", 0.0) + r.get("low", 0.0) + r.get("close", 0.0)) / 3.0
+            tps.append(tp)
+        is_flat = abs(evaluate_spearman_trend(tps)) < 0.6
+
+        if (int(is_tight) + int(is_narrow) + int(is_flat)) >= 2:
+            return True
+    return False

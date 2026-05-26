@@ -114,3 +114,5 @@ STUDY_CTS_ACCEL_SUMMARY.md
 node_modules/
 node_modules/*.*
 .antigravitycli/
+venv_old/
+venv/

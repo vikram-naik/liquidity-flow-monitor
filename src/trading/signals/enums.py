@@ -5,6 +5,7 @@ class EntryTag(str, Enum):
     # Active Paths
     UNIVERSAL_CROSS = "SavgolCTS Universal-Cross"
     TREND_PULLBACK = "SavgolCTS Trend-Pullback"
+    FLOW_MOMENTUM = "SavgolCTS Flow-Momentum"
     
     # Generic / Fallback
     UNKNOWN = "Unknown Entry"

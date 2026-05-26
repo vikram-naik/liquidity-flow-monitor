@@ -804,6 +804,43 @@ def test_universal_cross_exit_cts_near_miss_crossover_reset():
     assert st_cross.cts_near_miss is False
 
 
+def test_universal_cross_exit_cts_near_miss_rising_regression():
+    """Verify HINDUNILVR regression where CTS enters the near-miss zone from below while rising,
+    and should NOT trigger a premature near-miss exit even if its value is below the rollover level.
+    """
+    cfg = SavgolCTSExitConfig().universal_cross
+    cfg.enabled = True
+    cfg.cts_near_miss_exit_enabled = True
+    cfg.cts_near_miss_gap = 0.10
+    cfg.cts_near_miss_rollover_level = 0.50
+
+    trade = Trade(
+        symbol="HINDUNILVR",
+        entry_date="2025-12-19",
+        entry_price=2280.0,
+        entry_idx=0,
+        atr_at_entry=30.0
+    )
+
+    # Bar 1: CTS is far below the threshold
+    # CTS: -0.027, ST: 0.394
+    row1 = {"close": 2293.30, "cts": -0.0270, "cts_sell_threshold": 0.3940}
+    prev1 = {"close": 2285.40, "cts": -0.5915, "cts_sell_threshold": 0.3940}
+    reason1, state1 = exit_universal_cross(row1, prev1, trade, 2293.30, 1, 0, cfg)
+    assert reason1 is None
+    st1 = SavgolCTSExitState.from_int(state1)
+    assert st1.cts_near_miss is False
+
+    # Bar 2: CTS climbs to 0.3195, which enters the near-miss gap zone (0.3940 - 0.3195 = 0.0745 <= 0.10).
+    # Since CTS is rising (-0.027 -> 0.3195), it is NOT a rollover.
+    # Therefore, no exit should trigger even though CTS (0.3195) is less than the rollover level (0.50).
+    row2 = {"close": 2290.20, "cts": 0.3195, "cts_sell_threshold": 0.3940}
+    reason2, state2 = exit_universal_cross(row2, row1, trade, 2293.30, 2, state1, cfg)
+    assert reason2 is None
+    st2 = SavgolCTSExitState.from_int(state2)
+    assert st2.cts_near_miss is True
+
+
 def test_universal_cross_exit_cts_near_miss_persistence_regression():
     """Verify that if cts reaches or exceeds st, near_miss is permanently locked out (stays False)
     even if the trade stays within the gap region for multiple subsequent bars after crossing down,

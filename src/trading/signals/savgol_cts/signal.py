@@ -16,6 +16,7 @@ from src.trading.signals.savgol_cts.config import SavgolCTSEntryConfig, SavgolCT
 # Entry path checkers
 from src.trading.signals.savgol_cts.entries.universal_cross import entry_universal_cross
 from src.trading.signals.savgol_cts.entries.trend_pullback import entry_trend_pullback
+from src.trading.signals.savgol_cts.entries.flow_momentum import entry_flow_momentum
 
 # Exit path checkers
 from src.trading.signals.savgol_cts.exits.cwvap_guard import apply_cwvap_guard
@@ -79,7 +80,15 @@ class SavgolCTSSignal(SignalInterface):
         else:
             tp_reason = "TrendPullback path disabled"
 
-        return False, 0, {"reason": f"{uc_reason} | {tp_reason}"}
+        # Path 2: Flow Momentum Path (Highly optimized study-based setup)
+        fm_reason = "FlowMomentum path disabled"
+        if getattr(cfg, "flow_momentum", None) and cfg.flow_momentum.enabled:
+            passed, intensity, meta = entry_flow_momentum(row, prev_row, cfg, records, idx)
+            if passed:
+                return True, intensity, meta
+            fm_reason = f"FlowMomentum: {meta.get('reason', 'Rejected')}"
+
+        return False, 0, {"reason": f"{uc_reason} | {tp_reason} | {fm_reason}"}
 
     def check_exit(
         self,

@@ -137,7 +137,8 @@ def exit_universal_cross(
     # 6. CTS Near-Miss Rollover Check
     if not exit_reason and getattr(cfg, "cts_near_miss_exit_enabled", True) and st.cts_near_miss:
         rollover_level = getattr(cfg, "cts_near_miss_rollover_level", 0.50)
-        if not np.isnan(cts) and cts < rollover_level:
+        prev_cts = prev_row.get("cts", np.nan) if prev_row else np.nan
+        if not any(np.isnan(x) for x in [cts, prev_cts]) and cts < prev_cts and cts < rollover_level:
             if not is_panic_bar:
                 exit_reason = ExitReason.CTS_NEAR_MISS_ROLLOVER
 

@@ -32,6 +32,23 @@ class UniversalCrossEntryConfig:
 
 
 # ---------------------------------------------------------------------------
+# Flow Momentum entry config
+# ---------------------------------------------------------------------------
+
+@dataclass
+class FlowMomentumEntryConfig:
+    """Flow Momentum entry path configuration (Optimized)."""
+    enabled: bool = True
+    rsz_v_cross_thresh: float = 0.015
+    psz_v_min: float = 0.04
+    psz_v_rising_bars: int = 1
+    cwc_slope_min: float = 0.0
+    coherence_min: float = 0.30
+    only_bullish_regime: bool = True
+    mcs_composite_min: float = 0.05
+
+
+# ---------------------------------------------------------------------------
 # Composite entry config
 # ---------------------------------------------------------------------------
 
@@ -48,6 +65,7 @@ class SavgolCTSEntryConfig(BaseEntryConfig):
 
     universal_cross: UniversalCrossEntryConfig = field(default_factory=UniversalCrossEntryConfig)
     trend_pullback_enabled: bool = True
+    flow_momentum: FlowMomentumEntryConfig = field(default_factory=FlowMomentumEntryConfig)
 
 
 # ---------------------------------------------------------------------------

@@ -24,6 +24,7 @@ from src.trading.signals.enums import EntryTag
 ENTRY_ALIASES = {
     "universal":    EntryTag.UNIVERSAL_CROSS.value,
     "pullback":     EntryTag.TREND_PULLBACK.value,
+    "flow":         EntryTag.FLOW_MOMENTUM.value,
 }
 
 def main():
@@ -35,7 +36,7 @@ def main():
     parser.add_argument("--reason", help="Filter by exit reason (substring match)")
     parser.add_argument("--watchlist", default="NIFTY 50")
     parser.add_argument("--sort", default="entry_date",
-                        choices=["entry_date", "pnl", "symbol", "mfe", "mae", "duration", "score", "cwdist", "cwmax"],
+                        choices=["entry_date", "pnl", "symbol", "mfe", "mae", "duration", "score", "cwdist", "cwmax", "psz" ],
                         help="Sort column (default: entry_date)")
     args = parser.parse_args()
 
@@ -73,6 +74,8 @@ def main():
         t.prt_accel_signal = 0.0
         t.above_va_high = "no"
         t.regime_signal = "N/A"
+        t.cwc = 0.0
+        t.psz = 0.0
 
     # Filter by entry type
     if args.entry:
@@ -152,7 +155,8 @@ def main():
                         t.prt_signal = sig_row.get("prt", 0.0)
                         t.prt_slope_signal = sig_row.get("prt_slope", 0.0)
                         t.prt_accel_signal = sig_row.get("prt_accel", 0.0)
-                        
+                        t.cwc = sig_row.get("cwc", 0.0)
+                        t.psz = sig_row.get("price_slope_z", 0.0)
                         va_high = sig_row.get("va_high", np.nan)
                         if not np.isnan(va_high) and close > va_high:
                             t.above_va_high = "yes"
@@ -188,8 +192,9 @@ def main():
         "score": lambda t: t.conviction_score,
         "cwdist": lambda t: t.cwvap_dist_signal,
         "cwmax": lambda t: t.cwvap_dist_max,
+        "psz": lambda t: t.psz,
     }
-    reverse = args.sort in ("pnl", "mfe", "score", "cwmax")
+    reverse = args.sort in ("pnl", "mfe", "score", "cwmax", "psz")
     filtered.sort(key=sort_map[args.sort], reverse=reverse)
 
     # Print
@@ -197,7 +202,7 @@ def main():
     header = (f"{'#':>3} | {'Symbol':<12} | {'Sig Date':<10} | {'PnL%':>7} | {'MFE%':>7} | "
               f"{'CTS':>7} | {'Buy':>3} | {'Acc>BT':>6} | {'PSZv':>7} | "
               f"{'>VAH':>4} | {'Bars':>4} | {'SCORE':>5} | {'ML%':>5} | "
-              f"{'RP10':>4} | {'RP22':>4} | {'RP63':>4} | {'RP252':>4} | {'Exit Reason'}")
+              f"{'RP10':>4} | {'RP22':>4} | {'RP63':>4} | {'RP252':>4} |{'CWC':>7} | {'PSZ':>7} | {'Exit Reason'}")
     print(header)
     print("-" * len(header))
     for i, t in enumerate(filtered, 1):
@@ -207,7 +212,7 @@ def main():
               f"{t.mfe_pct:>7.2f} | {t.cts_signal:>7.3f} | {t.cts_buy:>3} | {t.accel_above_bt:>6} | "
               f"{t.psz_v_signal:>7.4f} | "
               f"{t.above_va_high:>4} | {t.duration:>4} | {t.conviction_score:>+5} | {ml_str} | "
-              f"{t.rp_10:>4} | {t.rp_22:>4} | {t.rp_63:>4} | {t.rp_252:>4} | {reason}")
+              f"{t.rp_10:>4} | {t.rp_22:>4} | {t.rp_63:>4} | {t.rp_252:>4} | {t.cwc:>7.4f} | {t.psz:>7.4f} | {reason}")
 
 if __name__ == "__main__":
     main()

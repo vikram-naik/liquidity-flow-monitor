@@ -10,7 +10,7 @@ redis
 yfinance
 tabulate
 pyyaml
-pandas_ta
+pandas-ta-openbb
 scikit-learn
 xgboost
 joblib
