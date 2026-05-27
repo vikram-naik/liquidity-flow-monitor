@@ -10,7 +10,6 @@ from dataclasses import dataclass, field
 
 from src.trading.signals.base import BaseEntryConfig, BaseExitConfig
 from src.trading.signals.enums import ExitReason
-from src.database import get_user_setting
 
 
 # ---------------------------------------------------------------------------
@@ -21,7 +20,7 @@ from src.database import get_user_setting
 class UniversalCrossEntryConfig:
     """Universal ML Master Path — Catches any structural inflection and relies purely on ML Guard."""
     enabled: bool = True
-    min_ml_score: float = field(default_factory=lambda: float(get_user_setting("ml_guard_threshold", "85.0")))
+    min_ml_score: float = 85.0
     gap_down_lookback: int = 10  # Lookback window for recent gap downs (bars)
     cwc_basing_filter_enabled: bool = True
     cwc_basing_cwc_threshold: float = 0.10
@@ -48,6 +47,51 @@ class FlowMomentumEntryConfig:
     mcs_composite_min: float = 0.05
 
 
+@dataclass
+class CoherentPullbackEntryConfig:
+    """Coherent Pullback entry path configuration to capture early momentum inflections."""
+    enabled: bool = True
+    cwc_min: float = 0.50
+    pdd_30_min: float = -5.00
+    pdd_30_max: float = -2.50
+    range_pos_10_max: float = 0.40
+    pdd_120_min: float = -4.00
+    base_tightness_max: float = 0.45
+    spearman_10_min: float = -0.90
+    only_bullish_regime: bool = True
+    score: int = 82
+
+
+@dataclass
+class AnchorShockPullbackEntryConfig:
+    """Anchor-Shock-Pullback entry configuration leveraging advanced price-volume indicators."""
+    enabled: bool = True
+    
+    # Volume & Spread Dry-up
+    shock_max: float = -0.8            # Deep delivery volume dry-up z-score
+    esr_max: float = 0.10              # Spread efficiency ceiling (consolidation/absorption)
+    
+    # Proximity discount under Swing-Anchored DVWAP (S-DVWAP)
+    dist_thresh: float = 0.02          # Maximum distance below S-DVWAP (2.0%)
+    
+    # Price-DVL Divergence (PDD) safety gates
+    pdd_120_min: float = 2.0           # Secular structure floor (avoids deep downtrends)
+    pdd_30_min: float = -3.0           # Falling knife limit (avoids short-term crashes)
+    
+    # Price Slope Momentum Floor
+    psz_min: float = -0.25             # Price Slope Z-Score floor (avoids sharp falling knives)
+    
+    # Volatility / Trading Range Width Gate
+    rw_252_min: float = 20.0           # Minimum 252-day high-to-low range width in % (requires rebound energy)
+    
+    # Range Position (avoid high-altitude peaks)
+    rp_252_max: float = 0.70           # Lowered ceiling to avoid distribution peaks
+    
+    score: int = 83
+
+
+
+
 # ---------------------------------------------------------------------------
 # Composite entry config
 # ---------------------------------------------------------------------------
@@ -66,6 +110,8 @@ class SavgolCTSEntryConfig(BaseEntryConfig):
     universal_cross: UniversalCrossEntryConfig = field(default_factory=UniversalCrossEntryConfig)
     trend_pullback_enabled: bool = True
     flow_momentum: FlowMomentumEntryConfig = field(default_factory=FlowMomentumEntryConfig)
+    coherent_pullback: CoherentPullbackEntryConfig = field(default_factory=CoherentPullbackEntryConfig)
+    anchor_shock_pullback: AnchorShockPullbackEntryConfig = field(default_factory=AnchorShockPullbackEntryConfig)
 
 
 # ---------------------------------------------------------------------------
@@ -124,6 +170,21 @@ class CwvapGuardConfig:
 
 
 
+@dataclass
+class AnchorShockPullbackExitConfig:
+    """Anchor-Shock-Pullback exit configuration."""
+    enabled: bool = True
+    shock_exit_enabled: bool = False
+    shock_exit_threshold: float = 2.5  # Volume climax exit level
+    
+    # Protection fallbacks
+    hard_stop_enabled: bool = True
+    hard_stop_pct: float = 15.0        # Emergency catastrophe shield stop loss
+    time_decay_enabled: bool = True
+    max_hold_bars: int = 50            # Maximizes breathing room while cutting off grinding pullbacks
+
+
+
 # ---------------------------------------------------------------------------
 # Composite exit config
 # ---------------------------------------------------------------------------
@@ -136,3 +197,5 @@ class SavgolCTSExitConfig(BaseExitConfig):
 
     universal_cross: UniversalCrossExitConfig = field(default_factory=UniversalCrossExitConfig)
     cwvap_guard: CwvapGuardConfig = field(default_factory=CwvapGuardConfig)
+    anchor_shock_pullback: AnchorShockPullbackExitConfig = field(default_factory=AnchorShockPullbackExitConfig)
+

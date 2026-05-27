@@ -35,7 +35,10 @@
         "prt": { label: "PRT — Price Range Trend" },
         "prt_slope": { label: "PRT Slope" },
         "prt_accel": { label: "PRT Acceleration" },
-        "fas": { label: "FAS — Fractal Alignment Score" }
+        "fas": { label: "FAS — Fractal Alignment Score" },
+        "cdvl": { label: "CDVL — Composite Delivery Velocity" },
+        "dv_shock": { label: "DV-Shock — Delivery Liquidity Shock" },
+        "esr": { label: "ESR — Relative Vol Spread Efficiency" }
     };
 
     function getActivePanels() {
@@ -178,6 +181,7 @@
         var pszArr = [], pszSmoothArr = [], pszVArr = [], pszBuyThreshArr = [], pszSellThreshArr = [];
         // RSZ series
         var rszArr = [], rszVArr = [];
+        var dvShockArr = [], esrArr = [], sdvwapArr = [];
         var entryMarkers = [];
         var exitMarkers = [];
         var oracleTroughMarkers = [];
@@ -244,6 +248,11 @@
             // RSZ
             if (r.rdv_slope_z != null) rszArr.push({ time: t, value: r.rdv_slope_z }); else rszArr.push({ time: t });
             if (r.rsz_v != null) rszVArr.push({ time: t, value: r.rsz_v }); else rszVArr.push({ time: t });
+
+            // Advanced PV features
+            if (r.dv_shock != null) dvShockArr.push({ time: t, value: r.dv_shock }); else dvShockArr.push({ time: t });
+            if (r.esr != null) esrArr.push({ time: t, value: r.esr }); else esrArr.push({ time: t });
+            if (r.sdvwap != null) sdvwapArr.push({ time: t, value: r.sdvwap }); else sdvwapArr.push({ time: t });
 
             if (r.entry_signal) {
                 entryMarkers.push({
@@ -360,11 +369,16 @@
         var sVaLow = pc.addSeries(LC.LineSeries, { color: "#7c4dff", lineWidth: 1, lineStyle: 2, lastValueVisible: false, priceLineVisible: false });
         sVaLow.setData(vaLow);
 
+        // --- Swing-Anchored DVWAP (S-DVWAP) ---
+        var sSdvwap = pc.addSeries(LC.LineSeries, { color: "#e040fb", lineWidth: 2, lineStyle: 2, lastValueVisible: false, priceLineVisible: false });
+        sSdvwap.setData(sdvwapArr);
+
         var leg1Config = [
             { api: cs, label: "Price", col: "price", color: "#e6edf3" },
             { api: sCwvap, label: "CWVAP", col: "cwvap", color: "#00bfa5" },
             { api: sVaHigh, label: "VA High", col: "va_high", color: "#7c4dff", dashed: true },
             { api: sVaLow, label: "VA Low", col: "va_low", color: "#7c4dff", dashed: true },
+            { api: sSdvwap, label: "S-DVWAP", col: "sdvwap", color: "#e040fb", dashed: true },
             { type: "separator" },
             { label: "pw", col: "range_pos_10", color: "#8b949e" },
             { label: "pm", col: "range_pos_22", color: "#8b949e" },
@@ -620,6 +634,33 @@
                 });
                 sRszRawZ.setData(rszArr.map(d => ({ time: d.time, value: 0 })));
                 legConfig.push({ api: sRszRaw, label: "RSZ Raw", col: "rdv_slope_z", color: "#4db6ac" });
+            } else if (panelKey === "cdvl") {
+                // CDVL — Composite Delivery Velocity
+                var sCdvl = c.addSeries(LC.LineSeries, { color: "#e3f2fd", lineWidth: 2, lastValueVisible: false, priceLineVisible: false });
+                sCdvl.setData(cdvlArr);
+                var sCdvlZ = c.addSeries(LC.LineSeries, { color: "#424242", lineWidth: 1, lineStyle: 2, lastValueVisible: false, priceLineVisible: false });
+                sCdvlZ.setData(cdvlArr.map(d => ({ time: d.time, value: 0 })));
+                legConfig.push({ api: sCdvl, label: "CDVL", col: "cdvl", color: "#e3f2fd" });
+            } else if (panelKey === "dv_shock") {
+                // DV-Shock — Delivery Liquidity Shock
+                var sDvShock = c.addSeries(LC.LineSeries, { color: "#00e676", lineWidth: 2, lastValueVisible: false, priceLineVisible: false });
+                sDvShock.setData(dvShockArr);
+                
+                // Baseline guide lines at 0, 2.0 (high institutional print), and -1.0 (quiet dry-up)
+                var sDvSZ = c.addSeries(LC.LineSeries, { color: "#424242", lineWidth: 1, lineStyle: 2, lastValueVisible: false, priceLineVisible: false });
+                sDvSZ.setData(dvShockArr.map(d => ({ time: d.time, value: 0 })));
+                sDvShock.createPriceLine({ price: 2.0, color: "rgba(0, 230, 118, 0.4)", lineWidth: 1, lineStyle: LC.LineStyle.Dashed, axisLabelVisible: true, title: "Shock (+2.0)" });
+                sDvShock.createPriceLine({ price: -1.0, color: "rgba(239, 83, 80, 0.4)", lineWidth: 1, lineStyle: LC.LineStyle.Dashed, axisLabelVisible: true, title: "Dry-up (-1.0)" });
+                
+                legConfig.push({ api: sDvShock, label: "DV-Shock", col: "dv_shock", color: "#00e676" });
+            } else if (panelKey === "esr") {
+                // ESR — Relative Vol Spread Efficiency
+                var sEsr = c.addSeries(LC.LineSeries, { color: "#ffd54f", lineWidth: 2, lastValueVisible: false, priceLineVisible: false });
+                sEsr.setData(esrArr);
+                var sEsrZ = c.addSeries(LC.LineSeries, { color: "#424242", lineWidth: 1, lineStyle: 2, lastValueVisible: false, priceLineVisible: false });
+                sEsrZ.setData(esrArr.map(d => ({ time: d.time, value: 0 })));
+                
+                legConfig.push({ api: sEsr, label: "ESR", col: "esr", color: "#ffd54f" });
             }
 
             allLegConfigs.push({ id: "legSub" + i, config: legConfig });
@@ -705,6 +746,7 @@
             sVaLow.applyOptions({ visible: val });
         });
         bindToggle("cbVol", val => sVol.applyOptions({ visible: val }));
+        bindToggle("cbSDVWAP", val => sSdvwap.applyOptions({ visible: val }));
 
         function syncCrosshair(chart, series, param) {
             if (!series) {
@@ -1199,22 +1241,6 @@
     function renderPanelsSettings() {
         currentPanelsConfig = getActivePanels();
         updatePanelsUI();
-
-        // Fetch ML Guard settings from API
-        fetch('/de/api/settings')
-            .then(function (res) { return res.json(); })
-            .then(function (data) {
-                var modelSelect = document.getElementById("ml-guard-model");
-                if (!modelSelect) return;
-                var modelHtml = "";
-                data.models.forEach(function (m) {
-                    var selected = (m === data.ml_guard_model) ? "selected" : "";
-                    modelHtml += '<option value="' + m + '" ' + selected + '>' + m + '</option>';
-                });
-                modelSelect.innerHTML = modelHtml;
-                document.getElementById("ml-guard-threshold").value = data.ml_guard_threshold;
-            })
-            .catch(function (err) { console.error("Error loading settings:", err); });
     }
 
     function updatePanelsUI() {
@@ -1291,28 +1317,8 @@
         btnSaveSettings.onclick = function () {
             // Save UI Panels
             localStorage.setItem("de_panel_config", JSON.stringify(currentPanelsConfig));
-
-            // Save ML Guard Settings to Backend
-            var payload = {
-                ml_guard_model: document.getElementById("ml-guard-model").value,
-                ml_guard_threshold: parseFloat(document.getElementById("ml-guard-threshold").value)
-            };
-
-            fetch('/de/api/settings', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            })
-                .then(function (res) { return res.json(); })
-                .then(function (data) {
-                    console.log("Settings saved:", data.message);
-                    closeSettings();
-                    loadSymbol(symbol);
-                })
-                .catch(function (err) {
-                    alert("Failed to save settings: " + err);
-                    console.error(err);
-                });
+            closeSettings();
+            loadSymbol(symbol);
         };
     }
 

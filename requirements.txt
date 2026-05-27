@@ -11,6 +11,3 @@ yfinance
 tabulate
 pyyaml
 pandas-ta-openbb
-scikit-learn
-xgboost
-joblib

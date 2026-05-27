@@ -17,10 +17,14 @@ from src.trading.signals.savgol_cts.config import SavgolCTSEntryConfig, SavgolCT
 from src.trading.signals.savgol_cts.entries.universal_cross import entry_universal_cross
 from src.trading.signals.savgol_cts.entries.trend_pullback import entry_trend_pullback
 from src.trading.signals.savgol_cts.entries.flow_momentum import entry_flow_momentum
+from src.trading.signals.savgol_cts.entries.coherent_pullback import entry_coherent_pullback
+from src.trading.signals.savgol_cts.entries.anchor_shock_pullback import entry_anchor_shock_pullback
 
 # Exit path checkers
 from src.trading.signals.savgol_cts.exits.cwvap_guard import apply_cwvap_guard
 from src.trading.signals.savgol_cts.exits.universal_cross import exit_universal_cross
+from src.trading.signals.savgol_cts.exits.anchor_shock_pullback import exit_anchor_shock_pullback
+
 
 
 class SavgolCTSSignal(SignalInterface):
@@ -88,7 +92,23 @@ class SavgolCTSSignal(SignalInterface):
                 return True, intensity, meta
             fm_reason = f"FlowMomentum: {meta.get('reason', 'Rejected')}"
 
-        return False, 0, {"reason": f"{uc_reason} | {tp_reason} | {fm_reason}"}
+        # Path 3: Coherent Pullback Path (Early Inflections)
+        cp_reason = "CoherentPullback path disabled"
+        if getattr(cfg, "coherent_pullback", None) and cfg.coherent_pullback.enabled:
+            passed, intensity, meta = entry_coherent_pullback(row, prev_row, cfg, records, idx)
+            if passed:
+                return True, intensity, meta
+            cp_reason = f"CoherentPullback: {meta.get('reason', 'Rejected')}"
+
+        # Path 4: Anchor Shock Pullback Path (Advanced Price-Volume Swing Support)
+        asp_reason = "AnchorShockPullback path disabled"
+        if getattr(cfg, "anchor_shock_pullback", None) and cfg.anchor_shock_pullback.enabled:
+            passed, intensity, meta = entry_anchor_shock_pullback(row, prev_row, cfg, records, idx)
+            if passed:
+                return True, intensity, meta
+            asp_reason = f"AnchorShockPullback: {meta.get('reason', 'Rejected')}"
+
+        return False, 0, {"reason": f"{uc_reason} | {tp_reason} | {fm_reason} | {cp_reason} | {asp_reason}"}
 
     def check_exit(
         self,
@@ -122,6 +142,22 @@ class SavgolCTSSignal(SignalInterface):
             cfg.universal_cross, records, idx
         )
         st = SavgolCTSExitState.from_int(state_val)
+
+        # Apply path-specific fallbacks for Anchor-Shock-Pullback trades
+        if not exit_reason and tag == EntryTag.ANCHOR_SHOCK_PULLBACK.value:
+            asp_exit_cfg = getattr(cfg, "anchor_shock_pullback", None)
+            if asp_exit_cfg and asp_exit_cfg.enabled:
+                # 1. Hard Stop Capping
+                if asp_exit_cfg.hard_stop_enabled:
+                    pnl_pct = (close / trade.entry_price - 1.0) * 100.0
+                    if pnl_pct <= -asp_exit_cfg.hard_stop_pct:
+                        exit_reason = ExitReason.HARD_STOP
+
+                # 2. Time Decay Limit
+                if not exit_reason and asp_exit_cfg.time_decay_enabled:
+                    if bars_held >= asp_exit_cfg.max_hold_bars:
+                        exit_reason = ExitReason.TIME_DECAY
+
 
         # Apply common CWVAP guard logic (can suppress or trigger exits)
         final_reason, st_val = apply_cwvap_guard(

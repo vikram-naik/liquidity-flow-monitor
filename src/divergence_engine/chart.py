@@ -29,6 +29,7 @@ UI_COLUMNS = [
     "range_pos_10", "range_pos_22", "range_pos_63", "range_pos_252", "is_ath",
     "cts", "cts_slope", "cts_accel",
     "velocity_60_norm", "vel_dp5",
+    "dv_shock", "esr", "sdvwap",
     # PSZ (price slope z) raw + thresholds
     "psz_v", "psz_buy_threshold", "psz_sell_threshold",
     # RSZ (rdv slope z) raw + thresholds

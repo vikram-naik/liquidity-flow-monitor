@@ -25,6 +25,7 @@ ENTRY_ALIASES = {
     "universal":    EntryTag.UNIVERSAL_CROSS.value,
     "pullback":     EntryTag.TREND_PULLBACK.value,
     "flow":         EntryTag.FLOW_MOMENTUM.value,
+    "anchor":       EntryTag.ANCHOR_SHOCK_PULLBACK.value,
 }
 
 def main():
@@ -76,6 +77,7 @@ def main():
         t.regime_signal = "N/A"
         t.cwc = 0.0
         t.psz = 0.0
+        t.cdvl = 0.0
 
     # Filter by entry type
     if args.entry:
@@ -157,6 +159,7 @@ def main():
                         t.prt_accel_signal = sig_row.get("prt_accel", 0.0)
                         t.cwc = sig_row.get("cwc", 0.0)
                         t.psz = sig_row.get("price_slope_z", 0.0)
+                        t.cdvl = sig_row.get("cdvl", 0.0)
                         va_high = sig_row.get("va_high", np.nan)
                         if not np.isnan(va_high) and close > va_high:
                             t.above_va_high = "yes"
@@ -193,14 +196,15 @@ def main():
         "cwdist": lambda t: t.cwvap_dist_signal,
         "cwmax": lambda t: t.cwvap_dist_max,
         "psz": lambda t: t.psz,
+        "cdvl": lambda t: t.cdvl,
     }
-    reverse = args.sort in ("pnl", "mfe", "score", "cwmax", "psz")
+    reverse = args.sort in ("pnl", "mfe", "score", "cwmax", "psz", "cdvl")
     filtered.sort(key=sort_map[args.sort], reverse=reverse)
 
     # Print
     print(f"\n--- {label} TRADES: STUDY REPORT ({args.period.upper()}) ---")
     header = (f"{'#':>3} | {'Symbol':<12} | {'Sig Date':<10} | {'PnL%':>7} | {'MFE%':>7} | "
-              f"{'CTS':>7} | {'Buy':>3} | {'Acc>BT':>6} | {'PSZv':>7} | "
+              f"{'CTS':>7} | {'PRT':>7} | {'CDVL':>7} | {'PSZv':>7} | "
               f"{'>VAH':>4} | {'Bars':>4} | {'SCORE':>5} | {'ML%':>5} | "
               f"{'RP10':>4} | {'RP22':>4} | {'RP63':>4} | {'RP252':>4} |{'CWC':>7} | {'PSZ':>7} | {'Exit Reason'}")
     print(header)
@@ -209,7 +213,7 @@ def main():
         reason = t.exit_reason.value if hasattr(t.exit_reason, "value") else str(t.exit_reason)
         ml_str = f"{t.ml_score:>5.1f}" if t.entry_tag == EntryTag.UNIVERSAL_CROSS.value else "  N/A"
         print(f"{i:>3} | {t.symbol:<12} | {t.signal_date:<10} | {t.pnl_pct:>7.2f} | "
-              f"{t.mfe_pct:>7.2f} | {t.cts_signal:>7.3f} | {t.cts_buy:>3} | {t.accel_above_bt:>6} | "
+              f"{t.mfe_pct:>7.2f} | {t.cts_signal:>7.3f} | {t.prt_signal:>7.3f} | {t.cdvl:>7.4f} | "
               f"{t.psz_v_signal:>7.4f} | "
               f"{t.above_va_high:>4} | {t.duration:>4} | {t.conviction_score:>+5} | {ml_str} | "
               f"{t.rp_10:>4} | {t.rp_22:>4} | {t.rp_63:>4} | {t.rp_252:>4} | {t.cwc:>7.4f} | {t.psz:>7.4f} | {reason}")

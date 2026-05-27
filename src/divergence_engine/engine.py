@@ -252,6 +252,11 @@ class DivergenceEngine:
         base = BaseCalculator()
         df = base.compute_all(df)
 
+        # Module 1.1 — Advanced Price-Volume indicators (DV-Shock, ESR, S-DVWAP)
+        from src.divergence_engine.adv_price_volume import AdvancedPriceVolume
+        adv_pv = AdvancedPriceVolume()
+        df = adv_pv.compute_all(df)
+
         # Module 1.25 — Price Range Position (dist from highs/lows, ATH flag)
         prng = PriceRange()
         df = prng.compute_all(df)

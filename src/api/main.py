@@ -19,7 +19,6 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../'
 from src.database import DB_PATH, init_db, get_user_setting, set_user_setting
 from src.cache import get_cache
 from src.api.trading_routes import router as trading_router
-from src.trading.signals.savgol_cts.ml_guard import MLGuard
 from fastapi.middleware.gzip import GZipMiddleware
 
 cache = get_cache()
@@ -27,47 +26,6 @@ cache = get_cache()
 app = FastAPI(title="LFM Divergence Engine", docs_url="/de/api/docs", openapi_url="/de/api/openapi.json")
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 
-class SettingsUpdate(BaseModel):
-    ml_guard_model: str
-    ml_guard_threshold: float
-
-@app.get("/de/api/settings")
-async def get_settings():
-    """Fetch current engine settings and available models."""
-    from pathlib import Path
-    models_dir = Path(__file__).resolve().parent.parent / "trading" / "signals" / "savgol_cts" / "models"
-    joblib_files = sorted([f.name for f in models_dir.glob("*.joblib")])
-    
-    current_model = get_user_setting("ml_guard_model", MLGuard.DEFAULT_MODEL)
-    current_threshold = float(get_user_setting("ml_guard_threshold", "85.0"))
-    
-    return {
-        "models": joblib_files,
-        "ml_guard_model": current_model,
-        "ml_guard_threshold": current_threshold
-    }
-
-@app.post("/de/api/settings")
-async def update_settings(settings: SettingsUpdate):
-    """Update engine settings and flush cache."""
-    old_model = get_user_setting("ml_guard_model", MLGuard.DEFAULT_MODEL)
-    old_threshold = float(get_user_setting("ml_guard_threshold", "85.0"))
-    
-    set_user_setting("ml_guard_model", settings.ml_guard_model)
-    set_user_setting("ml_guard_threshold", str(settings.ml_guard_threshold))
-    
-    # Check for changes to trigger reloads/flushes
-    model_changed = (old_model != settings.ml_guard_model)
-    threshold_changed = (old_threshold != settings.ml_guard_threshold)
-    
-    if model_changed:
-        MLGuard.get_instance().reload()
-    
-    if model_changed or threshold_changed:
-        cache.clear()
-        return {"status": "success", "message": "Settings updated, cache flushed."}
-    
-    return {"status": "success", "message": "Settings saved."}
 
 NSE_INDICES = {
     "NIFTY 50": "ind_nifty50list.csv",

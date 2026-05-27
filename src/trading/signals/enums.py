@@ -6,6 +6,8 @@ class EntryTag(str, Enum):
     UNIVERSAL_CROSS = "SavgolCTS Universal-Cross"
     TREND_PULLBACK = "SavgolCTS Trend-Pullback"
     FLOW_MOMENTUM = "SavgolCTS Flow-Momentum"
+    COHERENT_PULLBACK = "SavgolCTS Coherent-Pullback"
+    ANCHOR_SHOCK_PULLBACK = "SavgolCTS Anchor-Shock-Pullback"
     
     # Generic / Fallback
     UNKNOWN = "Unknown Entry"
