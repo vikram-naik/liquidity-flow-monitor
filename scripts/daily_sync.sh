@@ -64,7 +64,7 @@ if [[ $QUIET -eq 0 ]]; then echo "[8/9] Running Global Market Screener..."; fi
 python scripts/daily_screener.py $QUIET_FLAG
 
 if [[ $QUIET -eq 0 ]]; then echo "[9/9] Running Qualitative LLM Guard Audit..."; fi
-python scripts/guard_orchestrator.py
+python src/agents/guard_orchestrator.py
 
 if [[ $QUIET -eq 0 ]]; then
     echo "========================================"

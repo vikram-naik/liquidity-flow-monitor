@@ -154,7 +154,7 @@ Triage candidates clearing the Gate are mapped into one of four highly specializ
 
 ## 4. Stage 2: Asynchronous Qualitative Audit (The Guard)
 
-The Guard is implemented in `scripts/guard_orchestrator.py` as an asynchronous EOD pipeline running after the daily screener. It behaves as an adversarial short-seller, analyzing corporate governance, accounting metrics, and news integrity to veto risky plays.
+The Guard is implemented in `src/agents/guard_orchestrator.py` as an asynchronous EOD pipeline running after the daily screener. The adversarial forensic prompt is externalized in `src/agents/forensic_prompt.txt` for easy editing. It behaves as an adversarial short-seller, analyzing corporate governance, accounting metrics, and news integrity to veto risky plays.
 
 ### A. Core Architecture
 
@@ -192,15 +192,17 @@ The LLM response is parsed and validated against the following schema:
   "symbol": "TICKER",
   "verdict": "APPROVE" | "VETO",
   "veto_reasons": ["List of critical red flags"],
-  "catalyst_type": "GENUINE_ACCUMULATION" | "BLOCK_DEAL_DISTRIBUTION" | "PASSIVE_INDEX_FLOW" | "RETAIL_CHURN_PUMP" | "DEBT_STRESSED_LIQUIDATION",
+  "catalyst_type": "GENUINE_ACCUMULATION" | "BLOCK_DEAL_DISTRIBUTION" | "PASSIVE_INDEX_FLOW" | "RETAIL_CHURN_PUMP" | "DEBT_STRESSED_LIQUIDATION" | "UNEXPLAINED_PUMP_SUPPORTED",
   "fundamental_grade": "A" | "B" | "C" | "F",
   "governance_risk": "LOW" | "MEDIUM" | "HIGH" | "CRITICAL",
   "qualitative_score": 85,
   "key_metrics_checked": {
-    "debt_to_equity": 0.12,
-    "promoter_pledge_pct": 0.0,
-    "ocf_to_net_profit_3yr": 0.95,
-    "receivable_days_trend": "IMPROVING" | "STABLE" | "DETERIORATING"
+    "fo_eligibility": "TRUE" | "FALSE",
+    "block_bulk_deal_type": "NONE" | "PASSIVE_CROSSING" | "CLEAN_SWEEP",
+    "index_rebalance_proximity": "TRUE" | "FALSE",
+    "insider_transaction_type": "NONE" | "BUYING" | "SELLING" | "PLEDGING",
+    "derivative_expiry_pressure": "TRUE" | "FALSE",
+    "unexplained_pump": "TRUE" | "FALSE"
   },
   "evidence_citations": ["https://url1", "https://url2"]
 }
@@ -243,7 +245,7 @@ To guarantee the dashboard reflects *only* the results of the most recent EOD sc
    ```sql
    DELETE FROM screener_signals;
    ```
-2. When `guard_orchestrator.py` runs, it purges its forensic table to eliminate old signals:
+2. When `src/agents/guard_orchestrator.py` runs, it purges its forensic table to eliminate old signals:
    ```sql
    DELETE FROM gate_guard_signals;
    ```
@@ -290,7 +292,7 @@ echo "Stage 8: Running Multi-Core Market Screener (The Gate)..."
 ./venv/bin/python scripts/daily_screener.py
 
 echo "Stage 9: Running Asynchronous LLM Qualitative Forensic Audit (The Guard)..."
-./venv/bin/python scripts/guard_orchestrator.py
+./venv/bin/python src/agents/guard_orchestrator.py
 
 echo "LFM Daily Sync Pipeline completed successfully."
 ```

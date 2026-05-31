@@ -2,7 +2,7 @@
 LFM Stage 9: Qualitative Agentic Filter (The Guard).
 
 Orchestrates the adversarial qualitative forensic audit on symbols
-that have cleared the quantitative Gate, using Google Gemini Pro
+that have cleared the quantitative Gate, using Google Gemini 3.5 Flash
 with built-in web search tools.
 """
 
@@ -18,9 +18,10 @@ import urllib.error
 import asyncio
 from datetime import datetime
 from pathlib import Path
+from string import Template
 
 # Setup paths
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from dotenv import load_dotenv
@@ -39,6 +40,7 @@ class GuardOrchestrator:
 
     def __init__(self, db_path: str = str(DB_PATH)):
         self.db_path = db_path
+        self.prompt_template_path = Path(__file__).resolve().parent / "forensic_prompt.txt"
 
     def get_gate_candidates(self) -> list[dict]:
         """Fetch symbols from screener_signals that cleared the Gate (gate_signal = 1), capped at top 20."""
@@ -69,6 +71,23 @@ class GuardOrchestrator:
         finally:
             conn.close()
 
+    def is_symbol_fo_eligible(self, symbol: str) -> bool:
+        """Check if symbol is currently in the NSE F&O watchlist in the database."""
+        conn = sqlite3.connect(self.db_path)
+        try:
+            query = """
+                SELECT 1 FROM watchlist_items 
+                WHERE watchlist_id = (SELECT id FROM watchlists WHERE name = 'NSE F&O')
+                AND symbol = ?
+            """
+            row = conn.execute(query, (symbol.strip().upper(),)).fetchone()
+            return row is not None
+        except Exception as e:
+            logger.error(f"Failed to query F&O eligibility for {symbol}: {e}")
+            return False
+        finally:
+            conn.close()
+
     async def execute_forensic_audit(self, candidate: dict) -> dict | None:
         """Run the adversarial forensic audit using Gemini Pro with web search."""
         symbol = candidate["symbol"]
@@ -80,52 +99,27 @@ class GuardOrchestrator:
             await asyncio.sleep(0.5)
             return self._generate_simulated_result(candidate)
 
-        # Adversarial Forensic Prompt
-        prompt = f"""
-        Conduct a qualitative forensic audit on Indian equity ticker: {symbol}
-        Gate Detection Date: {date}
-        Underlying price: INR {candidate["price"]}
-        Setup Footprint: {candidate["setup_tag"]}
+        # Load and fill adversarial forensic prompt template
+        try:
+            with open(self.prompt_template_path, "r", encoding="utf-8") as f:
+                template_content = f.read()
+            template = Template(template_content)
+            
+            # Fetch verified F&O status from the database F&O watchlist
+            is_fo = self.is_symbol_fo_eligible(symbol)
+            fo_eligibility_str = "TRUE" if is_fo else "FALSE"
+            logger.info(f"Verified F&O status for {symbol} in database: {fo_eligibility_str}")
 
-        Act as an adversarial short-seller or a highly cynical Risk Officer at a quantitative fund.
-        Assume the technical signal is a structural trap until proven otherwise.
-
-        AUDIT CONSTRAINTS & RATIONALE:
-        1. LIQUIDITY-NEUTRAL OR MECHANICAL FLOW AUDIT:
-           - Did a massive pre-negotiated block/bulk deal or promoter stake sale occur on {date}?
-           - Is this date close to an MSCI, FTSE, or Nifty index rebalance flow date for {symbol}?
-
-        2. FUNDAMENTAL & CASH FLOW CONVERSION AUDIT:
-           - Cross-reference Screener.in data: Is Debt-to-Equity > 1.0? 
-           - Does 3-year Cumulative Operating Cash Flow (OCF) diverge significantly from 3-year Net Profit (OCF/Net Profit < 0.80)? If yes, flag inventory or receivables bloating.
-           - Are Receivable Days deteriorating? Is the RoCE < 15%?
-
-        3. PROMOTER INTEGRITY & GOVERNANCE AUDIT:
-           - Is promoter pledging > 10%? Any pledging > 20% must be flagged as a critical margin-call risk.
-           - Has promoter stake decreased by > 1% in the last 3 quarters? Who is selling shares?
-           - Are there any pending regulatory investigations, SEBI warnings, or auditor resignations?
-
-        4. THE VETO RISK REPORT:
-           - Provide a strict 3-point adversarial short thesis explaining why a rational investor should VETO this breakout.
-
-        Return the final verdict in raw JSON matching this schema:
-        {{
-          "symbol": "{symbol}",
-          "verdict": "APPROVE" | "VETO",
-          "veto_reasons": ["List of red flags if VETOed, else empty"],
-          "catalyst_type": "GENUINE_ACCUMULATION" | "BLOCK_DEAL_DISTRIBUTION" | "PASSIVE_INDEX_FLOW" | "RETAIL_CHURN_PUMP" | "DEBT_STRESSED_LIQUIDATION",
-          "fundamental_grade": "A" | "B" | "C" | "F",
-          "governance_risk": "LOW" | "MEDIUM" | "HIGH" | "CRITICAL",
-          "qualitative_score": 0 to 100,
-          "key_metrics_checked": {{
-            "debt_to_equity": 0.0,
-            "promoter_pledge_pct": 0.0,
-            "ocf_to_net_profit_3yr": 0.0,
-            "receivable_days_trend": "IMPROVING" | "STABLE" | "DETERIORATING"
-          }},
-          "evidence_citations": ["List of source URLs and announcement reference numbers"]
-        }}
-        """
+            prompt = template.substitute(
+                symbol=symbol,
+                date=date,
+                price=candidate["price"],
+                setup_tag=candidate["setup_tag"],
+                fo_eligibility=fo_eligibility_str
+            )
+        except Exception as err:
+            logger.error(f"Failed to load prompt template from {self.prompt_template_path}: {err}")
+            return None
 
         url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key={GEMINI_API_KEY}"
         
@@ -203,18 +197,20 @@ class GuardOrchestrator:
         return {
             "symbol": symbol,
             "verdict": "VETO" if is_veto else "APPROVE",
-            "veto_reasons": ["Debt-to-equity ratio > 1.2", "Auditor warning on subsidiary holdings"] if is_veto else [],
-            "catalyst_type": "DEBT_STRESSED_LIQUIDATION" if is_veto else "GENUINE_ACCUMULATION",
+            "veto_reasons": ["Passive block deal crossing without open-market sweep", "MSCI index reweighting mechanical inflow"] if is_veto else [],
+            "catalyst_type": "BLOCK_DEAL_DISTRIBUTION" if is_veto else "GENUINE_ACCUMULATION",
             "fundamental_grade": "C" if is_veto else "A",
             "governance_risk": "HIGH" if is_veto else "LOW",
             "qualitative_score": 45 if is_veto else 88,
             "key_metrics_checked": {
-                "debt_to_equity": 1.45 if is_veto else 0.12,
-                "promoter_pledge_pct": 22.0 if is_veto else 0.0,
-                "ocf_to_net_profit_3yr": 0.62 if is_veto else 0.94,
-                "receivable_days_trend": "DETERIORATING" if is_veto else "STABLE"
+                "fo_eligibility": "FALSE" if symbol.startswith("X") else "TRUE",
+                "block_bulk_deal_type": "PASSIVE_CROSSING" if is_veto else "CLEAN_SWEEP",
+                "index_rebalance_proximity": "TRUE" if is_veto else "FALSE",
+                "insider_transaction_type": "SELLING" if is_veto else "BUYING",
+                "derivative_expiry_pressure": "FALSE",
+                "unexplained_pump": "FALSE"
             },
-            "evidence_citations": [f"https://www.screener.in/company/{symbol}"]
+            "evidence_citations": [f"https://www.nseindia.com/get-quotes/equity?symbol={symbol}"]
         }
 
     def save_result(self, candidate: dict, audit: dict) -> None:

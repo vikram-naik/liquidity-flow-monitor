@@ -32,6 +32,14 @@ def sync_watchlists(quiet=False):
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
         
+        # Seed 'NSE F&O' watchlist if missing
+        cursor.execute("SELECT id FROM watchlists WHERE name = 'NSE F&O'")
+        fo_exists = cursor.fetchone()
+        if not fo_exists:
+            cursor.execute("INSERT INTO watchlists (name, description) VALUES ('NSE F&O', 'Securities eligible for Futures & Options (F&O) trading on NSE')")
+            conn.commit()
+            print("Seeded 'NSE F&O' watchlist in database.")
+            
         cursor.execute("SELECT id, name FROM watchlists")
         watchlists = cursor.fetchall()
         
@@ -41,6 +49,70 @@ def sync_watchlists(quiet=False):
             idx_name = wl_name.strip().upper()
             csv_file = None
             
+            if idx_name == "NSE F&O":
+                print(f"Syncing F&O Watchlist: {wl_name} (Watchlist ID: {wl_id})")
+                url = "https://nsearchives.nseindia.com/content/fo/fo_mktlots.csv"
+                try:
+                    headers = {
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                        'Referer': 'https://www.nseindia.com/'
+                    }
+                    response = requests.get(url, headers=headers, timeout=15)
+                    if response.status_code != 200:
+                        print(f"  [ERROR] Failed to fetch F&O market lots: HTTP {response.status_code}")
+                        continue
+                        
+                    df = pd.read_csv(io.StringIO(response.text))
+                    df.columns = [c.strip() for c in df.columns]
+                    
+                    exclude_symbols = {
+                        'NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY', 'NIFTYNXT50', 
+                        'SYMBOL', 'UNDERLYING', 'DERIVATIVE', 'EXPIRY', 'LOT'
+                    }
+                    
+                    latest_symbols = []
+                    for _, row in df.iterrows():
+                        sym = str(row['SYMBOL']).strip().upper()
+                        if not sym or sym in exclude_symbols or 'LOT' in sym:
+                            continue
+                        if sym.replace('-', '').isalnum():
+                            latest_symbols.append(sym)
+                            
+                    latest_symbols = {s for s in latest_symbols}
+                    
+                    # Fetch existing symbols in this watchlist
+                    cursor.execute("SELECT symbol FROM watchlist_items WHERE watchlist_id = ?", (wl_id,))
+                    existing_symbols = {row[0].upper() for row in cursor.fetchall()}
+                    
+                    symbols_to_add = latest_symbols - existing_symbols
+                    symbols_to_remove = existing_symbols - latest_symbols
+                    
+                    if not symbols_to_add and not symbols_to_remove:
+                        print(f"  [OK] F&O Watchlist is already up-to-date ({len(latest_symbols)} symbols).")
+                        continue
+                        
+                    if symbols_to_remove:
+                        print(f"  [REMOVING] {len(symbols_to_remove)} symbols: {', '.join(symbols_to_remove)}")
+                        for sym in symbols_to_remove:
+                            cursor.execute("DELETE FROM watchlist_items WHERE watchlist_id = ? AND symbol = ?", (wl_id, sym))
+                            
+                    if symbols_to_add:
+                        print(f"  [ADDING] {len(symbols_to_add)} symbols: {', '.join(symbols_to_add)}")
+                        cursor.execute("SELECT MAX(display_order) FROM watchlist_items WHERE watchlist_id = ?", (wl_id,))
+                        max_order = cursor.fetchone()[0] or 0
+                        for i, sym in enumerate(symbols_to_add):
+                            cursor.execute("""
+                                INSERT INTO watchlist_items (watchlist_id, symbol, display_order)
+                                VALUES (?, ?, ?)
+                            """, (wl_id, sym, max_order + i + 1))
+                            
+                    conn.commit()
+                    updated_count += 1
+                    print(f"  [SUCCESS] Watchlist '{wl_name}' updated successfully.")
+                except Exception as e:
+                    print(f"  [ERROR] Syncing F&O watchlist failed: {e}")
+                continue
+                
             for name, filename in NSE_INDICES.items():
                 if name.upper() == idx_name:
                     csv_file = filename
