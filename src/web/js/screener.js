@@ -182,8 +182,99 @@ const columnDefs = [
   }
 ];
 
+const techColumnDefs = columnDefs;
+
+const guardColumnDefs = [
+  { 
+      field: 'symbol', 
+      headerName: 'Symbol', 
+      width: 150, 
+      pinned: 'left',
+      cellRenderer: params => {
+          const s = params.value;
+          const d = params.data.date;
+          return `<a href="/de/dashboard/${s}?focus=${d}" class="back-link" target="_blank">${s}</a>`;
+      }
+  },
+  { field: 'date', headerName: 'Date', width: 120 },
+  { field: 'price', headerName: 'Price (₹)', width: 120, valueFormatter: p => p.value ? p.value.toFixed(2) : '-' },
+  { 
+      field: 'setup_tag', 
+      headerName: 'Setup Tag', 
+      width: 120,
+      cellRenderer: params => {
+          const val = params.value;
+          let bg = '#30363d', fg = '#c9d1d9';
+          if (val === 'SIAB') { bg = '#0d419d'; fg = '#fff'; }
+          else if (val === 'CDMA') { bg = '#238636'; fg = '#fff'; }
+          else if (val === 'CLFR') { bg = '#da3633'; fg = '#fff'; }
+          else if (val === 'ISP') { bg = '#d29922'; fg = '#fff'; }
+          return `<span style="background:${bg}; color:${fg}; padding:4px 8px; border-radius:12px; font-size:10px; font-weight:bold">${val}</span>`;
+      }
+  },
+  { field: 'gate_score', headerName: 'Gate Score', width: 120, valueFormatter: p => p.value ? p.value.toFixed(2) : '-' },
+  { 
+      field: 'verdict', 
+      headerName: 'LLM Verdict', 
+      width: 130,
+      cellRenderer: params => {
+          const val = params.value;
+          if (val === 'APPROVE') {
+              return `<span style="background:#2ea043; color:#fff; padding:4px 8px; border-radius:4px; font-size:10px; font-weight:bold; letter-spacing:0.5px">APPROVED</span>`;
+          }
+          return `<span style="background:#f85149; color:#fff; padding:4px 8px; border-radius:4px; font-size:10px; font-weight:bold; letter-spacing:0.5px">VETOED</span>`;
+      }
+  },
+  { 
+      field: 'qualitative_score', 
+      headerName: 'Qualitative Score', 
+      width: 140, 
+      valueFormatter: p => p.value ? p.value.toFixed(2) : '-',
+      cellStyle: params => {
+          const v = params.value;
+          if (v >= 80) return { color: '#3fb950', fontWeight: 'bold' };
+          if (v < 60) return { color: '#f85149', fontWeight: 'bold' };
+          return { color: '#d29922', fontWeight: 'bold' };
+      }
+  },
+  { 
+      field: 'red_flags', 
+      headerName: 'Forensic Red Flags', 
+      width: 380,
+      autoHeight: true,
+      cellRenderer: params => {
+          try {
+              const flags = JSON.parse(params.value || '[]');
+              if (!flags || flags.length === 0) return `<span style="color:#8b949e">—</span>`;
+              let html = '<ul style="margin: 0; padding-left: 14px; font-size: 11px; color: #8b949e; line-height: 1.4; white-space: normal; list-style-type: square; margin-top: 4px; margin-bottom: 4px;">';
+              flags.forEach(f => {
+                  html += `<li>${f}</li>`;
+              });
+              html += '</ul>';
+              return html;
+          } catch (e) {
+              return params.value || '-';
+          }
+      }
+  },
+  { 
+      field: 'citations', 
+      headerName: 'Citations & Sources', 
+      width: 250,
+      cellRenderer: params => {
+          try {
+              const urls = JSON.parse(params.value || '[]');
+              if (!urls || urls.length === 0) return '—';
+              return `<div style="display:flex; flex-direction:column; gap:4px; justify-content:center; height:100%">${urls.map((url, i) => `<a href="${url}" target="_blank" style="color:#58a6ff; font-size:11px; text-decoration:none;">Source [${i+1}] ↗</a>`).join('')}</div>`;
+          } catch (e) {
+              return '—';
+          }
+      }
+  }
+];
+
 const gridOptions = {
-  columnDefs: columnDefs,
+  columnDefs: techColumnDefs,
   rowData: [],
   defaultColDef: {
       sortable: true,
@@ -199,15 +290,20 @@ document.addEventListener('DOMContentLoaded', () => {
   const gridDiv = document.querySelector('#screener-grid');
   const gridApi = agGrid.createGrid(gridDiv, gridOptions);
   window.gridApi = gridApi;
-  let allData = [];
+  
+  let allTechData = [];
+  let cachedGuardData = [];
+  let currentTab = 'tech';
 
   window.applyFilters = function() {
+      if (currentTab !== 'tech') return;
+      
       const showEntries = document.getElementById('chk-entries')?.checked;
       const showInTrade = document.getElementById('chk-intrade')?.checked;
       const showExits = document.getElementById('chk-exits')?.checked;
       const showTech = document.getElementById('chk-tech')?.checked;
 
-      const filteredData = allData.filter(d => {
+      const filteredData = allTechData.filter(d => {
           if (d.signal_type === 'entry' && showEntries) return true;
           if (d.signal_type === 'in-trade' && showInTrade) return true;
           if (d.signal_type === 'exit' && showExits) return true;
@@ -218,10 +314,56 @@ document.addEventListener('DOMContentLoaded', () => {
       gridApi.setGridOption('rowData', filteredData);
   };
 
+  window.switchTab = function(tabName) {
+      if (tabName === currentTab) return;
+      
+      // Update tab buttons state
+      document.getElementById('btn-tab-tech').classList.toggle('active', tabName === 'tech');
+      document.getElementById('btn-tab-guard').classList.toggle('active', tabName === 'guard');
+      currentTab = tabName;
+      
+      const summaryEl = document.getElementById('screener-summary');
+      if (tabName === 'tech') {
+          // Switch back to technical grid
+          if (summaryEl) {
+              summaryEl.style.display = 'grid';
+          }
+          gridApi.setGridOption('columnDefs', techColumnDefs);
+          gridApi.setGridOption('rowData', allTechData);
+      } else {
+          // Switch to forensic audit grid
+          if (summaryEl) {
+              summaryEl.style.display = 'none';
+          }
+          
+          if (cachedGuardData.length > 0) {
+              gridApi.setGridOption('columnDefs', guardColumnDefs);
+              gridApi.setGridOption('rowData', cachedGuardData);
+          } else {
+              gridApi.setGridOption('rowData', []);
+              fetch('/de/api/screener/gate-guard')
+                  .then(r => r.json())
+                  .then(data => {
+                       cachedGuardData = data;
+                       gridApi.setGridOption('columnDefs', guardColumnDefs);
+                       gridApi.setGridOption('rowData', data);
+                  })
+                  .catch(e => console.error("Error loading Gate-Guard qualitative data", e));
+          }
+      }
+
+      // Smoothly trigger grid size adjustment to match new layout proportions
+      setTimeout(() => {
+          if (window.gridApi) {
+              window.gridApi.sizeColumnsToFit();
+          }
+      }, 50);
+  };
+
   fetch('/de/api/screener')
       .then(r => r.json())
       .then(data => {
-          allData = data;
+          allTechData = data;
           gridApi.setGridOption('rowData', data);
           
           let entries = 0, exits = 0, inTrade = 0, techOnly = 0;

@@ -116,3 +116,4 @@ node_modules/*.*
 .antigravitycli/
 venv_old/
 venv/
+.env

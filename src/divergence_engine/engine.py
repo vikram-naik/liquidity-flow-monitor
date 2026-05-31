@@ -144,6 +144,9 @@ class EngineResult:
             "dist_high_252": _safe(row.get("dist_high_252", 0), decimals=2),
             "range_pos_252": _safe(row.get("range_pos_252", 0), decimals=4),
             "is_ath": bool(row.get("is_ath", False)),
+            "gate_setup": str(row.get("gate_setup", "None")),
+            "gate_signal": int(row.get("gate_signal", 0)),
+            "s_total": _safe(row.get("s_total", 0), decimals=2),
         }
         
         
@@ -302,6 +305,11 @@ class DivergenceEngine:
         from src.trading.signals import SignalFactory
         _signal = SignalFactory.get_signal("savgol_cts")
         df = _signal.tag_signals(df)
+
+        # Module 8 — Quantitative Gate Screener (SIAB, CDMA, CLFR, ISP)
+        from src.divergence_engine.gate_screener import GateScreener
+        screener = GateScreener()
+        df = screener.compute_all(df)
 
         # --- Drop intermediate columns ---
         df = df.drop(columns=[c for c in _DROP_COLS if c in df.columns])

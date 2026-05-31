@@ -104,8 +104,13 @@ def process_symbol(symbol: str) -> dict | None:
                     mfe_pct = round((float(highs.max()) / ep - 1) * 100, 2)
                     mae_pct = round((float(lows.min()) / ep - 1) * 100, 2)
         
-        # We store if it has any trade lifecycle signal OR any technical signal
-        if signal_type or c_up or c_down or max_cts or min_cts:
+        # New Gate indicators
+        gate_setup = str(last_row.get("gate_setup", "None"))
+        gate_signal = int(last_row.get("gate_signal", 0))
+        s_total = float(last_row.get("s_total", 0.0))
+
+        # We store if it has any trade lifecycle signal OR any technical signal OR has cleared the Gate
+        if signal_type or c_up or c_down or max_cts or min_cts or gate_signal == 1:
             return {
                 "symbol": symbol,
                 "date": date_str,
@@ -121,7 +126,10 @@ def process_symbol(symbol: str) -> dict | None:
                 "c_down": c_down,
                 "max_cts": max_cts,
                 "min_cts": min_cts,
-                "entry_tag": entry_tag
+                "entry_tag": entry_tag,
+                "gate_setup": gate_setup,
+                "gate_signal": gate_signal,
+                "s_total": s_total
             }
     except Exception as e:
         logger.warning(f"Failed processing {symbol}: {e}")
@@ -173,14 +181,15 @@ def main():
                 results.append((
                     res["symbol"], res["date"], res["price"], res["signal_type"], res["pnl"],
                     res["entry_date"], res["entry_price"], res["bars_held"], res["mfe_pct"], res["mae_pct"],
-                    res["c_up"], res["c_down"], res["max_cts"], res["min_cts"], res["entry_tag"]
+                    res["c_up"], res["c_down"], res["max_cts"], res["min_cts"], res["entry_tag"],
+                    res["gate_setup"], res["gate_signal"], res["s_total"]
                 ))
                 signals_found[res["signal_type"]] += 1
 
     # Bulk insert for fast database write
     if results:
         conn.executemany(
-            "INSERT INTO screener_signals (symbol, date, price, signal_type, pnl, entry_date, entry_price, bars_held, mfe_pct, mae_pct, c_up, c_down, max_cts, min_cts, entry_tag) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO screener_signals (symbol, date, price, signal_type, pnl, entry_date, entry_price, bars_held, mfe_pct, mae_pct, c_up, c_down, max_cts, min_cts, entry_tag, gate_setup, gate_signal, s_total) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             results
         )
         

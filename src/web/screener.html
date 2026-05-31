@@ -9,6 +9,131 @@
   <script src="https://cdn.jsdelivr.net/npm/ag-grid-community@31.0.3/dist/ag-grid-community.min.js"></script>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ag-grid-community@31.0.3/styles/ag-grid.css">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ag-grid-community@31.0.3/styles/ag-theme-alpine.css">
+  <style>
+    .tab-btn {
+        background: transparent;
+        border: none;
+        color: #8b949e;
+        font-size: 14px;
+        font-weight: 600;
+        padding: 8px 16px;
+        cursor: pointer;
+        border-bottom: 2px solid transparent;
+        transition: all 0.2s ease;
+        outline: none;
+    }
+    .tab-btn.active {
+        color: #58a6ff;
+        border-bottom: 2px solid #58a6ff;
+    }
+    .tab-btn:hover {
+        color: #c9d1d9;
+    }
+
+    /* Premium, Robust Screener Summary Cards */
+    #screener-summary {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 16px;
+        margin-bottom: 20px;
+        flex-shrink: 0;
+        min-height: 92px;
+        width: 100%;
+        transition: all 0.3s ease;
+    }
+
+    #screener-summary .card {
+        background: rgba(22, 27, 34, 0.7);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border: 1px solid #30363d;
+        border-radius: 12px;
+        padding: 16px;
+        min-height: 90px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+        position: relative;
+        overflow: hidden;
+        flex-shrink: 0;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    }
+
+    /* Active Glowing State based on type */
+    #screener-summary .card:has(#chk-entries:checked) {
+        border-color: #3fb950 !important;
+        box-shadow: 0 4px 16px rgba(63, 185, 80, 0.15);
+    }
+    #screener-summary .card:has(#chk-intrade:checked) {
+        border-color: #d29922 !important;
+        box-shadow: 0 4px 16px rgba(210, 153, 34, 0.15);
+    }
+    #screener-summary .card:has(#chk-exits:checked) {
+        border-color: #f85149 !important;
+        box-shadow: 0 4px 16px rgba(248, 81, 73, 0.15);
+    }
+    #screener-summary .card:has(#chk-tech:checked) {
+        border-color: #58a6ff !important;
+        box-shadow: 0 4px 16px rgba(88, 166, 255, 0.15);
+    }
+
+    /* Modern Dynamic Hover Micro-animations */
+    #screener-summary .card:hover {
+        transform: translateY(-3px) scale(1.02);
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+        border-color: #8b949e;
+        background: rgba(22, 27, 34, 0.9);
+    }
+
+    #screener-summary .card:hover:has(#chk-entries:checked) {
+        border-color: #3fb950 !important;
+        box-shadow: 0 8px 24px rgba(63, 185, 80, 0.25);
+    }
+    #screener-summary .card:hover:has(#chk-intrade:checked) {
+        border-color: #d29922 !important;
+        box-shadow: 0 8px 24px rgba(210, 153, 34, 0.25);
+    }
+    #screener-summary .card:hover:has(#chk-exits:checked) {
+        border-color: #f85149 !important;
+        box-shadow: 0 8px 24px rgba(248, 81, 73, 0.25);
+    }
+    #screener-summary .card:hover:has(#chk-tech:checked) {
+        border-color: #58a6ff !important;
+        box-shadow: 0 8px 24px rgba(88, 166, 255, 0.25);
+    }
+
+    /* Unchecked/Dimmed State */
+    #screener-summary .card:has(input[type="checkbox"]:not(:checked)) {
+        opacity: 0.45;
+        border-color: #21262d !important;
+        background: rgba(22, 27, 34, 0.2) !important;
+        box-shadow: none !important;
+        transform: scale(0.97);
+    }
+
+    #screener-summary .card:has(input[type="checkbox"]:not(:checked)):hover {
+        opacity: 0.7;
+        transform: scale(0.99);
+        border-color: #30363d !important;
+    }
+
+    /* Styled Checkboxes */
+    #chk-entries { accent-color: #3fb950; }
+    #chk-intrade { accent-color: #d29922; }
+    #chk-exits { accent-color: #f85149; }
+    #chk-tech { accent-color: #58a6ff; }
+
+    #screener-summary .card input[type="checkbox"] {
+        cursor: pointer;
+        width: 15px;
+        height: 15px;
+        transition: transform 0.2s ease;
+    }
+    #screener-summary .card input[type="checkbox"]:hover {
+        transform: scale(1.2);
+    }
+  </style>
 </head>
 <body>
   <div class="hdr">
@@ -22,8 +147,13 @@
     </div>
   </div>
 
-  <div class="tab-content active" style="padding: 20px; display: flex; flex-direction: column; height: calc(100vh - 51px);">
-    <div class="cards" id="screener-summary" style="margin-bottom: 20px;">
+  <div class="tabs-nav" style="display:flex; gap:16px; margin: 10px 20px 0 20px; border-bottom:1px solid #30363d; padding-bottom:8px">
+    <button id="btn-tab-tech" class="tab-btn active" onclick="window.switchTab('tech')">Technical Screener</button>
+    <button id="btn-tab-guard" class="tab-btn" onclick="window.switchTab('guard')">Gate & Guard Forensic Audits</button>
+  </div>
+
+  <div class="tab-content active" style="padding: 20px; display: flex; flex-direction: column; height: calc(100vh - 101px);">
+    <div class="cards" id="screener-summary" style="margin-bottom: 20px; flex-shrink: 0;">
       <!-- Populated via JS -->
     </div>
 

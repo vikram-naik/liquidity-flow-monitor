@@ -411,6 +411,29 @@ def init_db():
     _migrate_add_column(cursor, "screener_signals", "max_cts", "INTEGER")
     _migrate_add_column(cursor, "screener_signals", "min_cts", "INTEGER")
     _migrate_add_column(cursor, "screener_signals", "entry_tag", "TEXT")
+    _migrate_add_column(cursor, "screener_signals", "gate_setup", "TEXT DEFAULT 'None'")
+    _migrate_add_column(cursor, "screener_signals", "gate_signal", "INTEGER DEFAULT 0")
+    _migrate_add_column(cursor, "screener_signals", "s_total", "REAL DEFAULT 0.0")
+
+    # Table: gate_guard_signals
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS gate_guard_signals (
+        symbol TEXT PRIMARY KEY,
+        date TEXT NOT NULL,
+        price REAL NOT NULL,
+        gate_score REAL NOT NULL,
+        setup_tag TEXT NOT NULL,
+        verdict TEXT NOT NULL,
+        catalyst_type TEXT NOT NULL,
+        fundamental_grade TEXT NOT NULL,
+        governance_risk TEXT NOT NULL,
+        qualitative_score REAL NOT NULL,
+        red_flags TEXT,
+        ratios_json TEXT,
+        citations TEXT,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    """)
 
     # Trading indices
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_trading_positions_status ON trading_positions (status);")
