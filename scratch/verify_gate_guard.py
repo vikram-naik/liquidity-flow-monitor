@@ -18,7 +18,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.divergence_engine.engine import DivergenceEngine
-from scripts.guard_orchestrator import GuardOrchestrator
+from src.agents.guard_orchestrator import GuardOrchestrator
 from src.database import DB_PATH
 
 async def verify_pipeline():

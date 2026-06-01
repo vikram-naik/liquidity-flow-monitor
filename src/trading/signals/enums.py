@@ -3,6 +3,7 @@ from enum import Enum
 class EntryTag(str, Enum):
     """Strongly typed entry tags with presentation-friendly strings."""
     # Active Paths
+    CDVL_CTS = "SavgolCTS CDVL-CTS"
     UNIVERSAL_CROSS = "SavgolCTS Universal-Cross"
     TREND_PULLBACK = "SavgolCTS Trend-Pullback"
     FLOW_MOMENTUM = "SavgolCTS Flow-Momentum"

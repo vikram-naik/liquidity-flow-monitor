@@ -11,3 +11,5 @@ yfinance
 tabulate
 pyyaml
 pandas-ta-openbb
+google-genai
+pytest-asyncio

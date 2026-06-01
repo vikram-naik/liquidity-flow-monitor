@@ -17,6 +17,13 @@ from src.trading.signals.enums import ExitReason
 # ---------------------------------------------------------------------------
 
 @dataclass
+class CdvlCtsEntryConfig:
+    """CDVL-CTS entry path configuration (High Performance Flow-Momentum)."""
+    enabled: bool = True
+    cwc_min: float = 0.50
+
+
+@dataclass
 class UniversalCrossEntryConfig:
     """Universal ML Master Path — Catches any structural inflection and relies purely on ML Guard."""
     enabled: bool = True
@@ -107,6 +114,7 @@ class SavgolCTSEntryConfig(BaseEntryConfig):
         ExitReason.BAR5_STOP,
     )
 
+    cdvl_cts: CdvlCtsEntryConfig = field(default_factory=CdvlCtsEntryConfig)
     universal_cross: UniversalCrossEntryConfig = field(default_factory=UniversalCrossEntryConfig)
     trend_pullback_enabled: bool = True
     flow_momentum: FlowMomentumEntryConfig = field(default_factory=FlowMomentumEntryConfig)

@@ -26,6 +26,7 @@ ENTRY_ALIASES = {
     "pullback":     EntryTag.TREND_PULLBACK.value,
     "flow":         EntryTag.FLOW_MOMENTUM.value,
     "anchor":       EntryTag.ANCHOR_SHOCK_PULLBACK.value,
+    "cdvl":         EntryTag.CDVL_CTS.value,
 }
 
 def main():

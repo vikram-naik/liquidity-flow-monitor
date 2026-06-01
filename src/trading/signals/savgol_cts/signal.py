@@ -14,6 +14,7 @@ from src.trading.signals.enums import EntryTag, ExitReason
 from src.trading.signals.savgol_cts.config import SavgolCTSEntryConfig, SavgolCTSExitConfig
 
 # Entry path checkers
+from src.trading.signals.savgol_cts.entries.cdvl_cts import entry_cdvl_cts
 from src.trading.signals.savgol_cts.entries.universal_cross import entry_universal_cross
 from src.trading.signals.savgol_cts.entries.trend_pullback import entry_trend_pullback
 from src.trading.signals.savgol_cts.entries.flow_momentum import entry_flow_momentum
@@ -55,6 +56,14 @@ class SavgolCTSSignal(SignalInterface):
         cts = row.get("cts", np.nan)
         if np.isnan(cts):
             return False, 0, {"reason": "Missing CTS data"}
+
+        # Path 0: CDVL-CTS Path (Priority High Performance Flow-Momentum)
+        cdvl_reason = "CDVL_CTS path disabled"
+        if getattr(cfg, "cdvl_cts", None) and cfg.cdvl_cts.enabled:
+            passed, intensity, meta = entry_cdvl_cts(row, prev_row, cfg, records, idx)
+            if passed:
+                return True, intensity, meta
+            cdvl_reason = f"CDVL_CTS: {meta.get('reason', 'Rejected')}"
 
         uc_reason = "Universal path disabled"
         # Path 0: Universal ML Master Path (The primary funnel)
@@ -108,7 +117,7 @@ class SavgolCTSSignal(SignalInterface):
                 return True, intensity, meta
             asp_reason = f"AnchorShockPullback: {meta.get('reason', 'Rejected')}"
 
-        return False, 0, {"reason": f"{uc_reason} | {tp_reason} | {fm_reason} | {cp_reason} | {asp_reason}"}
+        return False, 0, {"reason": f"{cdvl_reason} | {uc_reason} | {tp_reason} | {fm_reason} | {cp_reason} | {asp_reason}"}
 
     def check_exit(
         self,
@@ -142,6 +151,18 @@ class SavgolCTSSignal(SignalInterface):
             cfg.universal_cross, records, idx
         )
         st = SavgolCTSExitState.from_int(state_val)
+
+        # Apply path-specific overrides for CDVL_CTS trades
+        if tag == EntryTag.CDVL_CTS.value:
+            # 1. Catastrophic Hard Stop Shield at exactly 10.0%
+            pnl_pct = (close / trade.entry_price - 1.0) * 100.0
+            if pnl_pct <= -10.0:
+                exit_reason = ExitReason.HARD_STOP
+            elif exit_reason:
+                # 2. Dynamic CDVL Exit Trailing suppression: defer indicator exit if CDVL is positive
+                cdvl = row.get("cdvl", np.nan)
+                if not np.isnan(cdvl) and cdvl > 0.0:
+                    exit_reason = None
 
         # Apply path-specific fallbacks for Anchor-Shock-Pullback trades
         if not exit_reason and tag == EntryTag.ANCHOR_SHOCK_PULLBACK.value:

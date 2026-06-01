@@ -28,6 +28,7 @@ from dotenv import load_dotenv
 load_dotenv(dotenv_path=PROJECT_ROOT / ".env")
 
 from src.database import DB_PATH
+from src.agents.llm import BaseLLMProvider
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
@@ -38,9 +39,13 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 class GuardOrchestrator:
     """Manages the EOD qualitative LLM Guard pipeline."""
 
-    def __init__(self, db_path: str = str(DB_PATH)):
+    def __init__(self, db_path: str = str(DB_PATH), llm_provider: BaseLLMProvider | None = None):
         self.db_path = db_path
-        self.prompt_template_path = Path(__file__).resolve().parent / "forensic_prompt.txt"
+        self.prompt_template_path = Path(__file__).resolve().parent / "llm" / "forensic_prompt.txt"
+        
+        # Resolve LLM provider via the write-to-interface factory
+        from src.agents.llm import get_llm_provider
+        self.provider = llm_provider or get_llm_provider()
 
     def get_gate_candidates(self) -> list[dict]:
         """Fetch symbols from screener_signals that cleared the Gate (gate_signal = 1), capped at top 20."""
@@ -89,15 +94,10 @@ class GuardOrchestrator:
             conn.close()
 
     async def execute_forensic_audit(self, candidate: dict) -> dict | None:
-        """Run the adversarial forensic audit using Gemini Pro with web search."""
+        """Run the adversarial forensic audit using the configured LLM provider."""
         symbol = candidate["symbol"]
         date = candidate["date"]
         logger.info(f"Initiating Forensic Audit for {symbol} (Gate Score: {candidate['gate_score']:.2f})...")
-
-        if not GEMINI_API_KEY:
-            logger.warning(f"GEMINI_API_KEY not configured. Running {symbol} in simulation fallback mode...")
-            await asyncio.sleep(0.5)
-            return self._generate_simulated_result(candidate)
 
         # Load and fill adversarial forensic prompt template
         try:
@@ -121,56 +121,21 @@ class GuardOrchestrator:
             logger.error(f"Failed to load prompt template from {self.prompt_template_path}: {err}")
             return None
 
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key={GEMINI_API_KEY}"
+        # Execute structured generation using the provider
+        from src.agents.llm import ForensicAuditResult
         
-        # Build API payload with Google Search Tool enabled
-        payload = {
-            "contents": [
-                {
-                    "parts": [
-                        {"text": prompt}
-                    ]
-                }
-            ],
-            "tools": [
-                {
-                    "googleSearchRetrieval": {}
-                }
-            ],
-            "generationConfig": {
-                "responseMimeType": "application/json"
-            }
-        }
-
-        # Run block-based HTTP request in executor to respect async event loop
-        loop = asyncio.get_running_loop()
         try:
-            try:
-                raw_response = await loop.run_in_executor(None, self._send_http_request, url, payload)
-            except Exception as first_err:
-                logger.warning(f"Initial search-grounded API call failed for {symbol}: {first_err}. Retrying without search tools...")
-                # Clean tools property to fallback to standard inference
-                if "tools" in payload:
-                    del payload["tools"]
-                raw_response = await loop.run_in_executor(None, self._send_http_request, url, payload)
-
-            result = json.loads(raw_response)
+            result_model = await self.provider.generate_structured_json(
+                prompt=prompt,
+                response_schema=ForensicAuditResult,
+                enable_search=True
+            )
             
-            # Extract JSON from the Gemini response structure
-            candidates_list = result.get("candidates", [])
-            if not candidates_list:
-                logger.error(f"No response candidates returned by Gemini for {symbol}")
+            if result_model is None:
+                logger.error(f"LLM Provider returned None for {symbol}")
                 return None
                 
-            text = candidates_list[0]["content"]["parts"][0]["text"].strip()
-            
-            # Clean up potential markdown wraps
-            if text.startswith("```json"):
-                text = text.split("```json")[1].split("```")[0].strip()
-            elif text.startswith("```"):
-                text = text.split("```")[1].split("```")[0].strip()
-                
-            audit_json = json.loads(text)
+            audit_json = result_model.model_dump()
             logger.info(f"Audit completed for {symbol}. Verdict: {audit_json.get('verdict')} (Qualitative Score: {audit_json.get('qualitative_score')})")
             return audit_json
 
@@ -178,40 +143,6 @@ class GuardOrchestrator:
             logger.error(f"Qualitative audit failed completely for {symbol}: {e}")
             return None
 
-    def _send_http_request(self, url: str, payload: dict) -> str:
-        """Synchronous HTTP request wrapper run inside threadpool executor."""
-        headers = {"Content-Type": "application/json"}
-        req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), headers=headers, method="POST")
-        try:
-            with urllib.request.urlopen(req, timeout=45) as response:
-                return response.read().decode("utf-8")
-        except urllib.error.HTTPError as e:
-            err_content = e.read().decode("utf-8")
-            raise RuntimeError(f"HTTP {e.code}: {e.reason} - Details: {err_content}")
-
-    def _generate_simulated_result(self, candidate: dict) -> dict:
-        """Simulation fallback generator for local testing when API key is missing."""
-        symbol = candidate["symbol"]
-        # Basic deterministic outcomes to make testing predictable
-        is_veto = (symbol.startswith("Z") or "exit" in candidate["setup_tag"].lower())
-        return {
-            "symbol": symbol,
-            "verdict": "VETO" if is_veto else "APPROVE",
-            "veto_reasons": ["Passive block deal crossing without open-market sweep", "MSCI index reweighting mechanical inflow"] if is_veto else [],
-            "catalyst_type": "BLOCK_DEAL_DISTRIBUTION" if is_veto else "GENUINE_ACCUMULATION",
-            "fundamental_grade": "C" if is_veto else "A",
-            "governance_risk": "HIGH" if is_veto else "LOW",
-            "qualitative_score": 45 if is_veto else 88,
-            "key_metrics_checked": {
-                "fo_eligibility": "FALSE" if symbol.startswith("X") else "TRUE",
-                "block_bulk_deal_type": "PASSIVE_CROSSING" if is_veto else "CLEAN_SWEEP",
-                "index_rebalance_proximity": "TRUE" if is_veto else "FALSE",
-                "insider_transaction_type": "SELLING" if is_veto else "BUYING",
-                "derivative_expiry_pressure": "FALSE",
-                "unexplained_pump": "FALSE"
-            },
-            "evidence_citations": [f"https://www.nseindia.com/get-quotes/equity?symbol={symbol}"]
-        }
 
     def save_result(self, candidate: dict, audit: dict) -> None:
         """Persist the merged Gate-Guard state into gate_guard_signals SQLite table."""
