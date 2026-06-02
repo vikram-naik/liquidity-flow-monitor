@@ -145,6 +145,26 @@ def reconcile_with_internet(symbol, date, local_close, local_ret):
             
             if pd.isna(ext_ret):
                 return "External Return N/A", ext_ohlc, ext_ret, 0.0
+
+            # Date alignment to handle holidays/special sessions mismatch
+            try:
+                dates_list = list(df.index.strftime('%Y-%m-%d'))
+                idx = dates_list.index(date_iso)
+                if idx > 0:
+                    prev_date_iso = dates_list[idx - 1]
+                    engine = DivergenceEngine(symbol)
+                    ledger = engine.run().ledger
+                    ledger['date_str'] = pd.to_datetime(ledger['date']).dt.strftime('%Y-%m-%d')
+                    local_row_prev = ledger[ledger['date_str'] == prev_date_iso]
+                    if not local_row_prev.empty:
+                        local_close_prev = float(local_row_prev.iloc[0]['close'])
+                        local_ret_aligned = (local_close / local_close_prev - 1) * 100.0
+                        if abs(local_ret - local_ret_aligned) > 0.01:
+                            logger.info(f"Aligned previous date for {symbol} on {date}: external_prev={prev_date_iso}, local_close_prev={local_close_prev:.2f}. Adjusted local return from {local_ret:.2f}% to {local_ret_aligned:.2f}%")
+                            local_ret = local_ret_aligned
+            except Exception as e:
+                logger.warning(f"Failed to align previous dates for {symbol} on {date}: {e}")
+
             
             # Dividend Impact on return: (P - div)/P_prev vs P/P_prev
             # yfinance adjusted return already includes the dividend.

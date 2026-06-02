@@ -175,7 +175,10 @@ def entry_universal_cross(row, prev_row, cfg, records, idx):
 
     if not any([trigger_cs, trigger_fas, trigger_prt, trigger_cwc, trigger_5]):
         return False, 0, {"reason": "No structural inflection"}
+    
 
+    if cts < prev_cts:
+        return False, 0, {"reason": "CTS not rising"}
        
     # 1. Acceleration Trend
     # State-based Flow-Velocity Bypass: Bypass acceleration checks if institutional flow is actively positive, rising, and price velocity is strong
