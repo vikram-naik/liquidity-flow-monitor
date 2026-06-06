@@ -4,6 +4,8 @@ import numpy as np
 import math
 import sys
 import copy
+import argparse
+import json
 from pathlib import Path
 
 # Add root folder to sys.path
@@ -292,8 +294,17 @@ def train_bayesian_model(ledger, candidates, labels):
 
 
 def main():
-    symbols = get_watchlist_symbols("NIFTY 50")
-    print(f"Loaded {len(symbols)} symbols from watchlist NIFTY 50.")
+    parser = argparse.ArgumentParser(description="Bayesian Weight Optimization (BWO)")
+    parser.add_argument("--symbol", type=str, help="Target a single symbol for BWO tuning")
+    parser.add_argument("--watchlist", type=str, default="NIFTY 50", help="Watchlist of symbols to tune (default: NIFTY 50)")
+    args = parser.parse_args()
+    
+    if args.symbol:
+        symbols = [args.symbol.upper()]
+        print(f"BWO: Targeted optimization for single symbol {symbols[0]}...")
+    else:
+        symbols = get_watchlist_symbols(args.watchlist)
+        print(f"BWO: Loaded {len(symbols)} symbols from watchlist '{args.watchlist}'.")
     
     # Cache ledger for all symbols
     print("Caching DivergenceEngine ledgers...")
@@ -447,112 +458,52 @@ def main():
     print(f"\nOptimized symbols with Trades: {total_symbols}")
     print(f"Symbols with Avg P&L >= 5.0%: {success_count} / {total_symbols} ({success_count/total_symbols*100:.1f}%)")
     
-    # Generate and write symbol_configs.py
-    print("\nGenerating code for src/trading/signals/savgol_cts/symbol_configs.py...")
+    from src.database import BW_CONFIGS_DIR
     
-    code = []
-    code.append("# Auto-generated symbol-specific configuration overrides for Custom Bayesian Entries")
-    code.append("import copy")
-    code.append("from src.trading.signals.savgol_cts.config import SavgolCTSEntryConfig, SavgolCTSExitConfig")
-    code.append("")
-    code.append("def get_symbol_entry_config(symbol: str, default_cfg: SavgolCTSEntryConfig | None = None) -> SavgolCTSEntryConfig:")
-    code.append("    if default_cfg is None:")
-    code.append("        cfg = SavgolCTSEntryConfig()")
-    code.append("    else:")
-    code.append("        cfg = copy.deepcopy(default_cfg)")
-    code.append("        ")
-    code.append("    if symbol in SYMBOL_ENTRY_OVERRIDES:")
-    code.append("        overrides = SYMBOL_ENTRY_OVERRIDES[symbol]")
-    code.append("        if 'trend_pullback_enabled' in overrides:")
-    code.append("            cfg.trend_pullback_enabled = overrides['trend_pullback_enabled']")
-    code.append("        for path in ['cdvl_cts', 'universal_cross', 'flow_momentum', 'coherent_pullback', 'anchor_shock_pullback', 'springboard', 'oversold_decel', 'custom_bayesian']:")
-    code.append("            if path in overrides:")
-    code.append("                sub = getattr(cfg, path)")
-    code.append("                path_overrides = overrides[path]")
-    code.append("                if 'enabled' in path_overrides:")
-    code.append("                    sub.enabled = path_overrides['enabled']")
-    code.append("                if 'score_threshold' in path_overrides and hasattr(sub, 'score_threshold'):")
-    code.append("                    sub.score_threshold = path_overrides['score_threshold']")
-    code.append("                if 'feature_bins' in path_overrides and hasattr(sub, 'feature_bins'):")
-    code.append("                    sub.feature_bins = path_overrides['feature_bins']")
-    code.append("                if 'feature_weights' in path_overrides and hasattr(sub, 'feature_weights'):")
-    code.append("                    sub.feature_weights = path_overrides['feature_weights']")
-    code.append("                    ")
-    code.append("    return cfg")
-    code.append("")
-    code.append("def get_symbol_exit_config(symbol: str, default_cfg: SavgolCTSExitConfig | None = None) -> SavgolCTSExitConfig:")
-    code.append("    if default_cfg is None:")
-    code.append("        cfg = SavgolCTSExitConfig()")
-    code.append("    else:")
-    code.append("        cfg = copy.deepcopy(default_cfg)")
-    code.append("    return cfg")
-    code.append("")
-    code.append("SYMBOL_ENTRY_OVERRIDES = {")
-    
-    # Load baseline overrides for fallback
-    sys.path.insert(0, "/home/vn/.gemini/antigravity/brain/76d44142-6bbd-4b94-85d0-f7fb5caff696/scratch")
-    try:
-        from optimal_symbol_overrides import SYMBOL_ENTRY_OVERRIDES as BASELINE_OVERRIDES
-    except ImportError:
-        BASELINE_OVERRIDES = {}
-
-    FALLBACK_SYMBOLS = ["AXISBANK", "HDFCBANK", "HINDUNILVR", "NESTLEIND", "ONGC", "TCS", "WIPRO"]
-
+    # Generate and write individual JSON files
+    print(f"\nSerializing Bayesian Weights (BW) configs directly to {BW_CONFIGS_DIR}...")
     for sym, details in optimal_overrides.items():
-        code.append(f"    '{sym}': {{")
-        if sym in FALLBACK_SYMBOLS and sym in BASELINE_OVERRIDES:
-            overrides = BASELINE_OVERRIDES[sym]
-            code.append(f"        'trend_pullback_enabled': {overrides.get('trend_pullback_enabled', False)},")
-            for path in ["cdvl_cts", "universal_cross", "flow_momentum", "coherent_pullback", "anchor_shock_pullback", "springboard", "oversold_decel"]:
-                path_overrides = overrides.get(path, {"enabled": False})
-                code.append(f"        '{path}': {{")
-                code.append(f"            'enabled': {path_overrides.get('enabled', False)},")
-                if "score_threshold" in path_overrides:
-                    code.append(f"            'score_threshold': {path_overrides['score_threshold']},")
-                code.append(f"        }},")
-            code.append(f"        'custom_bayesian': {{'enabled': False}},")
-        else:
-            # Disable all legacy paths and enable custom bayesian
-            code.append(f"        'trend_pullback_enabled': False,")
-            code.append(f"        'cdvl_cts': {{'enabled': False}},")
-            code.append(f"        'universal_cross': {{'enabled': False}},")
-            code.append(f"        'flow_momentum': {{'enabled': False}},")
-            code.append(f"        'coherent_pullback': {{'enabled': False}},")
-            code.append(f"        'anchor_shock_pullback': {{'enabled': False}},")
-            code.append(f"        'springboard': {{'enabled': False}},")
-            code.append(f"        'oversold_decel': {{'enabled': False}},")
+        config_dict = {
+            "trend_pullback_enabled": False,
+            "cdvl_cts": {"enabled": False},
+            "universal_cross": {"enabled": False},
+            "flow_momentum": {"enabled": False},
+            "coherent_pullback": {"enabled": False},
+            "anchor_shock_pullback": {"enabled": False},
+            "springboard": {"enabled": False},
+            "oversold_decel": {"enabled": False},
+            "custom_bayesian": {
+                "enabled": True,
+                "score_threshold": float(details["score_threshold"]),
+                "feature_bins": {},
+                "feature_weights": {}
+            }
+        }
+        
+        # Serialize feature bins (convert inf to strings for valid JSON)
+        for feat, bins in details["feature_bins"].items():
+            bins_list = []
+            for b in bins:
+                if math.isinf(b):
+                    bins_list.append("-inf" if b < 0 else "inf")
+                else:
+                    bins_list.append(float(b))
+            config_dict["custom_bayesian"]["feature_bins"][feat] = bins_list
             
-            # Serialize custom_bayesian details
-            code.append(f"        'custom_bayesian': {{")
-            code.append(f"            'enabled': True,")
-            code.append(f"            'score_threshold': {details['score_threshold']:.4f},")
+        # Serialize feature weights (convert inf to strings for valid JSON)
+        for feat, weights in details["feature_weights"].items():
+            weights_list = []
+            for left, right, w in weights:
+                l_val = "-inf" if math.isinf(left) and left < 0 else float(left)
+                r_val = "inf" if math.isinf(right) and right > 0 else float(right)
+                weights_list.append([l_val, r_val, float(w)])
+            config_dict["custom_bayesian"]["feature_weights"][feat] = weights_list
             
-            # Write feature bins
-            code.append(f"            'feature_bins': {{")
-            for feat, bins in details["feature_bins"].items():
-                bins_str = ", ".join([f"float('-inf')" if math.isinf(b) and b < 0 else (f"float('inf')" if math.isinf(b) and b > 0 else f"{b:.6f}") for b in bins])
-                code.append(f"                '{feat}': [{bins_str}],")
-            code.append(f"            }},")
-            
-            # Write feature weights
-            code.append(f"            'feature_weights': {{")
-            for feat, weights in details["feature_weights"].items():
-                code.append(f"                '{feat}': [")
-                for left, right, w in weights:
-                    left_str = "float('-inf')" if math.isinf(left) and left < 0 else f"{left:.6f}"
-                    right_str = "float('inf')" if math.isinf(right) and right > 0 else f"{right:.6f}"
-                    code.append(f"                    ({left_str}, {right_str}, {w:.6f}),")
-                code.append(f"                ],")
-            code.append(f"            }},")
-            code.append(f"        }},")
-        code.append(f"    }},")
-
-    code.append("}")
-    
-    # Save code to symbol_configs.py
-    out_file = Path("/home/vn/python-projects/liquidity-flow-monitor/src/trading/signals/savgol_cts/symbol_configs.py")
-    out_file.write_text("\n".join(code))
-    print(f"\nSaved symbol specific weights config to {out_file}")
+        # Write to JSON file
+        out_path = Path(BW_CONFIGS_DIR) / f"{sym}.json"
+        with open(out_path, "w") as f:
+            json.dump(config_dict, f, indent=4)
+        print(f"Saved BW override directly to {out_path}")
 
 if __name__ == "__main__":
     main()

@@ -63,10 +63,12 @@ def parse_nse_description(subject):
         total_factor *= old_fv / new_fv
         types.append("SPLIT")
 
-    # Demerger / Amalgamation Parsing (No explicit ratio in string usually)
+    # Demerger / Amalgamation / Rights Parsing (No explicit ratio in string usually)
     if not types:
         if any(kw in subject for kw in ["demerger", "amalgamation", "arrangement", "capital reduction", "spin-off"]):
             return 'ESTIMATE_RATIO', 'DEMERGER_OR_SIMILAR'
+        if "rights" in subject:
+            return 'ESTIMATE_RATIO', 'RIGHTS'
         return None, None
     
     return total_factor, "+".join(sorted(types))

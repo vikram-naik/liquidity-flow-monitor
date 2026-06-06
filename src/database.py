@@ -4,6 +4,7 @@ import os
 
 DB_PATH = os.getenv("DB_PATH", "liquidity_monitor.db")
 BW_CONFIGS_DIR = os.getenv("BW_CONFIGS_DIR", "src/trading/signals/savgol_cts/bw_configs")
+EXCLUDED_SYMBOLS_PATH = os.getenv("EXCLUDED_SYMBOLS_PATH", "src/trading/signals/savgol_cts/excluded_symbols.json")
 
 def get_db_connection():
     # Add timeout to handle concurrent writes better (default is 5s)

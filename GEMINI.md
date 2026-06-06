@@ -44,10 +44,15 @@
   ```bash
   ./venv/bin/python scripts/debug_universal_scoring.py --symbol <SYMBOL> --date <YYYY-MM-DD>
   ```
-- **Bayesian Weight Optimization (BWO)**: Per-symbol feature weight tuning replaces the deprecated XGBoost ML Guard. Configs are stored as JSON in `src/trading/signals/savgol_cts/bw_configs/` (path configurable via `BW_CONFIGS_DIR` env var). To train/retune:
+- **Bayesian Weight Optimization (BWO)**: Per-symbol feature weight tuning replaces the deprecated XGBoost ML Guard. Configs are stored as JSON in `src/trading/signals/savgol_cts/bw_configs/` (path configurable via `BW_CONFIGS_DIR` env var). To train/retune a watchlist:
   ```bash
   ./venv/bin/python scripts/train_symbol_weights_parallel.py --watchlist "NIFTY 50"
   ```
+  An automated **weekly Champion-Challenger validation and sync routine** runs via:
+  ```bash
+  ./venv/bin/python scripts/weekly_bwo_sync.py
+  ```
+  If both the Champion and Challenger configurations for a stock fail safety gates, the symbol is added to the exclusion list at `src/trading/signals/savgol_cts/excluded_symbols.json` (configurable via `EXCLUDED_SYMBOLS_PATH` env var) and its config is moved to `.json.bak`, disabling all entry signals for that stock to avoid poor conventional entries. If a future run of the sync script achieves valid weights, the stock is automatically restored from the exclusion list.
 
 ## Development Standards
 - **Environment**: Use the root `venv`.

@@ -23,7 +23,7 @@
     },
     "custom_bayesian": {
         "enabled": true,
-        "score_threshold": 4.4000000000000075,
+        "score_threshold": 4.700000000000008,
         "feature_bins": {
             "cwc": [
                 "-inf",

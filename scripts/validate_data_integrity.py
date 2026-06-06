@@ -109,6 +109,9 @@ def reconcile_with_internet(symbol, date, local_close, local_ret):
         ticker = yf.Ticker(yf_symbol)
         df = ticker.history(start=start_str, end=end_str, auto_adjust=True)
         
+        # Remove yfinance rows with 0 volume to avoid stale price/return calculations
+        if 'Volume' in df.columns:
+            df = df[df['Volume'] > 0].copy()
         if df.empty:
             return "No External Data", None, None, 0.0
             
@@ -126,7 +129,9 @@ def reconcile_with_internet(symbol, date, local_close, local_ret):
         df['prev_close'] = df['Close'].shift(1)
         df['daily_ret'] = (df['Close'] / df['prev_close'] - 1) * 100.0
         
-        if date_iso in df.index.strftime('%Y-%m-%d'):
+        yf_dates = list(df.index.strftime('%Y-%m-%d'))
+        
+        if date_iso in yf_dates:
             ext_row = df.loc[df.index.strftime('%Y-%m-%d') == date_iso].iloc[0]
             
             def _get_val(col):
@@ -148,10 +153,9 @@ def reconcile_with_internet(symbol, date, local_close, local_ret):
 
             # Date alignment to handle holidays/special sessions mismatch
             try:
-                dates_list = list(df.index.strftime('%Y-%m-%d'))
-                idx = dates_list.index(date_iso)
+                idx = yf_dates.index(date_iso)
                 if idx > 0:
-                    prev_date_iso = dates_list[idx - 1]
+                    prev_date_iso = yf_dates[idx - 1]
                     engine = DivergenceEngine(symbol)
                     ledger = engine.run().ledger
                     ledger['date_str'] = pd.to_datetime(ledger['date']).dt.strftime('%Y-%m-%d')
@@ -199,7 +203,44 @@ def reconcile_with_internet(symbol, date, local_close, local_ret):
             else:
                 return f"Mismatch (Ret diff: {delta_ret:.2f}%, Drift: {drift_pct:.2f}%)", ext_ohlc, ext_ret, div_impact_ret
         else:
-            return "Date Not Found Externally", None, None, 0.0
+            # Attempt next-date recovery for missing dates in yfinance (data gaps)
+            logger.info(f"Date {date_iso} not found in yfinance for {symbol}. Attempting next-date recovery...")
+            next_dates = [d for d in yf_dates if d > date_iso]
+            if not next_dates:
+                return "Date Not Found Externally", None, None, 0.0
+            
+            next_date_iso = next_dates[0]
+            logger.info(f"Next available date in yfinance is {next_date_iso}. Reconciling...")
+            
+            engine = DivergenceEngine(symbol)
+            ledger = engine.run().ledger
+            ledger['date_str'] = pd.to_datetime(ledger['date']).dt.strftime('%Y-%m-%d')
+            local_row_next = ledger[ledger['date_str'] == next_date_iso]
+            
+            if local_row_next.empty:
+                return "Date Not Found Externally", None, None, 0.0
+                
+            local_close_next = float(local_row_next.iloc[0]['close'])
+            ext_row_next = df.loc[df.index.strftime('%Y-%m-%d') == next_date_iso].iloc[0]
+            
+            def _get_val_next(col):
+                val = ext_row_next[col]
+                return float(val.iloc[0]) if isinstance(val, pd.Series) else float(val)
+                
+            ext_close_next = _get_val_next('Close')
+            drift_pct = abs(local_close_next - ext_close_next) / ext_close_next * 100.0
+            
+            ext_ohlc = {
+                'o': round(_get_val_next('Open'), 2),
+                'h': round(_get_val_next('High'), 2),
+                'l': round(_get_val_next('Low'), 2),
+                'c': round(ext_close_next, 2)
+            }
+            
+            if drift_pct <= RECONCILE_TOLERANCE:
+                return "Match (Next Date Verified)", ext_ohlc, 0.0, 0.0
+            else:
+                return f"Mismatch on Next Date {next_date_iso} (Drift: {drift_pct:.2f}%)", ext_ohlc, 0.0, 0.0
             
     except Exception as e:
         logger.error(f"Reconciliation error for {symbol} on {date}: {e}")

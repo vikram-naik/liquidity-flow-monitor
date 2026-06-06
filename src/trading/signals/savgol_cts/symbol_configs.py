@@ -3,9 +3,58 @@ import copy
 import os
 import json
 from src.trading.signals.savgol_cts.config import SavgolCTSEntryConfig, SavgolCTSExitConfig
-from src.database import BW_CONFIGS_DIR
+from src.database import BW_CONFIGS_DIR, EXCLUDED_SYMBOLS_PATH
 
 _BW_OVERRIDE_CACHE = {}  # maps symbol -> (mtime, config_dict)
+
+def is_symbol_excluded(symbol: str) -> bool:
+    if not os.path.exists(EXCLUDED_SYMBOLS_PATH):
+        return False
+    try:
+        with open(EXCLUDED_SYMBOLS_PATH, "r") as f:
+            excluded = json.load(f)
+        if isinstance(excluded, list):
+            return symbol in excluded
+    except Exception as e:
+        print(f"Error reading excluded symbols list: {e}")
+    return False
+
+def add_to_exclusion_list(symbol: str):
+    excluded = []
+    if os.path.exists(EXCLUDED_SYMBOLS_PATH):
+        try:
+            with open(EXCLUDED_SYMBOLS_PATH, "r") as f:
+                excluded = json.load(f)
+                if not isinstance(excluded, list):
+                    excluded = []
+        except Exception:
+            pass
+    if symbol not in excluded:
+        excluded.append(symbol)
+        try:
+            os.makedirs(os.path.dirname(EXCLUDED_SYMBOLS_PATH), exist_ok=True)
+            with open(EXCLUDED_SYMBOLS_PATH, "w") as f:
+                json.dump(sorted(excluded), f, indent=4)
+        except Exception as e:
+            print(f"Error writing exclusion list: {e}")
+
+def remove_from_exclusion_list(symbol: str):
+    if not os.path.exists(EXCLUDED_SYMBOLS_PATH):
+        return
+    try:
+        with open(EXCLUDED_SYMBOLS_PATH, "r") as f:
+            excluded = json.load(f)
+            if not isinstance(excluded, list):
+                return
+    except Exception:
+        return
+    if symbol in excluded:
+        excluded.remove(symbol)
+        try:
+            with open(EXCLUDED_SYMBOLS_PATH, "w") as f:
+                json.dump(sorted(excluded), f, indent=4)
+        except Exception as e:
+            print(f"Error writing exclusion list: {e}")
 
 def load_bw_override(symbol: str) -> dict | None:
     json_path = os.path.join(BW_CONFIGS_DIR, f"{symbol}.json")
@@ -63,6 +112,15 @@ def get_symbol_entry_config(symbol: str, default_cfg: SavgolCTSEntryConfig | Non
     else:
         cfg = copy.deepcopy(default_cfg)
         
+    if is_symbol_excluded(symbol):
+        # Disable all entry paths completely
+        cfg.trend_pullback_enabled = False
+        for path in ['cdvl_cts', 'universal_cross', 'flow_momentum', 'coherent_pullback', 'anchor_shock_pullback', 'springboard', 'oversold_decel', 'custom_bayesian']:
+            sub = getattr(cfg, path, None)
+            if sub is not None and hasattr(sub, 'enabled'):
+                sub.enabled = False
+        return cfg
+
     overrides = load_bw_override(symbol)
     if overrides:
         if 'trend_pullback_enabled' in overrides:
