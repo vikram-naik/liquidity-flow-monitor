@@ -301,15 +301,37 @@ class DivergenceEngine:
         oracle = OracleLabeler(window_length=31, polyorder=2, min_swing_pct=4.0)
         df = oracle.compute_labels(df)
 
-        # Generate signals and probabilities before caching so the UI doesn't have to compute them sequentially
-        from src.trading.signals import SignalFactory
-        _signal = SignalFactory.get_signal("savgol_cts")
-        df = _signal.tag_signals(df)
-
         # Module 8 — Quantitative Gate Screener (SIAB, CDMA, CLFR, ISP)
         from src.divergence_engine.gate_screener import GateScreener
         screener = GateScreener()
         df = screener.compute_all(df)
+
+        # Module 8.5 — Add Quant Inflection Features (lwr, das, pddm_3b, psz_decel_3b)
+        high_low_spread = df["high"] - df["low"]
+        df["lwr"] = np.where(high_low_spread > 0, (df["close"] - df["low"]) / high_low_spread, 0.5)
+        df["das"] = np.where(df["atr_20"] > 0, (df["close"] - df["cwvap"]) / df["atr_20"], 0.0)
+        
+        # pdd_30 is computed in Module 2 but is dropped or checked here
+        pdd_col = "pdd_30" if "pdd_30" in df.columns else "pdd_30_dropped_temp"
+        if "pdd_30" not in df.columns and "pdd_30" in _DROP_COLS:
+            # Check if it was computed (it was in dvl_ledger.py as pdd_30, but not dropped yet)
+            pass
+            
+        df["pddm_3b"] = df["pdd_30"].diff(3) if "pdd_30" in df.columns else 0.0
+        df["psz_decel_3b"] = df["price_slope_z"].diff(3) if "price_slope_z" in df.columns else 0.0
+        
+        df["lwr"] = df["lwr"].fillna(0.5)
+        df["das"] = df["das"].fillna(0.0)
+        df["pddm_3b"] = df["pddm_3b"].fillna(0.0)
+        df["psz_decel_3b"] = df["psz_decel_3b"].fillna(0.0)
+
+        # Generate signals and probabilities before caching so the UI doesn't have to compute them sequentially
+        from src.trading.signals import SignalFactory
+        from src.trading.signals.savgol_cts import get_symbol_entry_config, get_symbol_exit_config
+        _signal = SignalFactory.get_signal("savgol_cts")
+        entry_cfg = get_symbol_entry_config(self.ticker)
+        exit_cfg = get_symbol_exit_config(self.ticker)
+        df = _signal.tag_signals(df, entry_cfg, exit_cfg)
 
         # --- Drop intermediate columns ---
         df = df.drop(columns=[c for c in _DROP_COLS if c in df.columns])

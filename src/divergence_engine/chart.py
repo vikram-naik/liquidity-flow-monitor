@@ -40,7 +40,7 @@ UI_COLUMNS = [
     "prt_buy_threshold", "prt_sell_threshold",
     "prt_slope_buy_threshold", "prt_slope_sell_threshold",
     # Features
-    "fas",
+    "fas", "das", "psz_decel_3b", "pddm_3b", "lwr",
     # Oracle Labeling
     "oracle_trough", "oracle_peak", "oracle_smooth",
     # Divergence

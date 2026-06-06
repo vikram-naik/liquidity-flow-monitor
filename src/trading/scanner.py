@@ -170,9 +170,11 @@ class Scanner:
             for r in records[-tail_len:]:
                 cwvap_values.append(r.get("cwvap", np.nan))
 
+            from src.trading.signals.savgol_cts import get_symbol_exit_config
+            sym_exit_cfg = get_symbol_exit_config(symbol, self.exit_cfg)
             reason, delivery_bad_count = self.signal.check_exit(
                 last, prev, trade, peak_close, bars_held,
-                delivery_bad_count, cwvap_values, self.exit_cfg,
+                delivery_bad_count, cwvap_values, sym_exit_cfg,
                 records, len(records) - 1,
             )
 
@@ -237,7 +239,10 @@ class Scanner:
             # Simulation-consistent signal detection:
             # We run the full strategy simulation to ensure we only pick up signals
             # that are not blocked by a 'phantom' trade in the strategy's memory.
-            df_tagged = self.signal.tag_signals(result.ledger, self.entry_cfg, self.exit_cfg)
+            from src.trading.signals.savgol_cts import get_symbol_entry_config, get_symbol_exit_config
+            sym_entry_cfg = get_symbol_entry_config(symbol, self.entry_cfg)
+            sym_exit_cfg = get_symbol_exit_config(symbol, self.exit_cfg)
+            df_tagged = self.signal.tag_signals(result.ledger, sym_entry_cfg, sym_exit_cfg)
             last_row = df_tagged.iloc[-1]
             prev_row = df_tagged.iloc[-2]
 

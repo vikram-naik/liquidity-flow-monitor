@@ -10,9 +10,15 @@ from src.trading.signals.savgol_cts.config import (
     SavgolCTSExitConfig,
 )
 from src.trading.signals.savgol_cts.signal import SavgolCTSSignal
+from src.trading.signals.savgol_cts.symbol_configs import (
+    get_symbol_entry_config,
+    get_symbol_exit_config,
+)
 
 __all__ = [
     "SavgolCTSEntryConfig",
     "SavgolCTSExitConfig",
     "SavgolCTSSignal",
+    "get_symbol_entry_config",
+    "get_symbol_exit_config",
 ]

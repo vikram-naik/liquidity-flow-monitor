@@ -263,7 +263,10 @@ def collect_all_trades(
         try:
             engine = DivergenceEngine(sym, start_date=None, end_date=None)
             result = engine.run()
-            trades = simulate_trades(sym, result.ledger, entry_cfg, exit_cfg, signal)
+            from src.trading.signals.savgol_cts import get_symbol_entry_config, get_symbol_exit_config
+            sym_entry_cfg = get_symbol_entry_config(sym, entry_cfg)
+            sym_exit_cfg = get_symbol_exit_config(sym, exit_cfg)
+            trades = simulate_trades(sym, result.ledger, sym_entry_cfg, sym_exit_cfg, signal)
             period_trades = [t for t in trades if str(t.entry_date) >= start_date]
             all_trades.extend(period_trades)
             print(f"{len(period_trades)} trades")

@@ -10,6 +10,8 @@ class EntryTag(str, Enum):
     COHERENT_PULLBACK = "SavgolCTS Coherent-Pullback"
     ANCHOR_SHOCK_PULLBACK = "SavgolCTS Anchor-Shock-Pullback"
     SPRINGBOARD = "SavgolCTS SpringBoard"
+    OVERSOLD_DECEL = "Oversold-Decel"
+    CUSTOM_BAYESIAN = "SavgolCTS Custom-Bayesian"
     
     # Generic / Fallback
     UNKNOWN = "Unknown Entry"

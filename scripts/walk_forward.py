@@ -208,9 +208,10 @@ def run_period(symbols: list[str], start: str, end: str,
             engine = DivergenceEngine(sym, start_date=None, end_date=None)
             result = engine.run()
             
-            # The simulator iterates the full history but only returns trades
-            # that were entered within the [start, end] window.
-            trades = simulate_trades(sym, result.ledger, entry_cfg, exit_cfg, signal)
+            from src.trading.signals.savgol_cts import get_symbol_entry_config, get_symbol_exit_config
+            sym_entry_cfg = get_symbol_entry_config(sym, entry_cfg)
+            sym_exit_cfg = get_symbol_exit_config(sym, exit_cfg)
+            trades = simulate_trades(sym, result.ledger, sym_entry_cfg, sym_exit_cfg, signal)
             
             # Filter trades to only those entered in the requested period
             period_trades = [t for t in trades if start <= str(t.entry_date) <= end]

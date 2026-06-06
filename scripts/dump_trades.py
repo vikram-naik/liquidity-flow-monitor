@@ -27,6 +27,9 @@ ENTRY_ALIASES = {
     "flow":         EntryTag.FLOW_MOMENTUM.value,
     "anchor":       EntryTag.ANCHOR_SHOCK_PULLBACK.value,
     "cdvl":         EntryTag.CDVL_CTS.value,
+    "coherent":     EntryTag.COHERENT_PULLBACK.value,
+    "springboard":  EntryTag.SPRINGBOARD.value,
+    "decel":        EntryTag.OVERSOLD_DECEL.value,
 }
 
 def main():
@@ -38,7 +41,7 @@ def main():
     parser.add_argument("--reason", help="Filter by exit reason (substring match)")
     parser.add_argument("--watchlist", default="NIFTY 50")
     parser.add_argument("--sort", default="entry_date",
-                        choices=["entry_date", "pnl", "symbol", "mfe", "mae", "duration", "score", "cwdist", "cwmax", "psz" ],
+                        choices=["entry_date", "pnl", "symbol", "mfe", "mae", "duration", "score", "cwdist", "cwmax", "psz", "das", "decel", "bt"],
                         help="Sort column (default: entry_date)")
     args = parser.parse_args()
 
@@ -79,6 +82,9 @@ def main():
         t.cwc = 0.0
         t.psz = 0.0
         t.cdvl = 0.0
+        t.das = 0.0
+        t.psz_decel = 0.0
+        t.bt = 0.0
 
     # Filter by entry type
     if args.entry:
@@ -161,6 +167,9 @@ def main():
                         t.cwc = sig_row.get("cwc", 0.0)
                         t.psz = sig_row.get("price_slope_z", 0.0)
                         t.cdvl = sig_row.get("cdvl", 0.0)
+                        t.das = sig_row.get("das", 0.0)
+                        t.psz_decel = sig_row.get("psz_decel_3b", 0.0)
+                        t.bt = sig_row.get("base_tightness", 0.0)
                         va_high = sig_row.get("va_high", np.nan)
                         if not np.isnan(va_high) and close > va_high:
                             t.above_va_high = "yes"
@@ -198,8 +207,11 @@ def main():
         "cwmax": lambda t: t.cwvap_dist_max,
         "psz": lambda t: t.psz,
         "cdvl": lambda t: t.cdvl,
+        "das": lambda t: t.das,
+        "decel": lambda t: t.psz_decel,
+        "bt": lambda t: t.bt,
     }
-    reverse = args.sort in ("pnl", "mfe", "score", "cwmax", "psz", "cdvl")
+    reverse = args.sort in ("pnl", "mfe", "score", "cwmax", "psz", "cdvl", "das", "decel")
     filtered.sort(key=sort_map[args.sort], reverse=reverse)
 
     # Print
@@ -207,7 +219,8 @@ def main():
     header = (f"{'#':>3} | {'Symbol':<12} | {'Sig Date':<10} | {'PnL%':>7} | {'MFE%':>7} | "
               f"{'CTS':>7} | {'PRT':>7} | {'CDVL':>7} | {'PSZv':>7} | "
               f"{'>VAH':>4} | {'Bars':>4} | {'SCORE':>5} | {'ML%':>5} | "
-              f"{'RP10':>4} | {'RP22':>4} | {'RP63':>4} | {'RP252':>4} |{'CWC':>7} | {'PSZ':>7} | {'Exit Reason'}")
+              f"{'RP10':>4} | {'RP22':>4} | {'RP63':>4} | {'RP252':>4} | {'CWC':>7} | {'PSZ':>7} | "
+              f"{'DAS':>7} | {'DECL':>7} | {'BT':>7} | {'Exit Reason'}")
     print(header)
     print("-" * len(header))
     for i, t in enumerate(filtered, 1):
@@ -217,7 +230,8 @@ def main():
               f"{t.mfe_pct:>7.2f} | {t.cts_signal:>7.3f} | {t.prt_signal:>7.3f} | {t.cdvl:>7.4f} | "
               f"{t.psz_v_signal:>7.4f} | "
               f"{t.above_va_high:>4} | {t.duration:>4} | {t.conviction_score:>+5} | {ml_str} | "
-              f"{t.rp_10:>4} | {t.rp_22:>4} | {t.rp_63:>4} | {t.rp_252:>4} | {t.cwc:>7.4f} | {t.psz:>7.4f} | {reason}")
+              f"{t.rp_10:>4} | {t.rp_22:>4} | {t.rp_63:>4} | {t.rp_252:>4} | {t.cwc:>7.4f} | {t.psz:>7.4f} | "
+              f"{t.das:>7.3f} | {t.psz_decel:>7.4f} | {t.bt:>7.4f} | {reason}")
 
 if __name__ == "__main__":
     main()

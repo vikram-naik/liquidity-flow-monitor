@@ -21,6 +21,8 @@ from src.trading.signals.savgol_cts.entries.flow_momentum import entry_flow_mome
 from src.trading.signals.savgol_cts.entries.coherent_pullback import entry_coherent_pullback
 from src.trading.signals.savgol_cts.entries.anchor_shock_pullback import entry_anchor_shock_pullback
 from src.trading.signals.savgol_cts.entries.springboard import entry_springboard
+from src.trading.signals.savgol_cts.entries.oversold_decel import entry_oversold_decel
+from src.trading.signals.savgol_cts.entries.custom_bayesian import entry_custom_bayesian
 
 # Exit path checkers
 from src.trading.signals.savgol_cts.exits.cwvap_guard import apply_cwvap_guard
@@ -58,6 +60,14 @@ class SavgolCTSSignal(SignalInterface):
         cts = row.get("cts", np.nan)
         if np.isnan(cts):
             return False, 0, {"reason": "Missing CTS data"}
+
+        # Path Custom Bayesian (Exclusively routed if enabled for optimized symbols)
+        if getattr(cfg, "custom_bayesian", None) and cfg.custom_bayesian.enabled:
+            passed, intensity, meta = entry_custom_bayesian(row, prev_row, cfg, records, idx)
+            if passed:
+                return True, intensity, meta
+            else:
+                return False, 0, {"reason": f"CustomBayesian: {meta.get('reason', 'Rejected')}"}
 
         # Path 0: CDVL-CTS Path (Priority High Performance Flow-Momentum)
         cdvl_reason = "CDVL_CTS path disabled"
@@ -127,9 +137,15 @@ class SavgolCTSSignal(SignalInterface):
                 return True, intensity, meta
             sb_reason = f"SpringBoard: {meta.get('reason', 'Rejected')}"
 
-        # Path 6 (Moved to top)
+        # Path 6: Oversold Deceleration Path (ODP)
+        odp_reason = "OversoldDecel path disabled"
+        if getattr(cfg, "oversold_decel", None) and cfg.oversold_decel.enabled:
+            passed, intensity, meta = entry_oversold_decel(row, prev_row, cfg, records, idx)
+            if passed:
+                return True, intensity, meta
+            odp_reason = f"OversoldDecel: {meta.get('reason', 'Rejected')}"
 
-        return False, 0, {"reason": f"{cdvl_reason} | {uc_reason} | {tp_reason} | {fm_reason} | {cp_reason} | {asp_reason} | {sb_reason}"}
+        return False, 0, {"reason": f"{cdvl_reason} | {uc_reason} | {tp_reason} | {fm_reason} | {cp_reason} | {asp_reason} | {sb_reason} | {odp_reason}"}
 
     def check_exit(
         self,
@@ -201,6 +217,12 @@ class SavgolCTSSignal(SignalInterface):
                 if not exit_reason and asp_exit_cfg.time_decay_enabled:
                     if bars_held >= asp_exit_cfg.max_hold_bars:
                         exit_reason = ExitReason.TIME_DECAY
+
+        # Apply path-specific overrides for Oversold-Decel trades
+        if not exit_reason and tag == EntryTag.OVERSOLD_DECEL.value:
+            pnl_pct = (close / trade.entry_price - 1.0) * 100.0
+            if pnl_pct <= -10.0:
+                exit_reason = ExitReason.HARD_STOP
 
 
         # Apply common CWVAP guard logic (can suppress or trigger exits)

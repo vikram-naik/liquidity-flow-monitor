@@ -288,7 +288,32 @@ class SpringBoardEntryConfig:
     })
 
 
+@dataclass
+class OversoldDecelEntryConfig:
+    """Oversold Deceleration Path (ODP) entry configuration (highly optimized)."""
+    enabled: bool = True
+    das_thresh: float = -2.0      # Volatility stretch threshold
+    decel_thresh: float = 0.04    # 3-bar price deceleration floor
+    cwc_min: float = 0.40         # Minimum cross-window coherence
+    fas_min: float = -0.20        # Minimum flow accumulation score
+    bt_max: float = 0.38          # Maximum base tightness (consolidated bottom check)
+    dv_shock_min: float = 0.0     # Disabled by default
+    rdv_min: float = 0.0
+    filter_regime: bool = False   # Allow downtrends (No) to capture structural inflections
+    score: int = 80
 
+
+
+
+
+
+@dataclass
+class CustomBayesianEntryConfig:
+    """Symbol-specific custom trained Bayesian entry path configuration."""
+    enabled: bool = False
+    score_threshold: float = 0.0
+    feature_bins: dict = field(default_factory=dict)
+    feature_weights: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -309,6 +334,8 @@ class SavgolCTSEntryConfig(BaseEntryConfig):
     coherent_pullback: CoherentPullbackEntryConfig = field(default_factory=CoherentPullbackEntryConfig)
     anchor_shock_pullback: AnchorShockPullbackEntryConfig = field(default_factory=AnchorShockPullbackEntryConfig)
     springboard: SpringBoardEntryConfig = field(default_factory=SpringBoardEntryConfig)
+    oversold_decel: OversoldDecelEntryConfig = field(default_factory=OversoldDecelEntryConfig)
+    custom_bayesian: CustomBayesianEntryConfig = field(default_factory=CustomBayesianEntryConfig)
 
 
 # ---------------------------------------------------------------------------
