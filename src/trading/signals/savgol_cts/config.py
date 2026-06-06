@@ -17,6 +17,54 @@ from src.trading.signals.enums import ExitReason
 # ---------------------------------------------------------------------------
 
 
+@dataclass
+class CdvlCtsEntryConfig:
+    """CDVL-CTS entry path configuration (High Performance Flow-Momentum)."""
+    enabled: bool = True
+    cwc_min: float = 0.35
+    bayesian_mode: bool = True
+    score_threshold: float = 0.5358
+    feature_bins: dict = field(default_factory=lambda: {
+        'cdvl': [-float('inf'), 0.0344, 0.0699, float('inf')],
+        'cdvl_surge': [-float('inf'), 0.0783, 0.14, float('inf')],
+        'cts': [-float('inf'), -1.0, -0.788, float('inf')],
+        'cts_accel': [-float('inf'), 0.0257, 0.0506, float('inf')],
+        'cwc': [-float('inf'), 0.475, 0.629, float('inf')],
+        'cts_accel_surge': [-float('inf'), 0.00965, 0.025, float('inf')],
+    })
+    feature_weights: dict = field(default_factory=lambda: {
+        'cdvl': [
+            (-float('inf'), 0.0344, 0.382992),
+            (0.0344, 0.0699, -0.405465),
+            (0.0699, float('inf'), 0.105361),
+        ],
+        'cdvl_surge': [
+            (-float('inf'), 0.0783, 0.382992),
+            (0.0783, 0.14, -0.656780),
+            (0.14, float('inf'), 0.382992),
+        ],
+        'cts': [
+            (-float('inf'), -1.0, -0.087011),
+            (-1.0, -0.788, 0.064539),
+            (-0.788, float('inf'), 0.105361),
+        ],
+        'cts_accel': [
+            (-float('inf'), 0.0257, 0.382992),
+            (0.0257, 0.0506, -0.154151),
+            (0.0506, float('inf'), -0.154151),
+        ],
+        'cwc': [
+            (-float('inf'), 0.475, 0.382992),
+            (0.475, 0.629, 0.382992),
+            (0.629, float('inf'), -0.656780),
+        ],
+        'cts_accel_surge': [
+            (-float('inf'), 0.00965, -0.405465),
+            (0.00965, 0.025, 0.693147),
+            (0.025, float('inf'), -0.154151),
+        ],
+    })
+
 
 @dataclass
 class UniversalCrossEntryConfig:
@@ -183,6 +231,80 @@ class AnchorShockPullbackEntryConfig:
 
 
 
+@dataclass
+class SpringBoardEntryConfig:
+    """SpringBoard entry path configuration to capture structural bottom inflections."""
+    enabled: bool = True
+    capitulation_threshold: float = -0.75  # CTS capitulation level to look back for
+    capitulation_lookback: int = 10         # Lookback window for capitulation (bars)
+    range_pos_63_max: float = 0.40         # Price must be in lower portion of range
+    cwc_slope_min: float = -0.05           # Coherence must not be degrading rapidly
+    psz_v_min: float = -0.16               # Stabilizing price velocity
+    spearman_5_min: float = -0.95          # Falling knife protection
+    score: int = 84
+    
+    # Bayesian adaptive scoring parameters
+    bayesian_mode: bool = True
+    score_threshold: float = 0.5401
+    
+    feature_bins: dict = field(default_factory=lambda: {
+        'range_pos_63': [-float('inf'), 0.2, 0.32, float('inf')],
+        'min_cts_10': [-float('inf'), -0.85, -0.78, float('inf')],
+        'cts_surge': [-float('inf'), 0.08, 0.18, float('inf')],
+        'cwc_slope': [-float('inf'), -0.01, 0.02, float('inf')],
+        'psz_v': [-float('inf'), -0.08, 0.02, float('inf')],
+        'spearman_5': [-float('inf'), -0.85, -0.6, float('inf')],
+    })
+    
+    feature_weights: dict = field(default_factory=lambda: {
+        'range_pos_63': [
+            (-float('inf'), 0.2, -0.012579),
+            (0.2, 0.32, 0.109699),
+            (0.32, float('inf'), -0.083881),
+        ],
+        'min_cts_10': [
+            (-float('inf'), -0.85, 0.014118),
+            (-0.85, -0.78, -0.068993),
+            (-0.78, float('inf'), -0.223144),
+        ],
+        'cts_surge': [
+            (-float('inf'), 0.08, -0.171148),
+            (0.08, 0.18, -0.074108),
+            (0.18, float('inf'), 0.220543),
+        ],
+        'cwc_slope': [
+            (-float('inf'), -0.01, -0.219629),
+            (-0.01, 0.02, 0.087011),
+            (0.02, float('inf'), 0.076540),
+        ],
+        'psz_v': [
+            (-float('inf'), -0.08, 0.251314),
+            (-0.08, 0.02, -0.066691),
+            (0.02, float('inf'), 0.011905),
+        ],
+        'spearman_5': [
+            (-float('inf'), -0.85, 0.0),
+            (-0.85, -0.6, 0.130620),
+            (-0.6, float('inf'), -0.037504),
+        ],
+    })
+
+
+@dataclass
+class OversoldDecelEntryConfig:
+    """Oversold Deceleration Path (ODP) entry configuration (highly optimized)."""
+    enabled: bool = True
+    das_thresh: float = -2.0      # Volatility stretch threshold
+    decel_thresh: float = 0.04    # 3-bar price deceleration floor
+    cwc_min: float = 0.40         # Minimum cross-window coherence
+    fas_min: float = -0.20        # Minimum flow accumulation score
+    bt_max: float = 0.38          # Maximum base tightness (consolidated bottom check)
+    dv_shock_min: float = 0.0     # Disabled by default
+    rdv_min: float = 0.0
+    filter_regime: bool = False   # Allow downtrends (No) to capture structural inflections
+    score: int = 80
+
+
 
 
 
@@ -208,13 +330,15 @@ class SavgolCTSEntryConfig(BaseEntryConfig):
         ExitReason.BAR5_STOP,
     )
 
+    cdvl_cts: CdvlCtsEntryConfig = field(default_factory=CdvlCtsEntryConfig)
     universal_cross: UniversalCrossEntryConfig = field(default_factory=UniversalCrossEntryConfig)
     trend_pullback_enabled: bool = True
     flow_momentum: FlowMomentumEntryConfig = field(default_factory=FlowMomentumEntryConfig)
     coherent_pullback: CoherentPullbackEntryConfig = field(default_factory=CoherentPullbackEntryConfig)
     anchor_shock_pullback: AnchorShockPullbackEntryConfig = field(default_factory=AnchorShockPullbackEntryConfig)
+    springboard: SpringBoardEntryConfig = field(default_factory=SpringBoardEntryConfig)
+    oversold_decel: OversoldDecelEntryConfig = field(default_factory=OversoldDecelEntryConfig)
     custom_bayesian: CustomBayesianEntryConfig = field(default_factory=CustomBayesianEntryConfig)
-
 
 # ---------------------------------------------------------------------------
 # Exit path configs

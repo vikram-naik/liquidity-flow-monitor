@@ -5,18 +5,22 @@ import json
 from src.trading.signals.savgol_cts.config import SavgolCTSEntryConfig, SavgolCTSExitConfig
 from src.database import BW_CONFIGS_DIR
 
-_BW_OVERRIDE_CACHE = {}
+_BW_OVERRIDE_CACHE = {}  # maps symbol -> (mtime, config_dict)
 
 def load_bw_override(symbol: str) -> dict | None:
-    if symbol in _BW_OVERRIDE_CACHE:
-        return _BW_OVERRIDE_CACHE[symbol]
-        
     json_path = os.path.join(BW_CONFIGS_DIR, f"{symbol}.json")
     if not os.path.exists(json_path):
-        _BW_OVERRIDE_CACHE[symbol] = None
+        if symbol in _BW_OVERRIDE_CACHE:
+            del _BW_OVERRIDE_CACHE[symbol]
         return None
         
     try:
+        mtime = os.path.getmtime(json_path)
+        if symbol in _BW_OVERRIDE_CACHE:
+            cached_mtime, cached_data = _BW_OVERRIDE_CACHE[symbol]
+            if cached_mtime == mtime:
+                return cached_data
+                
         with open(json_path, "r") as f:
             data = json.load(f)
             
@@ -45,11 +49,12 @@ def load_bw_override(symbol: str) -> dict | None:
                     ]
                 cb["feature_weights"] = parsed_weights
                 
-        _BW_OVERRIDE_CACHE[symbol] = data
+        _BW_OVERRIDE_CACHE[symbol] = (mtime, data)
         return data
     except Exception as e:
         print(f"Error loading BW config for {symbol} from {json_path}: {e}")
-        _BW_OVERRIDE_CACHE[symbol] = None
+        if symbol in _BW_OVERRIDE_CACHE:
+            del _BW_OVERRIDE_CACHE[symbol]
         return None
 
 def get_symbol_entry_config(symbol: str, default_cfg: SavgolCTSEntryConfig | None = None) -> SavgolCTSEntryConfig:

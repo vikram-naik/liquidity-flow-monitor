@@ -48,7 +48,7 @@ UI_COLUMNS = [
     # Delivery-Profile Value Area (Module 3)
     "va_high", "va_low",
     # Signal markers (computed by check_entry/check_exit from src.trading.signals)
-    "entry_signal", "entry_reason",
+    "entry_signal", "entry_reason", "entry_tag",
     "exit_signal", "exit_reason",
     "cooldown", "in_trade_pnl",
 ]
