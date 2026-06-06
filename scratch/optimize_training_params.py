@@ -11,7 +11,7 @@ from src.divergence_engine.engine import DivergenceEngine
 from src.trading.signals import SignalFactory
 from src.trading.signals.savgol_cts import SavgolCTSEntryConfig, SavgolCTSExitConfig
 from scripts.walk_forward import simulate_trades
-from scratch.train_symbol_weights import simulate_single_trade
+from scripts.train_symbol_weights import simulate_single_trade
 
 FALLBACKS = ["HDFCBANK", "HINDUNILVR", "NESTLEIND", "ONGC", "TCS", "WIPRO"]
 

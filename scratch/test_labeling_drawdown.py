@@ -10,7 +10,7 @@ from src.divergence_engine.engine import DivergenceEngine
 from src.trading.signals import SignalFactory
 from src.trading.signals.savgol_cts import SavgolCTSEntryConfig, SavgolCTSExitConfig
 from scripts.walk_forward import simulate_trades
-from scratch.train_symbol_weights import label_candidate_bars_sim, train_bayesian_model
+from scripts.train_symbol_weights import label_candidate_bars_sim, train_bayesian_model
 
 FALLBACKS = ["HDFCBANK", "HINDUNILVR", "NESTLEIND", "ONGC", "TCS", "WIPRO"]
 
@@ -30,7 +30,7 @@ def modified_label_candidate_bars_sim(sym, ledger, signal, exit_cfg):
     drawdown_limit = 7.0 # Avoid hard stops (8.0%)
     
     from src.trading.signals.savgol_cts.entries.utils import evaluate_spearman_trend
-    from scratch.train_symbol_weights import simulate_single_trade
+    from scripts.train_symbol_weights import simulate_single_trade
     
     for i in range(1, n - 2):
         row = records[i]

@@ -6,7 +6,7 @@ sys.path.insert(0, "/home/vn/python-projects/liquidity-flow-monitor")
 from src.divergence_engine.engine import DivergenceEngine
 from src.trading.signals import SignalFactory
 from src.trading.signals.savgol_cts import get_symbol_entry_config, get_symbol_exit_config
-from scratch.train_symbol_weights_parallel import label_candidate_bars_sim, train_bayesian_model
+from scripts.train_symbol_weights_parallel import label_candidate_bars_sim, train_bayesian_model
 
 def main():
     sym = "KOTAKBANK"

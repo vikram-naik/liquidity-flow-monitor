@@ -7,7 +7,7 @@ from src.divergence_engine.engine import DivergenceEngine
 from src.trading.signals import SignalFactory
 from src.trading.signals.savgol_cts import SavgolCTSEntryConfig, SavgolCTSExitConfig
 from scripts.walk_forward import simulate_trades
-from scratch.train_symbol_weights_parallel import label_candidate_bars_sim, train_bayesian_model, evaluate_config
+from scripts.train_symbol_weights_parallel import label_candidate_bars_sim, train_bayesian_model, evaluate_config
 
 def main():
     sym = "KOTAKBANK"

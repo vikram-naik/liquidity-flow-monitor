@@ -10,7 +10,7 @@ from src.divergence_engine.engine import DivergenceEngine
 from src.trading.signals import SignalFactory
 from src.trading.signals.savgol_cts import SavgolCTSEntryConfig, SavgolCTSExitConfig
 from scripts.walk_forward import simulate_trades
-from scratch.train_symbol_weights import label_candidate_bars, train_bayesian_model
+from scripts.train_symbol_weights import label_candidate_bars, train_bayesian_model
 
 UNDERPERFORMING = [
     "BAJFINANCE", "CIPLA", "ETERNAL", "HDFCBANK", "HINDALCO", "HINDUNILVR", 

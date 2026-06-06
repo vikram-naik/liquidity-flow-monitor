@@ -49,6 +49,27 @@
         return ["cts"]; // Only CTS by default
     }
 
+    // Sidebar Tabs Logic
+    var tabWatchlist = document.getElementById("tab-watchlist");
+    var tabEngineState = document.getElementById("tab-engine-state");
+    var contentWatchlist = document.getElementById("tab-content-watchlist");
+    var contentEngineState = document.getElementById("tab-content-engine-state");
+
+    if (tabWatchlist && tabEngineState && contentWatchlist && contentEngineState) {
+        tabWatchlist.addEventListener("click", function () {
+            tabWatchlist.classList.add("active");
+            tabEngineState.classList.remove("active");
+            contentWatchlist.classList.remove("hidden");
+            contentEngineState.classList.add("hidden");
+        });
+        tabEngineState.addEventListener("click", function () {
+            tabEngineState.classList.add("active");
+            tabWatchlist.classList.remove("active");
+            contentEngineState.classList.remove("hidden");
+            contentWatchlist.classList.add("hidden");
+        });
+    }
+
     var params = new URLSearchParams(window.location.search);
     var apiUrl = "/de/api/divergence-engine/" + symbol + "?agg_mode=" + aggMode;
     if (params.get("start_date")) apiUrl += "&start_date=" + params.get("start_date");
@@ -69,20 +90,6 @@
         sidebarBtn.classList.toggle("active");
         // No manual reflow call here; ResizeObserver will catch the width change
     });
-
-    // Engine State collapsible toggle
-    var engineToggle = document.getElementById("engine-state-toggle");
-    var engineContent = document.getElementById("engine-state-content");
-    var engineChevron = document.getElementById("engine-state-chevron");
-    if (engineToggle && engineContent) {
-        engineToggle.addEventListener("click", function (e) {
-            var isHidden = engineContent.style.display === "none";
-            engineContent.style.display = isHidden ? "" : "none";
-            if (engineChevron) {
-                engineChevron.textContent = isHidden ? "\u25BC" : "\u25B6";
-            }
-        });
-    }
 
     var chartInstances = [];
 
@@ -924,9 +931,16 @@
             statusHtml = "<tr><td>Regime</td><td class='val' style='color:" + regimeColor + "'>" + regime + "</td></tr>";
         }
 
+        var entryPathHtml = "";
+        if (l.entry_signal && l.entry_tag) {
+            var pathName = l.entry_tag.replace("SavgolCTS ", "");
+            entryPathHtml = "<tr><td>Entry Path</td><td class='val' style='color:#00e676; font-weight:600;'>" + pathName + "</td></tr>";
+        }
+
         document.getElementById("state-table").innerHTML =
             "<tr><td>Date</td><td class='val'>" + (l.date ? l.date.split("T")[0] : "\u2014") + "</td></tr>" +
             statusHtml +
+            entryPathHtml +
             (function () {
                 if (!l.entry_reason || l.entry_reason === "Neutral/No Entry" || l.entry_reason === "Hold") return "";
                 

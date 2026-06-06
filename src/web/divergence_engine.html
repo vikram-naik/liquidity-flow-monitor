@@ -72,52 +72,55 @@
         </div>
       </div>
 
-      <!-- Engine State (collapsible) -->
-      <div class="sidebar-section sidebar-bottom">
-        <div class="state-hdr" id="engine-state-toggle" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0; cursor: pointer; user-select: none;">
-          <h3 style="margin-bottom: 0;">Engine State</h3>
-          <span id="engine-state-chevron" style="color: #8b949e; font-size: 14px; transition: transform 0.2s;">&#9660;</span>
-        </div>
-        <div id="engine-state-content" style="margin-top: 12px;">
-          <table class="ann-table" id="state-table">
+      <!-- Tabs Navigation -->
+      <div class="sidebar-tabs">
+        <button id="tab-watchlist" class="sidebar-tab active">Watchlist</button>
+        <button id="tab-engine-state" class="sidebar-tab">Engine State</button>
+      </div>
+
+      <!-- Tab Content: Watchlist -->
+      <div id="tab-content-watchlist" class="tab-content">
+        <!-- Watchlist Management -->
+        <div id="watchlist-manager" class="sidebar-section" style="border-bottom: none; height: 100%;">
+          <div class="wl-header" style="margin-bottom: 4px;">
+            <h3>Watchlist</h3>
+          </div>
+          <div class="wl-actions" style="position:relative; margin-bottom: 8px;">
+            <button id="wl-sort-menu-trigger" title="Sort Watchlist">&#8645;</button>
+            <div id="wl-sort-dropdown" class="search-dropdown wl-sort-dropdown"
+              style="right:auto; left:0; width:130px; font-size:12px">
+              <div class="search-item sort-btn active" data-sort="date-desc">Date (Newest)</div>
+              <div class="search-item sort-btn" data-sort="date-asc">Date (Oldest)</div>
+              <div class="search-item sort-btn" data-sort="name-asc">Name (A-Z)</div>
+              <div class="search-item sort-btn" data-sort="name-desc">Name (Z-A)</div>
+            </div>
+            <button id="wl-add" title="Create New Watchlist">+</button>
+            <button id="wl-rename" title="Rename Current Watchlist">&#9998;</button>
+            <button id="wl-set-default" title="Set as Default Watchlist">&#9733;</button>
+            <button id="wl-delete" title="Delete Current Watchlist">&#128465;</button>
+            <button id="wl-import" title="Import from Index">&#8595;</button>
+            <button id="wl-download" title="Download Watchlist">&#128190;</button>
+            <div id="wl-import-dropdown" class="search-dropdown wl-sort-dropdown"
+              style="right:auto; left:0; width:220px; font-size:12px; max-height:400px; overflow-y:auto;">
+              <!-- Populated by JS -->
+            </div>
+          </div>
+          <div class="wl-selection-row" style="margin-bottom:8px">
+            <select id="wl-select">
+              <option value="">Select Watchlist</option>
+            </select>
+          </div>
+          <div id="wl-items" class="wl-items-list">
             <!-- Populated by JS -->
-          </table>
+          </div>
         </div>
       </div>
 
-      <!-- Watchlist Management -->
-      <div id="watchlist-manager" class="sidebar-section">
-        <div class="wl-header" style="margin-bottom: 4px;">
-          <h3>Watchlist</h3>
-        </div>
-        <div class="wl-actions" style="position:relative; margin-bottom: 8px;">
-          <button id="wl-sort-menu-trigger" title="Sort Watchlist">&#8645;</button>
-          <div id="wl-sort-dropdown" class="search-dropdown wl-sort-dropdown"
-            style="right:auto; left:0; width:130px; font-size:12px">
-            <div class="search-item sort-btn active" data-sort="date-desc">Date (Newest)</div>
-            <div class="search-item sort-btn" data-sort="date-asc">Date (Oldest)</div>
-            <div class="search-item sort-btn" data-sort="name-asc">Name (A-Z)</div>
-            <div class="search-item sort-btn" data-sort="name-desc">Name (Z-A)</div>
-          </div>
-          <button id="wl-add" title="Create New Watchlist">+</button>
-          <button id="wl-rename" title="Rename Current Watchlist">&#9998;</button>
-          <button id="wl-set-default" title="Set as Default Watchlist">&#9733;</button>
-          <button id="wl-delete" title="Delete Current Watchlist">&#128465;</button>
-          <button id="wl-import" title="Import from Index">&#8595;</button>
-          <button id="wl-download" title="Download Watchlist">&#128190;</button>
-          <div id="wl-import-dropdown" class="search-dropdown wl-sort-dropdown"
-            style="right:auto; left:0; width:220px; font-size:12px; max-height:400px; overflow-y:auto;">
-            <!-- Populated by JS -->
-          </div>
-        </div>
-        <div class="wl-selection-row" style="margin-bottom:8px">
-          <select id="wl-select">
-            <option value="">Select Watchlist</option>
-          </select>
-        </div>
-        <div id="wl-items" class="wl-items-list">
+      <!-- Tab Content: Engine State -->
+      <div id="tab-content-engine-state" class="tab-content hidden" style="overflow-y: auto; padding: 16px;">
+        <table class="ann-table" id="state-table">
           <!-- Populated by JS -->
-        </div>
+        </table>
       </div>
     </aside>
   </div>

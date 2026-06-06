@@ -317,6 +317,51 @@ body {
   border-left: none;
 }
 
+.sidebar-tabs {
+  display: flex;
+  border-bottom: 1px solid #21262d;
+  background: #161b22;
+}
+
+.sidebar-tab {
+  flex: 1;
+  padding: 12px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: #8b949e;
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: center;
+}
+
+.sidebar-tab:hover {
+  color: #e6edf3;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.sidebar-tab.active {
+  color: #58a6ff;
+  border-bottom-color: #58a6ff;
+  background: rgba(88, 166, 255, 0.05);
+}
+
+.tab-content {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.tab-content.hidden {
+  display: none !important;
+}
+
+
 
 .sidebar-section {
   padding: 16px;
