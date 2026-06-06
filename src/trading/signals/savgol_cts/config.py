@@ -394,6 +394,23 @@ class CwvapGuardConfig:
     # Climax VA High trail guards
     climax_va_intraday_guard_enabled: bool = True  # Suppress trail release when high > va_high (wick scenario)
 
+    # Trend Reclaim Logic
+    trend_reclaim_enabled: bool = True
+
+    # Expert 5 exits (Regime-Aware Hybrid)
+    expert_exits_enabled: bool = True
+    peak_pnl_trigger: float = 10.0
+    uptrend_atr_mult: float = 3.0
+    normal_atr_mult: float = 2.0
+    uptrend_cwc_min: float = 0.10
+    uptrend_cwc_slope_min: float = -0.06
+    normal_cwc_min: float = 0.25
+    normal_cwc_slope_min: float = -0.04
+    normal_psz_v_min: float = -0.20
+    overextended_rp_threshold: float = 0.90
+    uptrend_low_break_buffer_atr: float = 0.30
+    normal_rp_reversion: float = 0.70
+
 
 
 @dataclass

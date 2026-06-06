@@ -107,6 +107,12 @@ check_exit(row, prev_row, trade, ...)                [signal.py]
   |
   +-- apply_cwvap_guard()                            [exits/cwvap_guard.py]
       (Applied after indicator exits, acts as a momentum gatekeeper)
+        |-- [Check] Trend Reclaim Reset: Clears suppression if PRT >= PRT_ST
+        |-- [Check] Raw CWVAP suppression / climax checks
+        +-- [Check] Expert 5 Exit Suite (Activated above 10.0% peak close PnL):
+              |-- [Exit] Regime-Aware ATR Trail (3.0*ATR in uptrend, 2.0*ATR normal)
+              |-- [Exit] Regime-Aware Coherence Breach (CWC/CWC_slope/PSZ_V Z-score floors)
+              +-- [Exit] Regime-Aware Parabolic Low-Break (0.3*ATR buffer in uptrend, 0 buffer normal)
 ```
 
 ### State Bitfield (`SavgolCTSExitState` — `state.py`)
@@ -134,6 +140,11 @@ The state is packed into a 20-bit integer, stored in `delivery_bad_count`.
 
 Applied **after** indicator-generated exit signals. It acts as a gatekeeper to either suppress or release exits based on momentum strength relative to CWVAP. It includes:
 
-1. **Candle Rejection Guard (Currently Disabled)**: Preemptively exits on violent inside bars or long upper wicks at resistance.
-2. **Structural Climax Guard**: Preemptively exits when price stretches to historical ceilings (`RP_63 > 0.95` AND `RP_252 > 0.95`) while dangerously overextended from VWAP (`CWVAP_Dist% > 10%` OR `FAS > 1.0`). If price is above `VA_High` when climax hits, it suppresses the exit and converts to a strict trailing stop based on the `VA_High` level.
-3. **Momentum Suppression**: Suppresses normal cycle exits as long as structural momentum (PSZ > 0 or CTS > 0) is holding above the Custom VWAP.
+1. **Trend Reclaim Reset**: If a trade is suppressed, but the stock re-accelerates and price range trend becomes bullish (`prt >= prt_sell_threshold`), the suppression is cleared to allow normal exits on subsequent inflections.
+2. **Candle Rejection Guard (Currently Disabled)**: Preemptively exits on violent inside bars or long upper wicks at resistance.
+3. **Structural Climax Guard**: Preemptively exits when price stretches to historical ceilings (`RP_63 > 0.95` AND `RP_252 > 0.95`) while dangerously overextended from VWAP (`CWVAP_Dist% > 10%` OR `FAS > 1.0`). If price is above `VA_High` when climax hits, it suppresses the exit and converts to a strict trailing stop based on the `VA_High` level.
+4. **Momentum Suppression**: Suppresses normal cycle exits as long as structural momentum (PSZ > 0 or CTS > 0) is holding above the Custom VWAP.
+5. **Expert 5 Exits (Regime-Aware Hybrid)**: Once a trade reaches a peak close profit of `>= 10.0%`, if it is suppressed by the guard, the system monitors it using three regime-aware exits to lock in gains:
+   - **Regime-Aware Trailing Stop**: Trails peak close by `3.0 * ATR` in strong `uptrend` regimes to let winners run, and `2.0 * ATR` in normal/weaker regimes to lock in gains quickly.
+   - **Regime-Aware Coherence Breach**: Exits if flow coherence degrades (`cwc < 0.25` and `cwc_slope < -0.04` in normal regimes, or `cwc < 0.10` and `cwc_slope < -0.06` in strong `uptrend` regimes to prevent premature shakeouts).
+   - **Regime-Aware Parabolic Low-Break**: Exits if overextended and price closes below the previous day's low. In strong `uptrend` regimes, it requires a volatility buffer of `0.30 * ATR` to filter out minor noise.

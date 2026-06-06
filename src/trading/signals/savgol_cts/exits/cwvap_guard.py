@@ -270,12 +270,23 @@ def apply_cwvap_guard(
     tag: str = "",
 ) -> tuple[str | None, int]:
     """Wrapper to apply VA High Breakout Trailing Guard to proposed exits."""
-    # 1. Run raw guard logic
+    gc = cfg.cwvap_guard
+    st = SavgolCTSExitState.from_int(state_val)
+
+    # 1. Trend Reclaim reset check (Reclaim PRT)
+    if st.exit_suppressed and getattr(gc, "trend_reclaim_enabled", True):
+        prt = row.get("prt", np.nan)
+        prt_st = row.get("prt_sell_threshold", np.nan)
+        if not any(np.isnan(x) for x in [prt, prt_st]) and prt >= prt_st:
+            st.exit_suppressed = False
+            st.suppressed_this_bar = False
+            state_val = st.to_int()
+
+    # 2. Run raw guard logic
     final_res, st_val = _apply_cwvap_guard_raw(row, trade, res, state_val, cfg, records, idx, tag)
 
-    # 2. Apply VA High Breakout Suppression
+    # 3. Apply VA High Breakout Suppression
     if final_res is not None:
-        gc = cfg.cwvap_guard
         if getattr(gc, "va_high_breakout_suppression_enabled", True):
             # Define critical bypass reasons that should never be suppressed
             bypass = [
@@ -295,6 +306,91 @@ def apply_cwvap_guard(
                     st.exit_suppressed = True
                     st.suppressed_this_bar = True
                     return None, st.to_int()
+
+    # 4. Apply Expert 5 enhancements (Regime-Aware hybrid)
+    st = SavgolCTSExitState.from_int(st_val)
+    if final_res is None and st.exit_suppressed and getattr(gc, "expert_exits_enabled", True):
+        close = row.get("close", np.nan)
+        if trade is not None and trade.entry_price > 0 and not np.isnan(close):
+            # Compute peak close for the trade
+            peak_close = trade.entry_price
+            if records is not None:
+                for j in range(trade.entry_idx, idx + 1):
+                    c_val = records[j].get("close", np.nan)
+                    if not np.isnan(c_val) and c_val > peak_close:
+                        peak_close = c_val
+                        
+            peak_pnl = (peak_close / trade.entry_price - 1.0) * 100.0
+            
+            if peak_pnl >= getattr(gc, "peak_pnl_trigger", 10.0):
+                atr = row.get("atr_20", np.nan)
+                regime = row.get("regime", "notrend")
+                is_uptrend = (regime == "uptrend")
+                
+                # A. Regime-Aware Trailing Stop
+                atr_mult = getattr(gc, "uptrend_atr_mult", 3.0) if is_uptrend else getattr(gc, "normal_atr_mult", 2.0)
+                if not np.isnan(atr) and atr > 0 and close < (peak_close - atr_mult * atr):
+                    st.exit_suppressed = False
+                    st.suppressed_this_bar = False
+                    reason = ExitReason.EXPERT5_ATR_TRAIL_3_0 if atr_mult == 3.0 else ExitReason.EXPERT5_ATR_TRAIL_2_0
+                    return reason, st.to_int()
+                
+                # B. Regime-Aware / Coherence-Filtered Exhaustion
+                cwc = row.get("cwc", np.nan)
+                cwc_slope = row.get("cwc_slope", np.nan)
+                psz_v = row.get("psz_v", np.nan)
+                
+                if not np.isnan(cwc) and not np.isnan(cwc_slope):
+                    if is_uptrend:
+                        cwc_min = getattr(gc, "uptrend_cwc_min", 0.10)
+                        cwc_slope_min = getattr(gc, "uptrend_cwc_slope_min", -0.06)
+                        if cwc < cwc_min and cwc_slope < cwc_slope_min:
+                            st.exit_suppressed = False
+                            st.suppressed_this_bar = False
+                            return ExitReason.EXPERT5_UPTREND_COHERENCE_MELTDOWN, st.to_int()
+                    else:
+                        cwc_min = getattr(gc, "normal_cwc_min", 0.25)
+                        cwc_slope_min = getattr(gc, "normal_cwc_slope_min", -0.04)
+                        if cwc < cwc_min and cwc_slope < cwc_slope_min:
+                            st.exit_suppressed = False
+                            st.suppressed_this_bar = False
+                            return ExitReason.EXPERT5_NORMAL_COHERENCE_BREACH, st.to_int()
+                        elif not np.isnan(psz_v) and psz_v < getattr(gc, "normal_psz_v_min", -0.2):
+                            st.exit_suppressed = False
+                            st.suppressed_this_bar = False
+                            return ExitReason.EXPERT5_NORMAL_MOMENTUM_MELTDOWN, st.to_int()
+                
+                # C. Regime-Aware Parabolic Exhaustion
+                rp10 = row.get("range_pos_10", np.nan)
+                prev_low = np.nan
+                if records is not None and idx > 0:
+                    prev_low = records[idx - 1].get("low", np.nan)
+                    
+                was_overextended = False
+                overextended_thr = getattr(gc, "overextended_rp_threshold", 0.90)
+                if records is not None:
+                    for j in range(max(trade.entry_idx, idx - 3), idx + 1):
+                        r = records[j]
+                        if r.get("range_pos_10", 0.0) >= overextended_thr:
+                            was_overextended = True
+                            break
+                            
+                if was_overextended:
+                    if is_uptrend:
+                        buffer = getattr(gc, "uptrend_low_break_buffer_atr", 0.30) * atr if not np.isnan(atr) else 0.0
+                        if not np.isnan(prev_low) and close < (prev_low - buffer):
+                            st.exit_suppressed = False
+                            st.suppressed_this_bar = False
+                            return ExitReason.EXPERT5_UPTREND_PARABOLIC_LOW_BREAK, st.to_int()
+                    else:
+                        if not np.isnan(prev_low) and close < prev_low:
+                            st.exit_suppressed = False
+                            st.suppressed_this_bar = False
+                            return ExitReason.EXPERT5_NORMAL_PARABOLIC_LOW_BREAK, st.to_int()
+                        elif not np.isnan(rp10) and rp10 < getattr(gc, "normal_rp_reversion", 0.70):
+                            st.exit_suppressed = False
+                            st.suppressed_this_bar = False
+                            return ExitReason.EXPERT5_NORMAL_PARABOLIC_REVERSION, st.to_int()
 
     return final_res, st_val
 

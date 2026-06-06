@@ -68,6 +68,16 @@ class ExitReason(str, Enum):
     CWC_SLOPE_EARLY_RELEASE = "CWC slope early release"
     CTS_NEAR_MISS_ROLLOVER = "CTS near-miss rollover"
     
+    # Expert 5 exits
+    EXPERT5_ATR_TRAIL_3_0 = "Expert 5 ATR trailing stop (3.0)"
+    EXPERT5_ATR_TRAIL_2_0 = "Expert 5 ATR trailing stop (2.0)"
+    EXPERT5_UPTREND_COHERENCE_MELTDOWN = "Expert 5 uptrend coherence meltdown"
+    EXPERT5_NORMAL_COHERENCE_BREACH = "Expert 5 normal coherence breach"
+    EXPERT5_NORMAL_MOMENTUM_MELTDOWN = "Expert 5 normal momentum meltdown"
+    EXPERT5_UPTREND_PARABOLIC_LOW_BREAK = "Expert 5 uptrend parabolic low break"
+    EXPERT5_NORMAL_PARABOLIC_LOW_BREAK = "Expert 5 normal parabolic low break"
+    EXPERT5_NORMAL_PARABOLIC_REVERSION = "Expert 5 normal parabolic range reversion"
+    
     # Universal / Generic
     END_OF_DATA = "End of Data (Open Trade)"
     HARD_STOP = "Hard Stop Hit"
