@@ -89,6 +89,7 @@ def entry_trend_pullback(row, prev_row, cfg, records, idx):
         "reason": "Secular Trend Pullback accepted",
         "entry_tag": EntryTag.TREND_PULLBACK.value,
         "score": score,
+        "conv_score": score,
         "raw_ml_score": 0,
         "ml_guard_threshold": 0
     }

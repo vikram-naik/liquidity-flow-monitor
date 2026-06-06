@@ -60,6 +60,33 @@ def entry_anchor_shock_pullback(row: dict, prev_row: dict, cfg, records: list[di
         if rw_252 < path_cfg.rw_252_min:
             return False, 0, {"reason": f"range_width_252 ({rw_252:.1f}%) below minimum requirement of {path_cfg.rw_252_min}% (flat stock, low rebound energy)"}
 
+    # Accepted!
+    
+    # Bayesian Adaptive Scorer Post-Filter
+    if getattr(path_cfg, "bayesian_mode", False):
+        proximity = (sdvwap - close) / sdvwap if sdvwap > 0 else np.nan
+        feat_vals = {
+            "pdd_120": pdd_120,
+            "pdd_30": pdd_30,
+            "proximity": proximity,
+            "dv_shock": dv_shock,
+            "esr": esr,
+            "price_slope_z": psz,
+        }
+        
+        bayesian_score = 0.0
+        feature_weights = getattr(path_cfg, "feature_weights", {})
+        
+        for feat, val in feat_vals.items():
+            weights = feature_weights.get(feat, [])
+            for left, right, w in weights:
+                if left < val <= right:
+                    bayesian_score += w
+                    break
+                    
+        if bayesian_score < path_cfg.score_threshold:
+            return False, 0, {"reason": f"Anchor Shock Pullback rejected: Bayesian score ({bayesian_score:.4f}) < {path_cfg.score_threshold:.4f}"}
+
     score = path_cfg.score
     details = {
         "reason": "Anchor Shock Pullback accepted",

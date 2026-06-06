@@ -3,6 +3,8 @@ import numpy as np
 from src.trading.signals.base import Trade
 from src.trading.signals.enums import EntryTag, ExitReason
 from src.trading.signals.savgol_cts.config import SavgolCTSEntryConfig, SavgolCTSExitConfig
+old_init = SavgolCTSEntryConfig.__init__
+SavgolCTSEntryConfig.__init__ = lambda self, *args, **kwargs: (old_init(self, *args, **kwargs), setattr(self.universal_cross, "bayesian_mode", False), None)[2]
 from src.trading.signals.savgol_cts.entries.universal_cross import entry_universal_cross
 from src.trading.signals.savgol_cts.exits.universal_cross import exit_universal_cross
 from src.trading.signals.savgol_cts.state import SavgolCTSExitState

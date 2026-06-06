@@ -9,6 +9,7 @@ class EntryTag(str, Enum):
     FLOW_MOMENTUM = "SavgolCTS Flow-Momentum"
     COHERENT_PULLBACK = "SavgolCTS Coherent-Pullback"
     ANCHOR_SHOCK_PULLBACK = "SavgolCTS Anchor-Shock-Pullback"
+    SPRINGBOARD = "SavgolCTS SpringBoard"
     
     # Generic / Fallback
     UNKNOWN = "Unknown Entry"

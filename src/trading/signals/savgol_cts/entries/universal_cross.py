@@ -269,12 +269,44 @@ def entry_universal_cross(row, prev_row, cfg, records, idx):
     if pdd_30 <= -5.5 and 0.40 <= base_tightness <= 0.46:
         return False, 0, {"reason": "Distribution Trap: choppy base under heavy distribution"}
 
+    # Accepted!
+    
+    # Bayesian Adaptive Scorer Post-Filter
+    uc_cfg = getattr(cfg, "universal_cross", None)
+    if uc_cfg is not None and getattr(uc_cfg, "bayesian_mode", False):
+        feat_vals = {
+            "cwc": cwc,
+            "psz_v": psz_v,
+            "fas": fas,
+            "cts_accel": accel,
+            "pdd_30": pdd_30,
+            "range_pos_10": range_pos_10,
+        }
+        
+        bayesian_score = 0.0
+        feature_weights = getattr(uc_cfg, "feature_weights", {})
+        
+        for feat, val in feat_vals.items():
+            weights = feature_weights.get(feat, [])
+            for left, right, w in weights:
+                if left < val <= right:
+                    bayesian_score += w
+                    break
+                    
+        if bayesian_score < uc_cfg.score_threshold:
+            return False, 0, {"reason": f"Universal Cross rejected: Bayesian score ({bayesian_score:.4f}) < {uc_cfg.score_threshold:.4f}"}
+
     score = 70
+    if getattr(uc_cfg, "bayesian_mode", False):
+        import math
+        prob = 1.0 / (1.0 + math.exp(-bayesian_score))
+        score = int(prob * 100)
 
     details = {
         "reason": "Universal Cross accepted",
         "entry_tag": EntryTag.UNIVERSAL_CROSS.value,
         "score": score,
+        "conv_score": score,
         "raw_ml_score": 0,
         "ml_guard_threshold": 0,
     }

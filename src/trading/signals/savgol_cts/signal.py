@@ -20,11 +20,13 @@ from src.trading.signals.savgol_cts.entries.trend_pullback import entry_trend_pu
 from src.trading.signals.savgol_cts.entries.flow_momentum import entry_flow_momentum
 from src.trading.signals.savgol_cts.entries.coherent_pullback import entry_coherent_pullback
 from src.trading.signals.savgol_cts.entries.anchor_shock_pullback import entry_anchor_shock_pullback
+from src.trading.signals.savgol_cts.entries.springboard import entry_springboard
 
 # Exit path checkers
 from src.trading.signals.savgol_cts.exits.cwvap_guard import apply_cwvap_guard
 from src.trading.signals.savgol_cts.exits.universal_cross import exit_universal_cross
 from src.trading.signals.savgol_cts.exits.anchor_shock_pullback import exit_anchor_shock_pullback
+from src.trading.signals.savgol_cts.exits.springboard import exit_springboard
 
 
 
@@ -117,7 +119,17 @@ class SavgolCTSSignal(SignalInterface):
                 return True, intensity, meta
             asp_reason = f"AnchorShockPullback: {meta.get('reason', 'Rejected')}"
 
-        return False, 0, {"reason": f"{cdvl_reason} | {uc_reason} | {tp_reason} | {fm_reason} | {cp_reason} | {asp_reason}"}
+        # Path 5: SpringBoard Path (Bottom Inflections)
+        sb_reason = "SpringBoard path disabled"
+        if getattr(cfg, "springboard", None) and cfg.springboard.enabled:
+            passed, intensity, meta = entry_springboard(row, prev_row, cfg, records, idx)
+            if passed:
+                return True, intensity, meta
+            sb_reason = f"SpringBoard: {meta.get('reason', 'Rejected')}"
+
+        # Path 6 (Moved to top)
+
+        return False, 0, {"reason": f"{cdvl_reason} | {uc_reason} | {tp_reason} | {fm_reason} | {cp_reason} | {asp_reason} | {sb_reason}"}
 
     def check_exit(
         self,
@@ -144,12 +156,23 @@ class SavgolCTSSignal(SignalInterface):
         if not np.isnan(close) and not np.isnan(cwvap) and close > cwvap:
             st.price_above_cwvap = True
 
-        # All SavgolCTS paths now route through the Universal Cross exit logic
-        # (Standardized Pure CTS Trailing + Hard Stop)
-        exit_reason, state_val = exit_universal_cross(
-            row, prev_row, trade, peak_close, bars_held, st.to_int(),
-            cfg.universal_cross, records, idx
-        )
+        # Resolve the UniversalCrossExitConfig to use
+        uc_cfg = cfg.universal_cross
+        sb_exit_cfg = getattr(cfg, "springboard", None)
+
+        if tag == EntryTag.SPRINGBOARD.value and sb_exit_cfg and sb_exit_cfg.enabled:
+            # Route SpringBoard exits through its own dedicated path-specific exit module
+            exit_reason, state_val = exit_springboard(
+                row, prev_row, trade, peak_close, bars_held, st.to_int(),
+                sb_exit_cfg, records, idx
+            )
+        else:
+            # All other SavgolCTS paths route through the Universal Cross exit logic
+            # (Standardized Pure CTS Trailing + Hard Stop)
+            exit_reason, state_val = exit_universal_cross(
+                row, prev_row, trade, peak_close, bars_held, st.to_int(),
+                uc_cfg, records, idx
+            )
         st = SavgolCTSExitState.from_int(state_val)
 
         # Apply path-specific overrides for CDVL_CTS trades

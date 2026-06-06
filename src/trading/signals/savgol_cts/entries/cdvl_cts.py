@@ -83,11 +83,44 @@ def entry_cdvl_cts(
         return False, 0, {"reason": f"CTS acceleration below dynamic threshold (accel: {cts_accel:.4f} <= threshold: {cts_accel_threshold:.4f})"}
 
     # Accepted!
-    score = 85  # CDVL-CTS custom score
+    
+    # Bayesian Adaptive Scorer Post-Filter
+    if getattr(cdvl_cts_cfg, "bayesian_mode", False):
+        cdvl_surge = cdvl - prev_cdvl
+        cts_accel_surge = cts_accel - prev_cts_accel
+        
+        feat_vals = {
+            "cdvl": cdvl,
+            "cdvl_surge": cdvl_surge,
+            "cts": cts,
+            "cts_accel": cts_accel,
+            "cwc": cwc,
+            "cts_accel_surge": cts_accel_surge,
+        }
+        
+        bayesian_score = 0.0
+        feature_weights = getattr(cdvl_cts_cfg, "feature_weights", {})
+        
+        for feat, val in feat_vals.items():
+            weights = feature_weights.get(feat, [])
+            for left, right, w in weights:
+                if left < val <= right:
+                    bayesian_score += w
+                    break
+                    
+        if bayesian_score < cdvl_cts_cfg.score_threshold:
+            return False, 0, {"reason": f"CDVL_CTS rejected: Bayesian score ({bayesian_score:.4f}) < {cdvl_cts_cfg.score_threshold:.4f}"}
+
+    score = 85  # CDVL-CTS custom score fallback
+    if getattr(cdvl_cts_cfg, "bayesian_mode", False):
+        prob = 1.0 / (1.0 + np.exp(-bayesian_score))
+        score = int(prob * 100)
+
     details = {
         "reason": "CDVL_CTS entry path accepted",
         "entry_tag": EntryTag.CDVL_CTS.value,
         "score": score,
+        "conv_score": score,
         "cdvl": cdvl,
         "cts": cts,
         "cwc": cwc,

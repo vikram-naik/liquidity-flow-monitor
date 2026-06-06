@@ -2,6 +2,8 @@ import pytest
 import numpy as np
 from src.trading.signals.enums import EntryTag
 from src.trading.signals.savgol_cts.config import SavgolCTSEntryConfig
+old_init = SavgolCTSEntryConfig.__init__
+SavgolCTSEntryConfig.__init__ = lambda self, *args, **kwargs: (old_init(self, *args, **kwargs), setattr(self.coherent_pullback, "enabled", True), None)[2]
 from src.trading.signals.savgol_cts.entries.coherent_pullback import entry_coherent_pullback
 from src.trading.signals.savgol_cts.signal import SavgolCTSSignal
 

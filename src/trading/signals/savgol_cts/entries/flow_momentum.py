@@ -179,6 +179,7 @@ def entry_flow_momentum(row: dict, prev_row: dict, cfg, records: list[dict], idx
         "reason": "Flow Momentum Breakout accepted",
         "entry_tag": EntryTag.FLOW_MOMENTUM.value,
         "score": score,
+        "conv_score": score,
         "raw_ml_score": 0,
         "ml_guard_threshold": 0
     }

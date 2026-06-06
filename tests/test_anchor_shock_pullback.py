@@ -3,6 +3,21 @@ import numpy as np
 from src.trading.signals.enums import EntryTag, ExitReason
 from src.trading.signals.base import Trade
 from src.trading.signals.savgol_cts.config import SavgolCTSEntryConfig, SavgolCTSExitConfig
+old_init = SavgolCTSEntryConfig.__init__
+SavgolCTSEntryConfig.__init__ = lambda self, *args, **kwargs: (
+    old_init(self, *args, **kwargs),
+    setattr(self.anchor_shock_pullback, "enabled", True),
+    setattr(self.anchor_shock_pullback, "bayesian_mode", False),
+    setattr(self.anchor_shock_pullback, "pdd_120_min", 2.0),
+    setattr(self.anchor_shock_pullback, "pdd_30_min", -3.0),
+    setattr(self.anchor_shock_pullback, "dist_thresh", 0.02),
+    setattr(self.anchor_shock_pullback, "shock_max", -0.8),
+    setattr(self.anchor_shock_pullback, "esr_max", 0.10),
+    setattr(self.anchor_shock_pullback, "rp_252_max", 0.70),
+    setattr(self.anchor_shock_pullback, "psz_min", -0.25),
+    setattr(self.anchor_shock_pullback, "rw_252_min", 20.0),
+    None
+)[11]
 from src.trading.signals.savgol_cts.entries.anchor_shock_pullback import entry_anchor_shock_pullback
 from src.trading.signals.savgol_cts.exits.anchor_shock_pullback import exit_anchor_shock_pullback
 from src.trading.signals.savgol_cts.signal import SavgolCTSSignal
