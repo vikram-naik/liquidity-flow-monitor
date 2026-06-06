@@ -30,6 +30,7 @@ ENTRY_ALIASES = {
     "coherent":     EntryTag.COHERENT_PULLBACK.value,
     "springboard":  EntryTag.SPRINGBOARD.value,
     "decel":        EntryTag.OVERSOLD_DECEL.value,
+    "bayesian":     EntryTag.CUSTOM_BAYESIAN.value,
 }
 
 def main():

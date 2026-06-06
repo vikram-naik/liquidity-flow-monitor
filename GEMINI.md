@@ -13,12 +13,14 @@
   - *Module 5*: Money Composite Score (MCS)
   - *Module 6*: Trend Participation Analysis (coherence_raw, coherence, slopes)
   - *Module 7*: Oracle Labeling (Ground Truth swings)
-- **Signal Package**: `src/trading/signals/savgol_cts/` orchestrates mean-reversion and momentum signals with **5 active entry paths**:
-  - *Universal Cross*: Primary structural inflection funnel
-  - *Secular Trend Pullback*: Independent trend-following path
-  - *Flow Momentum*: Highly optimized flow and volume z-score setup
-  - *Coherent Pullback*: Early momentum inflection path
-  - *Anchor Shock Pullback*: Advanced price-volume swing support path
+- **Signal Package**: `src/trading/signals/savgol_cts/` orchestrates mean-reversion and momentum signals with a **dual-mode entry architecture**:
+  - **Symbols with Bayesian Weights (BW)**: Route exclusively through the *Custom Bayesian* entry path using per-symbol optimized feature weights from `bw_configs/`.
+  - **Symbols without BW**: Fall back to 5 legacy entry paths:
+    - *Universal Cross*: Primary structural inflection funnel
+    - *Secular Trend Pullback*: Independent trend-following path
+    - *Flow Momentum*: Highly optimized flow and volume z-score setup
+    - *Coherent Pullback*: Early momentum inflection path
+    - *Anchor Shock Pullback*: Advanced price-volume swing support path
 - **Execution Model (EOD-Lag)**:
   - Signal fires on bar `i`.
   - Trade opens on bar `i+1`.
@@ -42,6 +44,10 @@
   ```bash
   ./venv/bin/python scripts/debug_universal_scoring.py --symbol <SYMBOL> --date <YYYY-MM-DD>
   ```
+- **Bayesian Weight Optimization (BWO)**: Per-symbol feature weight tuning replaces the deprecated XGBoost ML Guard. Configs are stored as JSON in `src/trading/signals/savgol_cts/bw_configs/` (path configurable via `BW_CONFIGS_DIR` env var). To train/retune:
+  ```bash
+  ./venv/bin/python scripts/train_symbol_weights_parallel.py --watchlist "NIFTY 50"
+  ```
 
 ## Development Standards
 - **Environment**: Use the root `venv`.
@@ -50,6 +56,7 @@
 - **DivergenceEngine Initialization**: NEVER pass `start_date` and `end_date` during `DivergenceEngine` initialization (e.g. `DivergenceEngine(ticker)`). Always load the entire history first so that indicators warm up correctly, then filter the resulting ledger `DataFrame` by date.
 - **ML Guard Deprecation**: LFM is moving away from `MLGuard` and XGBoost/machine learning-based setup scoring. All entry/exit signals must rely strictly on pure technical, flow, and volume-based indicators (e.g., CWC, PDD, CTS, PSZ_V) rather than `ml_score` or other ML-based thresholds.
 - **Test-Driven Investigation**: Whenever you are investigating an issue (bug, unexpected signal/exit, etc.) and find that a unit test case for that scenario is missing, you MUST add it to the relevant test file (or create a new one) to verify the fix and prevent future regressions.
+- **Signal Flow Documentation**: Whenever you modify signal entry/exit logic, add/remove entry paths, or change the routing architecture in `src/trading/signals/savgol_cts/`, you MUST update `docs/signals/SIGNAL_FLOW.md` to reflect the changes. This document is the authoritative reference for the signal architecture and MUST always be kept in sync with the codebase.
 - **Cache Management**: After making code changes that affect `DivergenceEngine` calculations or signal logic, you MUST flush the Redis cache to ensure stale data does not interfere with debugging or backtesting:
   ```bash
   ./venv/bin/python scripts/flush_cache.py --all

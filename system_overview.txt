@@ -1,20 +1,23 @@
   System Overview                                                                                                                                                                                                                     
-                                                                                                                                                                                                                                      
-  Data Pipeline: DivergenceEngine.run() produces a ledger DataFrame with ~40+ computed columns (CTS, BT, CWVAP, PSZ, coherence, PDD, regime, etc.) from raw OHLC+delivery data through 6 sequential modules.
+                                                                                                                                                                                                                                       
+  Data Pipeline: DivergenceEngine.run() produces a ledger DataFrame with ~40+ computed columns (CTS, BT, CWVAP, PSZ, coherence, PDD, regime, etc.) from raw OHLC+delivery data through 10 sequential modules (Modules 1 to 7 including 1.1, 1.25, 1.5).
   *Optimization*: Chart data payloads via the API are compressed using FastAPI's GZipMiddleware to reduce network latency.                          
-                                                                                                                                                                                                                                      
-  Signal Package (savgol_cts/): CTS mean-reversion signal with a single Universal Master Path funnel.   
+                                                                                                                                                                                                                                       
+  Signal Package (savgol_cts/): CTS mean-reversion/momentum signal with a dual-mode entry architecture:
+    - Symbols WITH Bayesian Weight (BW) configs → Custom Bayesian entry path (exclusive)
+    - Symbols WITHOUT BW configs → Legacy paths (Universal Cross, Trend Pullback, Flow Momentum, Coherent Pullback, Anchor Shock Pullback)
   Trading Package (src/trading): Implements the trading automation.
   Screener Module: A decoupled global market discovery tool running on NIFTY 500.                                                                                                     
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                 
   Key Mechanics                                                                                                                                                                                                                       
-                                                                                                                                                                                                                                      
+                                                                                                                                                                                                                                       
   - EOD-Lag Execution: signal on bar i, trade opens bar i+1, exits begin bar i+2
-  - Daily Sync Pipeline: `scripts/daily_sync.sh` handles EOD data downloads, Corporate Action validation/fixing, and executes the Global Market Screener (`scripts/daily_screener.py`) to persist the latest market state.                                                                                                                                                                
-                                                                                                                                                                                                                                      
+  - Daily Sync Pipeline: `scripts/daily_sync.sh` handles EOD data downloads, Corporate Action validation/fixing, and executes the Global Market Screener (`scripts/daily_screener.py`) to persist the latest market state.
+  - Bayesian Weight Optimization (BWO): Per-symbol feature weight tuning via `scripts/train_symbol_weights_parallel.py`. Configs stored as JSON in `savgol_cts/bw_configs/` (path configurable via BW_CONFIGS_DIR env var).
+                                                                                                                                                                                                                                       
   Simulation Entry Point                                                                                                                                                                                                              
-                                                                                                                                                                                                                                      
-  ./scripts/walk_forward.py shows the pattern: load symbols from watchlist DB → DivergenceEngine(sym, start_date, end_date).run() → iterate records bar-by-bar calling check_entry/check_exit with EOD-lag pending mechanism.    
+                                                                                                                                                                                                                                       
+  ./scripts/walk_forward.py shows the pattern: load symbols from watchlist DB → DivergenceEngine(sym).run() → iterate records bar-by-bar calling check_entry/check_exit with EOD-lag pending mechanism.
   ./scripts/debug_signal.py helps you debug a signal
 
   Virtual Env
@@ -23,7 +26,7 @@
 
   Context:
 
-  - Read @docs/signal/SIGNAL_FLOW.md and the @src/trading/signals/savgol_cts/ pkg to build the context. 
+  - Read @docs/signals/SIGNAL_FLOW.md and the @src/trading/signals/savgol_cts/ pkg to build the context. 
   - We backtest the system using @scripts/walk_forward.py script. 
   - The UI is rendered via the @src/web/js/divergence_engine.js and on backend the datastructure for UI is created by @src/divergence_engine/chart.py and the API is served via @src/api/main.py.
   - The Global Market Screener UI is rendered via @src/web/js/screener.js and served via the `/de/screener` API route.      
@@ -32,6 +35,6 @@
   IMPORTANT Note:  
   
   -  Use DivergenceEngine class to load the stock data / ledger / simulated trades.
+  -  NEVER pass start_date/end_date to DivergenceEngine constructor. Load full history, then filter the ledger by date.
   -  Don't assume anything, ask when taking a pragmatic decision.
   -  When using a new lib or dependency, make sure we are using the latest version, and do web-search to build your context on the API documentation when required. 
-   
