@@ -29,6 +29,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from src.divergence_engine.engine import DivergenceEngine
 from src.database import get_db_connection
 from src.cache.factory import get_cache
+from src.divergence_engine.repository import DeliveryRepository
 
 # Configure logging
 logging.basicConfig(
@@ -43,30 +44,30 @@ DEFAULT_THRESHOLD = 12.0
 RECONCILE_TOLERANCE = 1.5
 
 def get_symbols(watchlist_name=None):
-    """Fetch symbols from watchlist or all symbols from delivery log."""
+    """Fetch symbols from watchlist or all symbols from delivery log, filtered by instrument_type = 'STOCK'."""
     conn = get_db_connection()
     try:
         if watchlist_name:
             query = """
-                SELECT symbol FROM watchlist_items 
-                JOIN watchlists ON watchlists.id = watchlist_items.watchlist_id
-                WHERE watchlists.name = ?
-                ORDER BY display_order
+                SELECT DISTINCT wli.symbol FROM watchlist_items wli
+                JOIN watchlists wl ON wl.id = wli.watchlist_id
+                LEFT JOIN nse_delivery_log log ON log.symbol = wli.symbol
+                WHERE wl.name = ? AND (log.instrument_type IS NULL OR log.instrument_type = 'STOCK')
+                ORDER BY wli.display_order
             """
             symbols = [row[0] for row in conn.execute(query, (watchlist_name,)).fetchall()]
         else:
-            query = "SELECT DISTINCT symbol FROM nse_delivery_log"
+            query = "SELECT DISTINCT symbol FROM nse_delivery_log WHERE instrument_type = 'STOCK'"
             symbols = [row[0] for row in conn.execute(query).fetchall()]
         return symbols
     finally:
         conn.close()
 
-def detect_whip_saws(symbol, threshold):
+def detect_whip_saws(symbol, threshold, days=30):
     """Detect price jumps/drops exceeding threshold %."""
     try:
-        engine = DivergenceEngine(symbol)
-        result = engine.run()
-        df = result.ledger
+        repo = DeliveryRepository()
+        df = repo.fetch_adjusted_data(symbol)
 
         if df.empty or len(df) < 2:
             return []
@@ -75,8 +76,16 @@ def detect_whip_saws(symbol, threshold):
         df['prev_close'] = df['close'].shift(1)
         df['daily_ret'] = (df['close'] / df['prev_close'] - 1) * 100.0
         
+        # Apply lookback filter
+        if days is not None and str(days).lower() != 'all':
+            lookback_days = int(days)
+            cutoff_date = pd.Timestamp.now() - pd.Timedelta(days=lookback_days)
+            df_check = df[df['date'] >= cutoff_date].copy()
+        else:
+            df_check = df.copy()
+
         # Filter for whip-saws
-        whip_saws = df[abs(df['daily_ret']) >= threshold].copy()
+        whip_saws = df_check[abs(df_check['daily_ret']) >= threshold].copy()
         
         issues = []
         for _, row in whip_saws.iterrows():
@@ -156,8 +165,8 @@ def reconcile_with_internet(symbol, date, local_close, local_ret):
                 idx = yf_dates.index(date_iso)
                 if idx > 0:
                     prev_date_iso = yf_dates[idx - 1]
-                    engine = DivergenceEngine(symbol)
-                    ledger = engine.run().ledger
+                    repo = DeliveryRepository()
+                    ledger = repo.fetch_adjusted_data(symbol)
                     ledger['date_str'] = pd.to_datetime(ledger['date']).dt.strftime('%Y-%m-%d')
                     local_row_prev = ledger[ledger['date_str'] == prev_date_iso]
                     if not local_row_prev.empty:
@@ -212,8 +221,8 @@ def reconcile_with_internet(symbol, date, local_close, local_ret):
             next_date_iso = next_dates[0]
             logger.info(f"Next available date in yfinance is {next_date_iso}. Reconciling...")
             
-            engine = DivergenceEngine(symbol)
-            ledger = engine.run().ledger
+            repo = DeliveryRepository()
+            ledger = repo.fetch_adjusted_data(symbol)
             ledger['date_str'] = pd.to_datetime(ledger['date']).dt.strftime('%Y-%m-%d')
             local_row_next = ledger[ledger['date_str'] == next_date_iso]
             
@@ -261,7 +270,7 @@ def patch_override(symbol, date, local_ret, ext_ret):
         
         if row:
             target_date = row[0]
-            current_factor = row[1]
+            current_factor = row[1] if (row[1] is not None and not pd.isna(row[1])) else 1.0
             logger.info(f"Found existing CA for {symbol} on {target_date} with factor {current_factor}")
         else:
             logger.info(f"No existing CA found for {symbol} on or before {date}. Creating new override.")
@@ -270,6 +279,10 @@ def patch_override(symbol, date, local_ret, ext_ret):
         correction_delta = (1 + ext_ret / 100.0) / (1 + local_ret / 100.0)
         new_factor = round(current_factor * correction_delta, 4)
         
+        if new_factor is None or pd.isna(new_factor):
+            logger.warning(f"Calculated patch factor for {symbol} on {target_date} is invalid (NaN/None). Skipping patch.")
+            return False
+            
         # Only apply patch if drift is significant (>3%) to avoid corrupting ratios with dividend drift
         if abs(correction_delta - 1.0) < 0.03:
             logger.info(f"Correction delta too small ({correction_delta:.6f}), likely dividend drift. Skipping patch.")
@@ -291,7 +304,7 @@ def sync_corporate_actions(symbol):
     """Run sync_nse_ca.py for the symbol non-interactively."""
     logger.info(f"Syncing corporate actions for {symbol}...")
     try:
-        cmd = [sys.executable, str(PROJECT_ROOT / "scripts" / "sync_nse_ca.py"), symbol, "--yes"]
+        cmd = [sys.executable, str(PROJECT_ROOT / "scripts" / "sync_nse_ca.py"), symbol, "--yes", "--force"]
         result = subprocess.run(cmd, capture_output=True, text=True)
         if result.returncode != 0:
             logger.error(f"Sync failed for {symbol}: {result.stderr}")
@@ -318,9 +331,11 @@ def main():
     parser.add_argument("--watchlist", help="Watchlist name to check")
     parser.add_argument("--symbol", help="Specific symbol to check")
     parser.add_argument("--threshold", type=float, default=DEFAULT_THRESHOLD, 
-                        help=f"Percentage change threshold for whip-saw (default: {DEFAULT_THRESHOLD}%)")
+                        help=f"Percentage change threshold for whip-saw (default: {DEFAULT_THRESHOLD}%%)")
     parser.add_argument("--auto-fix", action="store_true", help="Automatically trigger CA sync on whip-saw")
     parser.add_argument("--auto-patch", action="store_true", help="Automatically update ca_overrides.json on mismatch")
+    parser.add_argument("--days", default="30", 
+                        help="Number of recent days to validate for whip-saws (default: 30, use 'all' for full history)")
     parser.add_argument("--quiet", "-q", action="store_true", help="Only log errors")
     
     args = parser.parse_args()
@@ -331,7 +346,15 @@ def main():
         sys.stdout = open(os.devnull, 'w')
 
     if args.symbol:
-        symbols = [args.symbol.upper()]
+        symbol = args.symbol.upper()
+        # Verify instrument type is STOCK if it exists in DB
+        conn = get_db_connection()
+        row = conn.execute("SELECT DISTINCT instrument_type FROM nse_delivery_log WHERE symbol = ?", (symbol,)).fetchone()
+        conn.close()
+        if row and row[0] != 'STOCK':
+            logger.info(f"Skipping {symbol} as its instrument type is {row[0]}, not STOCK.")
+            sys.exit(0)
+        symbols = [symbol]
     else:
         symbols = get_symbols(args.watchlist)
 
@@ -346,7 +369,7 @@ def main():
     
     for symbol in symbols:
         logger.info(f"Checking {symbol}...")
-        issues = detect_whip_saws(symbol, args.threshold)
+        issues = detect_whip_saws(symbol, args.threshold, days=args.days)
         
         if issues:
             logger.warning(f"Found {len(issues)} whip-saws for {symbol}")
@@ -356,7 +379,7 @@ def main():
                 if sync_corporate_actions(symbol):
                     flush_cache_for_symbol(symbol)
                     # Refresh issues
-                    issues = detect_whip_saws(symbol, args.threshold)
+                    issues = detect_whip_saws(symbol, args.threshold, days=args.days)
                 else:
                     logger.error(f"Sync failed for {symbol}")
 
@@ -379,7 +402,7 @@ def main():
                     if ext_ohlc:
                         issue['ext_ohlc'] = f"O:{ext_ohlc['o']} H:{ext_ohlc['h']} L:{ext_ohlc['l']} C:{ext_ohlc['c']}"
                         # 3. Try Auto-Patch
-                        if args.auto_patch and ext_ret is not None:
+                        if args.auto_patch and ext_ret is not None and not pd.isna(ext_ret):
                             if patch_override(symbol, issue['date'], issue['change_pct'], ext_ret):
                                 issue['status'] += ' -> Patched'
                                 patches_applied = True
@@ -397,7 +420,7 @@ def main():
                     failures = [f for f in failures if f.get('symbol') != symbol]
                     verified_moves = [v for v in verified_moves if v.get('symbol') != symbol]
                     
-                    final_issues = detect_whip_saws(symbol, args.threshold)
+                    final_issues = detect_whip_saws(symbol, args.threshold, days=args.days)
                     for issue in final_issues:
                         issue['symbol'] = symbol
                         status, ext_ohlc, ext_ret, div_impact = reconcile_with_internet(symbol, issue['date'], issue['price'], issue['change_pct'])

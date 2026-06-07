@@ -72,11 +72,11 @@ class TestWeeklyBwoSync(unittest.TestCase):
 
     def test_bwo_score_calculation(self):
         # Test basic score computation:
-        # Score = -1000 * sl_ratio + 10 * min(trades, 15) + avg_pnl
+        # Score = -250.0 * sl_ratio + 10 * min(trades, 15) + avg_pnl
         # trades = 10, sl_hits = 1 (sl_ratio = 0.1), avg_pnl = 5.0
-        # Expected: -1000 * 0.1 + 10 * 10 + 5.0 = -100 + 100 + 5.0 = 5.0
+        # Expected: -250 * 0.1 + 10 * 10 + 5.0 = -25 + 100 + 5.0 = 80.0
         score = calculate_bwo_score(10, 5.0, 1)
-        self.assertAlmostEqual(score, 5.0)
+        self.assertAlmostEqual(score, 80.0)
 
         # trades = 20 (capped at 15 for bonus), sl_hits = 0 (sl_ratio = 0.0), avg_pnl = 12.5
         # Expected: 0 + 10 * 15 + 12.5 = 162.5
@@ -101,6 +101,30 @@ class TestWeeklyBwoSync(unittest.TestCase):
                     [-0.2, 0.3, -0.1],
                     [0.3, float('inf'), 0.67]
                 ]
+            },
+            "accumulation": {
+                "score_threshold": 1.5,
+                "feature_bins": {
+                    "cwc": [-float('inf'), 0.4, float('inf')]
+                },
+                "feature_weights": {
+                    "cwc": [
+                        [-float('inf'), 0.4, 0.15],
+                        [0.4, float('inf'), -0.25]
+                    ]
+                }
+            },
+            "momentum": {
+                "score_threshold": 3.0,
+                "feature_bins": {
+                    "cwc": [-float('inf'), 0.6, float('inf')]
+                },
+                "feature_weights": {
+                    "cwc": [
+                        [-float('inf'), 0.6, 0.22],
+                        [0.6, float('inf'), -0.42]
+                    ]
+                }
             }
         }
         
@@ -120,9 +144,12 @@ class TestWeeklyBwoSync(unittest.TestCase):
         self.assertEqual(cb["feature_bins"]["cwc"], ["-inf", 0.5, "inf"])
         self.assertEqual(cb["feature_bins"]["cts"], ["-inf", -0.2, 0.3, "inf"])
         
-        # Verify weights have infinity strings
-        self.assertEqual(cb["feature_weights"]["cwc"][0], ["-inf", 0.5, 0.12])
-        self.assertEqual(cb["feature_weights"]["cwc"][1], [0.5, "inf", -0.34])
+        # Verify sub-models
+        self.assertEqual(cb["accumulation"]["score_threshold"], 1.5)
+        self.assertEqual(cb["accumulation"]["feature_bins"]["cwc"], ["-inf", 0.4, "inf"])
+        
+        self.assertEqual(cb["momentum"]["score_threshold"], 3.0)
+        self.assertEqual(cb["momentum"]["feature_bins"]["cwc"], ["-inf", 0.6, "inf"])
         
         # Test loading back via load_bw_override
         loaded_override = sc.load_bw_override(sym)
@@ -135,6 +162,15 @@ class TestWeeklyBwoSync(unittest.TestCase):
         self.assertEqual(cb_cfg.score_threshold, 2.5)
         self.assertEqual(cb_cfg.feature_bins["cwc"], [float("-inf"), 0.5, float("inf")])
         self.assertEqual(cb_cfg.feature_weights["cwc"][0], (float("-inf"), 0.5, 0.12))
+        
+        # Verify parsed sub-models in get_symbol_entry_config
+        self.assertEqual(cb_cfg.accumulation.score_threshold, 1.5)
+        self.assertEqual(cb_cfg.accumulation.feature_bins["cwc"], [float("-inf"), 0.4, float("inf")])
+        self.assertEqual(cb_cfg.accumulation.feature_weights["cwc"][0], (float("-inf"), 0.4, 0.15))
+        
+        self.assertEqual(cb_cfg.momentum.score_threshold, 3.0)
+        self.assertEqual(cb_cfg.momentum.feature_bins["cwc"], [float("-inf"), 0.6, float("inf")])
+        self.assertEqual(cb_cfg.momentum.feature_weights["cwc"][0], (float("-inf"), 0.6, 0.22))
 
 if __name__ == "__main__":
     unittest.main()

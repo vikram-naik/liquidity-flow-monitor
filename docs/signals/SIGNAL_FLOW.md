@@ -81,11 +81,15 @@ check_entry(row, prev_row, cfg, records, idx)       [signal.py]
 
 The BWO system replaces the deprecated XGBoost ML Guard with a pure technical Bayesian scoring approach:
 
-- **Training**: `scripts/train_symbol_weights_parallel.py` optimizes per-symbol feature weights using historical trade data.
-- **Configs**: Output JSON files are stored in `bw_configs/` (configurable via `BW_CONFIGS_DIR` env var).
-- **Loading**: `symbol_configs.py` dynamically loads and caches JSON BW overrides at runtime.
-- **Scoring**: Entry paths use binned feature weights to compute a composite score against a per-symbol threshold.
-- **Weekly Tuning**: Re-run BWO on symbols with existing BW configs to adapt to evolving market conditions.
+- **16-Feature Set**: Expands the continuous feature set to include `cwc_slope`, `price_slope_z`, and `rdv_slope_z` for rolling 10-bar slope tracking.
+- **Regime-Conditioned Model Partitioning**: Custom Bayesian entries route through two distinct sub-models to handle different market regimes:
+  - **Accumulation Model**: Active when `regime` is `'downtrend'` or `'notrend'`. Automatically isolates bottom accumulation setups.
+  - **Momentum Model**: Active when `regime` is `'uptrend'` or `'transition'`. Automatically handles breakout momentum signals.
+- **Training**: `scripts/train_symbol_weights_parallel.py` (and sequential `scripts/train_symbol_weights.py`) partitions historical candidate bars and independently optimizes weights/thresholds for both sub-models, applying a relaxed `-250.0` SL ratio penalty to improve recall.
+- **Configs**: Output JSON files with `accumulation` and `momentum` sub-blocks are stored in `bw_configs/` (configurable via `BW_CONFIGS_DIR` env var).
+- **Loading**: `symbol_configs.py` dynamically parses, loads, and caches the partitioned JSON overrides at runtime.
+- **Weekly Tuning**: Challenger-Champion promo loop verifies both unified and partitioned configurations against safety gates.
+
 
 ---
 

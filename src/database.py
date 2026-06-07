@@ -191,6 +191,14 @@ def init_db():
     );
     """)
 
+    # Table: ca_sync_status (Tracking last corporate action sync date per symbol)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS ca_sync_status (
+        symbol TEXT PRIMARY KEY,
+        last_sync_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    """)
+
     # Table: user_settings (key-value store for configurable parameters)
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS user_settings (
@@ -379,7 +387,19 @@ def init_db():
         price REAL,
         signal_type TEXT NOT NULL,
         pnl REAL,
+        entry_date TEXT,
+        entry_price REAL,
+        bars_held INTEGER,
+        mfe_pct REAL,
+        mae_pct REAL,
+        c_up INTEGER,
+        c_down INTEGER,
+        max_cts INTEGER,
+        min_cts INTEGER,
         entry_tag TEXT,
+        gate_setup TEXT DEFAULT 'None',
+        gate_signal INTEGER DEFAULT 0,
+        s_total REAL DEFAULT 0.0,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
     """)
@@ -402,40 +422,7 @@ def init_db():
 
     # Migrations — add columns that may not exist in older DBs
     _migrate_add_column(cursor, "trading_orders", "price_rationale", "TEXT")
-    
-    _migrate_add_column(cursor, "screener_signals", "entry_date", "TEXT")
-    _migrate_add_column(cursor, "screener_signals", "entry_price", "REAL")
-    _migrate_add_column(cursor, "screener_signals", "bars_held", "INTEGER")
-    _migrate_add_column(cursor, "screener_signals", "mfe_pct", "REAL")
-    _migrate_add_column(cursor, "screener_signals", "mae_pct", "REAL")
-    _migrate_add_column(cursor, "screener_signals", "c_up", "INTEGER")
-    _migrate_add_column(cursor, "screener_signals", "c_down", "INTEGER")
-    _migrate_add_column(cursor, "screener_signals", "max_cts", "INTEGER")
-    _migrate_add_column(cursor, "screener_signals", "min_cts", "INTEGER")
-    _migrate_add_column(cursor, "screener_signals", "entry_tag", "TEXT")
-    _migrate_add_column(cursor, "screener_signals", "gate_setup", "TEXT DEFAULT 'None'")
-    _migrate_add_column(cursor, "screener_signals", "gate_signal", "INTEGER DEFAULT 0")
-    _migrate_add_column(cursor, "screener_signals", "s_total", "REAL DEFAULT 0.0")
 
-    # Table: gate_guard_signals
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS gate_guard_signals (
-        symbol TEXT PRIMARY KEY,
-        date TEXT NOT NULL,
-        price REAL NOT NULL,
-        gate_score REAL NOT NULL,
-        setup_tag TEXT NOT NULL,
-        verdict TEXT NOT NULL,
-        catalyst_type TEXT NOT NULL,
-        fundamental_grade TEXT NOT NULL,
-        governance_risk TEXT NOT NULL,
-        qualitative_score REAL NOT NULL,
-        red_flags TEXT,
-        ratios_json TEXT,
-        citations TEXT,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    );
-    """)
 
     # Trading indices
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_trading_positions_status ON trading_positions (status);")

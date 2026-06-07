@@ -36,19 +36,6 @@ def get_screener_signals():
     conn.close()
     return [dict(r) for r in rows]
 
-@router.get("/de/api/screener/gate-guard")
-def get_gate_guard_signals():
-    """Retrieve the latest qualitative Gate & Guard audits from the last sync."""
-    conn = sqlite3.connect(str(DB_PATH))
-    conn.row_factory = sqlite3.Row
-    try:
-        rows = conn.execute("SELECT * FROM gate_guard_signals ORDER BY qualitative_score DESC").fetchall()
-        return [dict(r) for r in rows]
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database query failed: {e}")
-    finally:
-        conn.close()
-
 
 # ── Models ───────────────────────────────────────────────────────────────────
 

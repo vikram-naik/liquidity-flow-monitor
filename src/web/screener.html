@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>NIFTY 500 Screener | Liquidity Flow Monitor</title>
+  <title>NSE F&O Screener | Liquidity Flow Monitor</title>
   <link rel="icon" href="data:,">
   <link rel="stylesheet" href="/de/static/css/trades.css">
   <script src="https://cdn.jsdelivr.net/npm/ag-grid-community@31.0.3/dist/ag-grid-community.min.js"></script>
@@ -138,8 +138,8 @@
 <body>
   <div class="hdr">
     <div>
-      <h1>NIFTY 500 Market Screener</h1>
-      <span class="sub">Daily execution of DivergenceEngine across all NIFTY 500 symbols</span>
+      <h1>NSE F&O Market Screener</h1>
+      <span class="sub">Daily execution of DivergenceEngine across all NSE F&O symbols</span>
     </div>
     <div style="display:flex;gap:12px;align-items:center">
       <a href="/de/dashboard" class="back-link">Divergence Engine</a>
@@ -147,12 +147,7 @@
     </div>
   </div>
 
-  <div class="tabs-nav" style="display:flex; gap:16px; margin: 10px 20px 0 20px; border-bottom:1px solid #30363d; padding-bottom:8px">
-    <button id="btn-tab-tech" class="tab-btn active" onclick="window.switchTab('tech')">Technical Screener</button>
-    <button id="btn-tab-guard" class="tab-btn" onclick="window.switchTab('guard')">Gate & Guard Forensic Audits</button>
-  </div>
-
-  <div class="tab-content active" style="padding: 20px; display: flex; flex-direction: column; height: calc(100vh - 101px);">
+  <div style="padding: 20px; display: flex; flex-direction: column; height: calc(100vh - 75px);">
     <div class="cards" id="screener-summary" style="margin-bottom: 20px; flex-shrink: 0;">
       <!-- Populated via JS -->
     </div>

@@ -27,10 +27,13 @@ from src.trading.signals.savgol_cts.symbol_configs import (
 from scripts.walk_forward import simulate_trades, get_watchlist_symbols
 from scripts.train_symbol_weights_parallel import optimize_single_symbol
 
+SL_HIT_PENALTY = -250.0
+
+
 # Helper function to compute score
 def calculate_bwo_score(trades_count, avg_pnl, sl_hits):
     sl_ratio = sl_hits / trades_count if trades_count > 0 else 0.0
-    return -1000.0 * sl_ratio + 10.0 * min(trades_count, 15) + avg_pnl
+    return SL_HIT_PENALTY * sl_ratio + 10.0 * min(trades_count, 15) + avg_pnl
 
 def backtest_config(sym, ledger, entry_cfg, exit_cfg, signal):
     trades = simulate_trades(sym, ledger, entry_cfg, exit_cfg, signal)
@@ -67,29 +70,44 @@ def serialize_and_save_config(sym, details, output_dir):
             "enabled": True,
             "score_threshold": float(details["score_threshold"]),
             "feature_bins": {},
-            "feature_weights": {}
+            "feature_weights": {},
+            "accumulation": {
+                "score_threshold": float(details["accumulation"]["score_threshold"]),
+                "feature_bins": {},
+                "feature_weights": {}
+            },
+            "momentum": {
+                "score_threshold": float(details["momentum"]["score_threshold"]),
+                "feature_bins": {},
+                "feature_weights": {}
+            }
         }
     }
     
-    # Serialize feature bins (convert inf to strings for valid JSON)
-    for feat, bins in details["feature_bins"].items():
-        bins_list = []
-        for b in bins:
-            if math.isinf(b):
-                bins_list.append("-inf" if b < 0 else "inf")
-            else:
-                bins_list.append(float(b))
-        config_dict["custom_bayesian"]["feature_bins"][feat] = bins_list
-        
-    # Serialize feature weights (convert inf to strings for valid JSON)
-    for feat, weights in details["feature_weights"].items():
-        weights_list = []
-        for left, right, w in weights:
-            l_val = "-inf" if math.isinf(left) and left < 0 else float(left)
-            r_val = "inf" if math.isinf(right) and right > 0 else float(right)
-            weights_list.append([l_val, r_val, float(w)])
-        config_dict["custom_bayesian"]["feature_weights"][feat] = weights_list
-        
+    def serialize_sub_model(src_dict, dest_dict):
+        # Serialize feature bins (convert inf to strings for valid JSON)
+        for feat, bins in src_dict["feature_bins"].items():
+            bins_list = []
+            for b in bins:
+                if math.isinf(b):
+                    bins_list.append("-inf" if b < 0 else "inf")
+                else:
+                    bins_list.append(float(b))
+            dest_dict["feature_bins"][feat] = bins_list
+            
+        # Serialize feature weights (convert inf to strings for valid JSON)
+        for feat, weights in src_dict["feature_weights"].items():
+            weights_list = []
+            for left, right, w in weights:
+                l_val = "-inf" if math.isinf(left) and left < 0 else float(left)
+                r_val = "inf" if math.isinf(right) and right > 0 else float(right)
+                weights_list.append([l_val, r_val, float(w)])
+            dest_dict["feature_weights"][feat] = weights_list
+
+    serialize_sub_model(details, config_dict["custom_bayesian"])
+    serialize_sub_model(details["accumulation"], config_dict["custom_bayesian"]["accumulation"])
+    serialize_sub_model(details["momentum"], config_dict["custom_bayesian"]["momentum"])
+    
     # Write to JSON file
     out_path = Path(output_dir) / f"{sym}.json"
     os.makedirs(output_dir, exist_ok=True)

@@ -76,27 +76,35 @@ def load_bw_override(symbol: str) -> dict | None:
         # Parse infinities in custom_bayesian feature bins and weights
         if "custom_bayesian" in data:
             cb = data["custom_bayesian"]
-            if "feature_bins" in cb:
-                parsed_bins = {}
-                for feat, bins in cb["feature_bins"].items():
-                    parsed_bins[feat] = [
-                        float("-inf") if b == "-inf" else (float("inf") if b == "inf" else float(b))
-                        for b in bins
-                    ]
-                cb["feature_bins"] = parsed_bins
-                
-            if "feature_weights" in cb:
-                parsed_weights = {}
-                for feat, weights in cb["feature_weights"].items():
-                    parsed_weights[feat] = [
-                        (
-                            float("-inf") if left == "-inf" else (float("inf") if left == "inf" else float(left)),
-                            float("-inf") if right == "-inf" else (float("inf") if right == "inf" else float(right)),
-                            float(w)
-                        )
-                        for left, right, w in weights
-                    ]
-                cb["feature_weights"] = parsed_weights
+            
+            def parse_bins_weights(model_dict):
+                if "feature_bins" in model_dict:
+                    parsed_bins = {}
+                    for feat, bins in model_dict["feature_bins"].items():
+                        parsed_bins[feat] = [
+                            float("-inf") if b == "-inf" else (float("inf") if b == "inf" else float(b))
+                            for b in bins
+                        ]
+                    model_dict["feature_bins"] = parsed_bins
+                    
+                if "feature_weights" in model_dict:
+                    parsed_weights = {}
+                    for feat, weights in model_dict["feature_weights"].items():
+                        parsed_weights[feat] = [
+                            (
+                                float("-inf") if left == "-inf" else (float("inf") if left == "inf" else float(left)),
+                                float("-inf") if right == "-inf" else (float("inf") if right == "inf" else float(right)),
+                                float(w)
+                            )
+                            for left, right, w in weights
+                        ]
+                    model_dict["feature_weights"] = parsed_weights
+
+            parse_bins_weights(cb)
+            if "accumulation" in cb:
+                parse_bins_weights(cb["accumulation"])
+            if "momentum" in cb:
+                parse_bins_weights(cb["momentum"])
                 
         _BW_OVERRIDE_CACHE[symbol] = (mtime, data)
         return data
@@ -137,6 +145,19 @@ def get_symbol_entry_config(symbol: str, default_cfg: SavgolCTSEntryConfig | Non
                     sub.feature_bins = path_overrides['feature_bins']
                 if 'feature_weights' in path_overrides and hasattr(sub, 'feature_weights'):
                     sub.feature_weights = path_overrides['feature_weights']
+                
+                # Check for regime sub-models
+                if path == "custom_bayesian":
+                    if "accumulation" in path_overrides:
+                        accum_overrides = path_overrides["accumulation"]
+                        sub.accumulation.score_threshold = accum_overrides.get("score_threshold", 0.0)
+                        sub.accumulation.feature_bins = accum_overrides.get("feature_bins", {})
+                        sub.accumulation.feature_weights = accum_overrides.get("feature_weights", {})
+                    if "momentum" in path_overrides:
+                        mom_overrides = path_overrides["momentum"]
+                        sub.momentum.score_threshold = mom_overrides.get("score_threshold", 0.0)
+                        sub.momentum.feature_bins = mom_overrides.get("feature_bins", {})
+                        sub.momentum.feature_weights = mom_overrides.get("feature_weights", {})
                     
     return cfg
 

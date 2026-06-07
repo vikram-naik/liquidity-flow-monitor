@@ -39,32 +39,29 @@ if [[ $QUIET -eq 0 ]]; then
     echo "========================================"
 fi
 
-if [[ $QUIET -eq 0 ]]; then echo "[1/9] Downloading Corporate Actions from NSE..."; fi
+if [[ $QUIET -eq 0 ]]; then echo "[1/8] Downloading Corporate Actions from NSE..."; fi
 python scripts/sync_nse_ca.py --all --yes $QUIET_FLAG
 
-if [[ $QUIET -eq 0 ]]; then echo "[2/9] Flushing Redis Cache..."; fi
+if [[ $QUIET -eq 0 ]]; then echo "[2/8] Flushing Redis Cache..."; fi
 python scripts/flush_cache.py --all $QUIET_FLAG
 
-if [[ $QUIET -eq 0 ]]; then echo "[3/9] Syncing NSE Equities Delivery Data..."; fi
+if [[ $QUIET -eq 0 ]]; then echo "[3/8] Syncing NSE Equities Delivery Data..."; fi
 python src/agents/nse_agent.py --sync $QUIET_FLAG
 
-if [[ $QUIET -eq 0 ]]; then echo "[4/9] Syncing NSE Indices Data..."; fi
+if [[ $QUIET -eq 0 ]]; then echo "[4/8] Syncing NSE Indices Data..."; fi
 python src/agents/nse_indices_agent.py --sync $QUIET_FLAG
 
-if [[ $QUIET -eq 0 ]]; then echo "[5/9] Syncing Index Watchlists..."; fi
+if [[ $QUIET -eq 0 ]]; then echo "[5/8] Syncing Index Watchlists..."; fi
 python scripts/sync_index_watchlists.py $QUIET_FLAG
 
-if [[ $QUIET -eq 0 ]]; then echo "[6/9] Validating Data Integrity & Reconciliation..."; fi
-python scripts/validate_data_integrity.py --watchlist "NIFTY 50" --auto-fix --auto-patch $QUIET_FLAG
+if [[ $QUIET -eq 0 ]]; then echo "[6/8] Validating Data Integrity & Reconciliation..."; fi
+python scripts/validate_data_integrity.py --auto-fix --auto-patch $QUIET_FLAG
 
-if [[ $QUIET -eq 0 ]]; then echo "[7/9] Warming Engine Cache (NIFTY 500)..."; fi
+if [[ $QUIET -eq 0 ]]; then echo "[7/8] Warming Engine Cache (NIFTY 500)..."; fi
 python scripts/warm_cache.py --watchlist "NIFTY 50" $QUIET_FLAG
 
-if [[ $QUIET -eq 0 ]]; then echo "[8/9] Running Global Market Screener..."; fi
+if [[ $QUIET -eq 0 ]]; then echo "[8/8] Running Global Market Screener..."; fi
 python scripts/daily_screener.py $QUIET_FLAG
-
-if [[ $QUIET -eq 0 ]]; then echo "[9/9] Running Qualitative LLM Guard Audit..."; fi
-python src/agents/guard_orchestrator.py
 
 if [[ $QUIET -eq 0 ]]; then
     echo "========================================"

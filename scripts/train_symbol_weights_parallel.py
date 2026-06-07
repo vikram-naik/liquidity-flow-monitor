@@ -18,7 +18,7 @@ from src.trading.signals import SignalFactory, Trade
 from src.trading.signals.savgol_cts import SavgolCTSEntryConfig, SavgolCTSExitConfig
 from scripts.walk_forward import simulate_trades, get_watchlist_symbols
 
-# List of 13 features for Bayesian model
+# List of 17 features for Bayesian model
 FEATURES = [
     "cwc",
     "psz_v",
@@ -32,8 +32,14 @@ FEATURES = [
     "dv_shock",
     "esr",
     "base_tightness",
-    "cts"
+    "cts",
+    "cwc_slope",
+    "price_slope_z",
+    "rdv_slope_z",
+    "psz_decel_3b",
 ]
+
+SL_HIT_PENALTY = -250.0
 
 def simulate_single_trade(sym, ledger, start_idx, signal, exit_cfg):
     records = ledger.to_dict("records")
@@ -219,6 +225,10 @@ def train_bayesian_model(ledger, candidates, labels, num_bins=3):
     n_success = int((y_train == 1).sum())
     n_failure = int((y_train == 0).sum())
     
+    # Avoid division by zero
+    n_success = max(1, n_success)
+    n_failure = max(1, n_failure)
+    
     for feat in FEATURES:
         feat_vals = []
         for idx in train_idx:
@@ -259,7 +269,7 @@ def train_bayesian_model(ledger, candidates, labels, num_bins=3):
         
     return feature_bins, feature_weights
 
-def evaluate_config(sym, ledger, feature_bins, feature_weights, signal, exit_cfg):
+def evaluate_config_partitioned(sym, ledger, fb_accum, fw_accum, fb_mom, fw_mom, fb_uni, fw_uni, signal, exit_cfg):
     custom_bayesian_cfg = SavgolCTSEntryConfig()
     custom_bayesian_cfg.cooldown_enabled = False
     custom_bayesian_cfg.cdvl_cts.enabled = False
@@ -272,73 +282,146 @@ def evaluate_config(sym, ledger, feature_bins, feature_weights, signal, exit_cfg
     custom_bayesian_cfg.oversold_decel.enabled = False
     
     custom_bayesian_cfg.custom_bayesian.enabled = True
-    custom_bayesian_cfg.custom_bayesian.feature_bins = feature_bins
-    custom_bayesian_cfg.custom_bayesian.feature_weights = feature_weights
-
-    # Sweep score threshold: -4.0 to +8.0 in steps of 0.1
+    
+    # 1. Setup sub-models
+    custom_bayesian_cfg.custom_bayesian.accumulation.feature_bins = fb_accum
+    custom_bayesian_cfg.custom_bayesian.accumulation.feature_weights = fw_accum
+    custom_bayesian_cfg.custom_bayesian.momentum.feature_bins = fb_mom
+    custom_bayesian_cfg.custom_bayesian.momentum.feature_weights = fw_mom
+    
+    # 2. Setup fallback unified model parameters for top level
+    custom_bayesian_cfg.custom_bayesian.feature_bins = fb_uni
+    custom_bayesian_cfg.custom_bayesian.feature_weights = fw_uni
+    
     thresholds = np.arange(-4.0, 8.01, 0.1)
-    best_threshold = 0.0
-    best_trades_count = 0
-    best_avg_pnl = -99.0
-    best_score = -99999.0
-    sl_hits_best = 0
+    target_pnl = 0.0 if sym in ["ETERNAL", "INFY", "JIOFIN"] else 5.0
     
-    passing_thresholds = []
+    # A. Optimize Accumulation Model Threshold (Disable momentum signals via high threshold)
+    best_th_accum = 0.0
+    passing_accum = []
+    fallback_accum = []
     
+    custom_bayesian_cfg.custom_bayesian.momentum.score_threshold = 99.9
     for th in thresholds:
         test_cfg = copy.deepcopy(custom_bayesian_cfg)
-        test_cfg.custom_bayesian.score_threshold = float(th)
+        test_cfg.custom_bayesian.accumulation.score_threshold = float(th)
         
         trades = simulate_trades(sym, ledger, test_cfg, exit_cfg, signal)
         trades_2019 = [t for t in trades if t.entry_date >= "2019-01-01"]
         
-        if sorted(sym in ["ETERNAL", "INFY", "JIOFIN"] for sym in [sym])[0]:
-            target_pnl = 0.0  # Known edge case exceptions allow > 0%
-        else:
-            target_pnl = 5.0
-            
         if trades_2019:
             pnls = [t.pnl_pct for t in trades_2019]
             avg_pnl = np.mean(pnls)
             sl_hits = sum(1 for t in trades_2019 if t.mae_pct >= 8.0)
             sl_ratio = sl_hits / len(trades_2019)
             
+            # Optimized score function: SL_HIT_PENALTY SL ratio penalty instead of -1000.0
+            score = SL_HIT_PENALTY * sl_ratio + 10.0 * min(len(trades_2019), 15) + avg_pnl
+            
             if avg_pnl > target_pnl:
-                score = -1000.0 * sl_ratio + 10.0 * min(len(trades_2019), 15) + avg_pnl
-                passing_thresholds.append({
-                    "threshold": th,
-                    "trades": len(trades_2019),
-                    "avg_pnl": avg_pnl,
-                    "sl_hits": sl_hits,
-                    "score": score
-                })
-                
-    if passing_thresholds:
-        passing_thresholds.sort(key=lambda x: x["score"], reverse=True)
-        best = passing_thresholds[0]
-        return True, best["threshold"], best["trades"], best["avg_pnl"], best["sl_hits"]
+                passing_accum.append({"threshold": th, "score": score, "trades": len(trades_2019), "avg_pnl": avg_pnl, "sl_hits": sl_hits})
+            fallback_accum.append({"threshold": th, "avg_pnl": avg_pnl, "trades": len(trades_2019), "sl_hits": sl_hits})
+            
+    if passing_accum:
+        passing_accum.sort(key=lambda x: x["score"], reverse=True)
+        best_th_accum = passing_accum[0]["threshold"]
+    elif fallback_accum:
+        fallback_accum.sort(key=lambda x: x["avg_pnl"], reverse=True)
+        best_th_accum = fallback_accum[0]["threshold"]
         
-    # Fallback to maximizing average P&L
-    fallback_runs = []
+    # B. Optimize Momentum Model Threshold (Disable accumulation signals via high threshold)
+    best_th_mom = 0.0
+    passing_mom = []
+    fallback_mom = []
+    
+    custom_bayesian_cfg_mom = copy.deepcopy(custom_bayesian_cfg)
+    custom_bayesian_cfg_mom.custom_bayesian.accumulation.score_threshold = 99.9
     for th in thresholds:
-        test_cfg = copy.deepcopy(custom_bayesian_cfg)
-        test_cfg.custom_bayesian.score_threshold = float(th)
+        test_cfg = copy.deepcopy(custom_bayesian_cfg_mom)
+        test_cfg.custom_bayesian.momentum.score_threshold = float(th)
+        
         trades = simulate_trades(sym, ledger, test_cfg, exit_cfg, signal)
         trades_2019 = [t for t in trades if t.entry_date >= "2019-01-01"]
+        
         if trades_2019:
             pnls = [t.pnl_pct for t in trades_2019]
-            fallback_runs.append({
-                "threshold": th,
-                "trades": len(trades_2019),
-                "avg_pnl": np.mean(pnls),
-                "sl_hits": sum(1 for t in trades_2019 if t.mae_pct >= 8.0)
-            })
-    if fallback_runs:
-        fallback_runs.sort(key=lambda x: x["avg_pnl"], reverse=True)
-        best = fallback_runs[0]
-        return False, best["threshold"], best["trades"], best["avg_pnl"], best["sl_hits"]
+            avg_pnl = np.mean(pnls)
+            sl_hits = sum(1 for t in trades_2019 if t.mae_pct >= 8.0)
+            sl_ratio = sl_hits / len(trades_2019)
+            
+            score = SL_HIT_PENALTY * sl_ratio + 10.0 * min(len(trades_2019), 15) + avg_pnl
+            
+            if avg_pnl > target_pnl:
+                passing_mom.append({"threshold": th, "score": score, "trades": len(trades_2019), "avg_pnl": avg_pnl, "sl_hits": sl_hits})
+            fallback_mom.append({"threshold": th, "avg_pnl": avg_pnl, "trades": len(trades_2019), "sl_hits": sl_hits})
+            
+    if passing_mom:
+        passing_mom.sort(key=lambda x: x["score"], reverse=True)
+        best_th_mom = passing_mom[0]["threshold"]
+    elif fallback_mom:
+        fallback_mom.sort(key=lambda x: x["avg_pnl"], reverse=True)
+        best_th_mom = fallback_mom[0]["threshold"]
+
+    # C. Optimize fallback Unified Model Threshold
+    best_th_uni = 0.0
+    passing_uni = []
+    fallback_uni = []
+    
+    custom_bayesian_cfg_uni = copy.deepcopy(custom_bayesian_cfg)
+    custom_bayesian_cfg_uni.custom_bayesian.accumulation.feature_weights = {}
+    custom_bayesian_cfg_uni.custom_bayesian.momentum.feature_weights = {}
+    
+    for th in thresholds:
+        test_cfg = copy.deepcopy(custom_bayesian_cfg_uni)
+        test_cfg.custom_bayesian.score_threshold = float(th)
+        
+        trades = simulate_trades(sym, ledger, test_cfg, exit_cfg, signal)
+        trades_2019 = [t for t in trades if t.entry_date >= "2019-01-01"]
+        
+        if trades_2019:
+            pnls = [t.pnl_pct for t in trades_2019]
+            avg_pnl = np.mean(pnls)
+            sl_hits = sum(1 for t in trades_2019 if t.mae_pct >= 8.0)
+            sl_ratio = sl_hits / len(trades_2019)
+            
+            score = SL_HIT_PENALTY * sl_ratio + 10.0 * min(len(trades_2019), 15) + avg_pnl
+            
+            if avg_pnl > target_pnl:
+                passing_uni.append({"threshold": th, "score": score, "trades": len(trades_2019), "avg_pnl": avg_pnl, "sl_hits": sl_hits})
+            fallback_uni.append({"threshold": th, "avg_pnl": avg_pnl, "trades": len(trades_2019), "sl_hits": sl_hits})
+            
+    if passing_uni:
+        passing_uni.sort(key=lambda x: x["score"], reverse=True)
+        best_th_uni = passing_uni[0]["threshold"]
+    elif fallback_uni:
+        fallback_uni.sort(key=lambda x: x["avg_pnl"], reverse=True)
+        best_th_uni = fallback_uni[0]["threshold"]
+
+    # D. Joint Backtest using both Accumulation and Momentum optimized thresholds
+    final_cfg = copy.deepcopy(custom_bayesian_cfg)
+    final_cfg.custom_bayesian.accumulation.score_threshold = float(best_th_accum)
+    final_cfg.custom_bayesian.momentum.score_threshold = float(best_th_mom)
+    final_cfg.custom_bayesian.score_threshold = float(best_th_uni)
+    
+    trades = simulate_trades(sym, ledger, final_cfg, exit_cfg, signal)
+    trades_2019 = [t for t in trades if t.entry_date >= "2019-01-01"]
+    
+    total_trades = len(trades_2019)
+    if total_trades > 0:
+        pnls = [t.pnl_pct for t in trades_2019]
+        avg_pnl = np.mean(pnls)
+        sl_hits = sum(1 for t in trades_2019 if t.mae_pct >= 8.0)
+        sl_ratio = sl_hits / total_trades
     else:
-        return False, 0.0, 0, 0.0, 0
+        avg_pnl = 0.0
+        sl_hits = 0
+        sl_ratio = 0.0
+        
+    passed = False
+    if total_trades >= 3 and avg_pnl >= target_pnl and sl_ratio <= 0.25:
+        passed = True
+        
+    return passed, best_th_accum, best_th_mom, best_th_uni, total_trades, avg_pnl, sl_hits
 
 def optimize_single_symbol(sym):
     try:
@@ -351,28 +434,56 @@ def optimize_single_symbol(sym):
     signal = SignalFactory.get_signal("savgol_cts")
     exit_cfg = SavgolCTSExitConfig()
 
-    # Step 1: Try default parameters (bins=3, success_mult=1.2, dd_limit=volatility-adjusted)
-    candidates, labels = label_candidate_bars_sim(sym, ledger, signal, exit_cfg)
-    feature_bins, feature_weights = train_bayesian_model(ledger, candidates, labels, num_bins=3)
+    records = ledger.to_dict("records")
     
-    passed, threshold, trades, avg_pnl, sl_hits = evaluate_config(
-        sym, ledger, feature_bins, feature_weights, signal, exit_cfg
+    # Helper to partition candidates by market regime
+    def get_regime_subsets(cand_idxs):
+        accum_idxs = []
+        mom_idxs = []
+        for idx in cand_idxs:
+            regime = records[idx].get("regime", "notrend")
+            if regime in ["downtrend", "notrend"]:
+                accum_idxs.append(idx)
+            else:
+                mom_idxs.append(idx)
+        return accum_idxs, mom_idxs
+
+    # Step 1: Default Parameters (num_bins=3)
+    candidates, labels = label_candidate_bars_sim(sym, ledger, signal, exit_cfg)
+    accum_candidates, mom_candidates = get_regime_subsets(candidates)
+    
+    # Train sub-models
+    fb_uni, fw_uni = train_bayesian_model(ledger, candidates, labels, num_bins=3)
+    fb_accum, fw_accum = train_bayesian_model(ledger, accum_candidates, labels, num_bins=3)
+    fb_mom, fw_mom = train_bayesian_model(ledger, mom_candidates, labels, num_bins=3)
+    
+    passed, th_accum, th_mom, th_uni, trades, avg_pnl, sl_hits = evaluate_config_partitioned(
+        sym, ledger, fb_accum, fw_accum, fb_mom, fw_mom, fb_uni, fw_uni, signal, exit_cfg
     )
     
-    # If passed, return immediately
     if passed:
         return {
             "symbol": sym,
             "success": True,
-            "score_threshold": float(threshold),
-            "feature_bins": feature_bins,
-            "feature_weights": feature_weights,
+            "score_threshold": float(th_uni),
+            "feature_bins": fb_uni,
+            "feature_weights": fw_uni,
+            "accumulation": {
+                "score_threshold": float(th_accum),
+                "feature_bins": fb_accum,
+                "feature_weights": fw_accum
+            },
+            "momentum": {
+                "score_threshold": float(th_mom),
+                "feature_bins": fb_mom,
+                "feature_weights": fw_mom
+            },
             "trades": trades,
             "avg_pnl": avg_pnl,
             "sl_hits": sl_hits,
             "hyper_params": "default (3 bins, 1.2x success)"
         }
-        
+
     # Step 2: Adaptive hyperparameter sweep
     num_bins_choices = [3, 4]
     success_mult_choices = [1.2, 1.5, 1.8]
@@ -386,49 +497,76 @@ def optimize_single_symbol(sym):
             for dd in dd_limit_choices:
                 cand, lab = label_candidate_bars_sim(sym, ledger, signal, exit_cfg, success_mult, dd)
                 
-                # Check for degenerate labels
+                # Check for degenerate labels in either subset
                 n_succ = sum(1 for v in lab.values() if v == 1)
                 n_fail = sum(1 for v in lab.values() if v == 0)
                 if n_succ == 0 or n_fail == 0:
                     continue
                     
-                fb, fw = train_bayesian_model(ledger, cand, lab, num_bins=bins)
-                ok, th, tr, pnl, sl = evaluate_config(sym, ledger, fb, fw, signal, exit_cfg)
+                ac_cand, mo_cand = get_regime_subsets(cand)
+                
+                fb_u, fw_u = train_bayesian_model(ledger, cand, lab, num_bins=bins)
+                fb_a, fw_a = train_bayesian_model(ledger, ac_cand, lab, num_bins=bins)
+                fb_m, fw_m = train_bayesian_model(ledger, mo_cand, lab, num_bins=bins)
+                
+                ok, t_ac, t_mo, t_u, tr, pnl, sl = evaluate_config_partitioned(
+                    sym, ledger, fb_a, fw_a, fb_m, fw_m, fb_u, fw_u, signal, exit_cfg
+                )
                 
                 if ok and pnl > best_avg_pnl:
                     best_avg_pnl = pnl
                     best_config = {
-                        "threshold": th,
-                        "bins": bins,
-                        "feature_bins": fb,
-                        "feature_weights": fw,
+                        "th_uni": t_u,
+                        "accumulation": {
+                            "score_threshold": t_ac,
+                            "feature_bins": fb_a,
+                            "feature_weights": fw_a
+                        },
+                        "momentum": {
+                            "score_threshold": t_mo,
+                            "feature_bins": fb_m,
+                            "feature_weights": fw_m
+                        },
+                        "feature_bins": fb_u,
+                        "feature_weights": fw_u,
                         "trades": tr,
                         "avg_pnl": pnl,
                         "sl_hits": sl,
                         "hyper_params": f"adaptive ({bins} bins, {success_mult}x success, {dd}% dd limit)"
                     }
                     
-    # If adaptive sweep found a passing config, return it
     if best_config:
         return {
             "symbol": sym,
             "success": True,
-            "score_threshold": float(best_config["threshold"]),
+            "score_threshold": float(best_config["th_uni"]),
             "feature_bins": best_config["feature_bins"],
             "feature_weights": best_config["feature_weights"],
+            "accumulation": best_config["accumulation"],
+            "momentum": best_config["momentum"],
             "trades": best_config["trades"],
             "avg_pnl": best_config["avg_pnl"],
             "sl_hits": best_config["sl_hits"],
             "hyper_params": best_config["hyper_params"]
         }
         
-    # Step 3: Extreme fallback (return the default config with best fallback threshold)
+    # Step 3: Extreme fallback
     return {
         "symbol": sym,
         "success": True,
-        "score_threshold": float(threshold),
-        "feature_bins": feature_bins,
-        "feature_weights": feature_weights,
+        "score_threshold": float(th_uni),
+        "feature_bins": fb_uni,
+        "feature_weights": fw_uni,
+        "accumulation": {
+            "score_threshold": float(th_accum),
+            "feature_bins": fb_accum,
+            "feature_weights": fw_accum
+        },
+        "momentum": {
+            "score_threshold": float(th_mom),
+            "feature_bins": fb_mom,
+            "feature_weights": fw_mom
+        },
         "trades": trades,
         "avg_pnl": avg_pnl,
         "sl_hits": sl_hits,
@@ -462,7 +600,7 @@ def main():
                 res = fut.result()
                 if res["success"]:
                     optimal_overrides[sym] = res
-                    print(f"[{idx+1}/{len(symbols)}] Optimized {sym:<15} | Setup: {res['hyper_params']:<45} | Th: {res['score_threshold']:.2f} | Trades: {res['trades']:<3} | Avg P&L: {res['avg_pnl']:.2f}% | SL Hits: {res['sl_hits']}")
+                    print(f"[{idx+1}/{len(symbols)}] Optimized {sym:<15} | Setup: {res['hyper_params']:<45} | Th: {res['score_threshold']:.2f} | Trades: {res['trades']:<3} | Avg P&L: {res['avg_pnl']:.2f}% | Final SL Hits: {res['sl_hits']}")
                 else:
                     print(f"[{idx+1}/{len(symbols)}] Failed {sym}: {res['error']}")
             except Exception as e:
@@ -484,29 +622,44 @@ def main():
                 "enabled": True,
                 "score_threshold": float(details["score_threshold"]),
                 "feature_bins": {},
-                "feature_weights": {}
+                "feature_weights": {},
+                "accumulation": {
+                    "score_threshold": float(details["accumulation"]["score_threshold"]),
+                    "feature_bins": {},
+                    "feature_weights": {}
+                },
+                "momentum": {
+                    "score_threshold": float(details["momentum"]["score_threshold"]),
+                    "feature_bins": {},
+                    "feature_weights": {}
+                }
             }
         }
         
-        # Serialize feature bins (convert inf to strings for valid JSON)
-        for feat, bins in details["feature_bins"].items():
-            bins_list = []
-            for b in bins:
-                if math.isinf(b):
-                    bins_list.append("-inf" if b < 0 else "inf")
-                else:
-                    bins_list.append(float(b))
-            config_dict["custom_bayesian"]["feature_bins"][feat] = bins_list
-            
-        # Serialize feature weights (convert inf to strings for valid JSON)
-        for feat, weights in details["feature_weights"].items():
-            weights_list = []
-            for left, right, w in weights:
-                l_val = "-inf" if math.isinf(left) and left < 0 else float(left)
-                r_val = "inf" if math.isinf(right) and right > 0 else float(right)
-                weights_list.append([l_val, r_val, float(w)])
-            config_dict["custom_bayesian"]["feature_weights"][feat] = weights_list
-            
+        def serialize_sub_model(src_dict, dest_dict):
+            # Serialize feature bins (convert inf to strings for valid JSON)
+            for feat, bins in src_dict["feature_bins"].items():
+                bins_list = []
+                for b in bins:
+                    if math.isinf(b):
+                        bins_list.append("-inf" if b < 0 else "inf")
+                    else:
+                        bins_list.append(float(b))
+                dest_dict["feature_bins"][feat] = bins_list
+                
+            # Serialize feature weights (convert inf to strings for valid JSON)
+            for feat, weights in src_dict["feature_weights"].items():
+                weights_list = []
+                for left, right, w in weights:
+                    l_val = "-inf" if math.isinf(left) and left < 0 else float(left)
+                    r_val = "inf" if math.isinf(right) and right > 0 else float(right)
+                    weights_list.append([l_val, r_val, float(w)])
+                dest_dict["feature_weights"][feat] = weights_list
+
+        serialize_sub_model(details, config_dict["custom_bayesian"])
+        serialize_sub_model(details["accumulation"], config_dict["custom_bayesian"]["accumulation"])
+        serialize_sub_model(details["momentum"], config_dict["custom_bayesian"]["momentum"])
+        
         # Write to JSON file
         out_path = Path(BW_CONFIGS_DIR) / f"{sym}.json"
         with open(out_path, "w") as f:

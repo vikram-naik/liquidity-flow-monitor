@@ -104,13 +104,39 @@ def entry_custom_bayesian(row, prev_row, cfg, records, idx):
         "esr": row.get("esr", 0.0),
         "base_tightness": row.get("base_tightness", 1.0),
         "cts": row.get("cts", 0.0),
+        "cwc_slope": row.get("cwc_slope", 0.0),
+        "price_slope_z": row.get("price_slope_z", 0.0),
+        "rdv_slope_z": row.get("rdv_slope_z", 0.0),
+        "psz_decel_3b": row.get("psz_decel_3b", 0.0),
     }
 
-    # 3. Sum binned feature weights
-    bayesian_score = 0.0
+    # 3. Regime sub-model routing
+    regime = row.get("regime", "notrend")
     cb_cfg = cfg.custom_bayesian
-    feature_weights = getattr(cb_cfg, "feature_weights", {})
+    
+    # Check if sub-models are defined and have weights trained
+    has_accum = hasattr(cb_cfg, "accumulation") and getattr(cb_cfg.accumulation, "feature_weights", None)
+    has_mom = hasattr(cb_cfg, "momentum") and getattr(cb_cfg.momentum, "feature_weights", None)
+    
+    if has_accum and has_mom:
+        if regime in ["downtrend", "notrend"]:
+            active_sub_cfg = cb_cfg.accumulation
+            sub_name = "accumulation"
+        else:
+            active_sub_cfg = cb_cfg.momentum
+            sub_name = "momentum"
+    else:
+        active_sub_cfg = None
+        sub_name = "unified"
 
+    if active_sub_cfg is not None:
+        score_threshold = active_sub_cfg.score_threshold
+        feature_weights = active_sub_cfg.feature_weights
+    else:
+        score_threshold = cb_cfg.score_threshold
+        feature_weights = getattr(cb_cfg, "feature_weights", {})
+
+    bayesian_score = 0.0
     for feat, val in feat_vals.items():
         if val is None or (isinstance(val, float) and math.isnan(val)):
             val = 0.0
@@ -120,11 +146,12 @@ def entry_custom_bayesian(row, prev_row, cfg, records, idx):
                 bayesian_score += w
                 break
 
-    if bayesian_score < cb_cfg.score_threshold:
+    if bayesian_score < score_threshold:
         return False, 0, {
-            "reason": f"Custom Bayesian rejected: score ({bayesian_score:.4f}) < {cb_cfg.score_threshold:.4f}",
+            "reason": f"Custom Bayesian rejected: score ({bayesian_score:.4f}) < {score_threshold:.4f} (model={sub_name})",
             "bayesian_score": bayesian_score,
-            "score_threshold": cb_cfg.score_threshold,
+            "score_threshold": score_threshold,
+            "regime": regime,
         }
 
     # Convert log-odds score to probability-like 0-100 metric
@@ -135,12 +162,13 @@ def entry_custom_bayesian(row, prev_row, cfg, records, idx):
     score = int(prob * 100)
 
     details = {
-        "reason": f"Custom Bayesian accepted (score={bayesian_score:.4f})",
+        "reason": f"Custom Bayesian accepted (score={bayesian_score:.4f}, model={sub_name})",
         "entry_tag": EntryTag.CUSTOM_BAYESIAN.value,
         "score": score,
         "conv_score": score,
         "bayesian_score": bayesian_score,
-        "score_threshold": cb_cfg.score_threshold,
+        "score_threshold": score_threshold,
+        "regime": regime,
     }
 
     return True, score, details

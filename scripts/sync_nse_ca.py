@@ -189,8 +189,51 @@ def get_nse_data(symbol, overrides=None):
         print(f"Exception during NSE fetch: {e}")
         return []
 
-def sync_symbol(symbol, ca_overrides=None):
+def check_cooldown(symbol, cooldown_days=7):
+    """Check if the symbol was synced within the cooldown period. Returns True if in cooldown."""
+    conn = get_db_connection()
+    try:
+        row = conn.execute(
+            "SELECT last_sync_date FROM ca_sync_status WHERE symbol = ?",
+            (symbol.upper(),)
+        ).fetchone()
+        if row:
+            last_sync = pd.to_datetime(row[0])
+            if last_sync.tzinfo is not None:
+                last_sync = last_sync.tz_convert(None)
+            time_diff = datetime.now() - last_sync
+            if time_diff < timedelta(days=cooldown_days):
+                return True
+        return False
+    except Exception as e:
+        print(f"Warning: Failed to check cooldown status for {symbol}: {e}")
+        return False
+    finally:
+        conn.close()
+
+def update_sync_status(symbol):
+    """Update the last sync date for the symbol in the database."""
+    conn = get_db_connection()
+    try:
+        conn.execute(
+            "INSERT OR REPLACE INTO ca_sync_status (symbol, last_sync_date) VALUES (?, ?)",
+            (symbol.upper(), datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+        )
+        conn.commit()
+    except Exception as e:
+        print(f"Warning: Failed to update sync status for {symbol}: {e}")
+    finally:
+        conn.close()
+
+def sync_symbol(symbol, ca_overrides=None, force=False):
     symbol = symbol.upper()
+    
+    # Check cooldown unless forced
+    if not force:
+        if check_cooldown(symbol):
+            print(f"Skipping NSE fetch for {symbol} due to 7-day cooldown (use --force to override).")
+            return
+            
     print(f"\n--- Investigating NSE Corporate Actions for {symbol} ---", flush=True)
     
     nse_raw = get_nse_data(symbol, overrides=ca_overrides)
@@ -235,6 +278,7 @@ def sync_symbol(symbol, ca_overrides=None):
 
     if not new_rows and current_db.empty:
         print("\nNo changes needed.")
+        update_sync_status(symbol)
         return
 
     if getattr(args, 'yes', False):
@@ -253,6 +297,7 @@ def sync_symbol(symbol, ca_overrides=None):
                         VALUES (?, ?, ?, ?)
                     """, row)
             print(f"Successfully updated corporate actions for {symbol}.")
+            update_sync_status(symbol)
         except Exception as e:
             print(f"Error updating database: {e}")
         finally:
@@ -284,6 +329,7 @@ if __name__ == "__main__":
     parser.add_argument("--all", action="store_true", help="Sync all symbols found in the delivery log")
     parser.add_argument("--ca-override", type=str, help="Manual ratio factor overrides in format 'YYYY-MM-DD:FACTOR,YYYY-MM-DD:FACTOR' (Only for single symbol sync)")
     parser.add_argument("--yes", action="store_true", help="Automatically confirm updates")
+    parser.add_argument("--force", "-f", action="store_true", help="Force sync corporate actions, bypassing cooldown")
     parser.add_argument("--quiet", "-q", action="store_true", help="Only log errors")
     
     args = parser.parse_args()
@@ -293,14 +339,23 @@ if __name__ == "__main__":
     
     symbols = []
     if args.symbol:
-        symbols.append(args.symbol.upper())
+        symbol = args.symbol.upper()
+        # Verify instrument type is STOCK if it exists in DB
+        conn = get_db_connection()
+        row = conn.execute("SELECT DISTINCT instrument_type FROM nse_delivery_log WHERE symbol = ?", (symbol,)).fetchone()
+        conn.close()
+        if row and row[0] != 'STOCK':
+            print(f"Skipping {symbol} as its instrument type is {row[0]}, not STOCK.")
+            sys.exit(0)
+        symbols.append(symbol)
     elif args.watchlist:
         conn = get_db_connection()
         try:
             query = """
-                SELECT symbol FROM watchlist_items 
-                JOIN watchlists ON watchlists.id = watchlist_items.watchlist_id
-                WHERE watchlists.name = ?
+                SELECT DISTINCT wli.symbol FROM watchlist_items wli
+                JOIN watchlists wl ON wl.id = wli.watchlist_id
+                LEFT JOIN nse_delivery_log log ON log.symbol = wli.symbol
+                WHERE wl.name = ? AND (log.instrument_type IS NULL OR log.instrument_type = 'STOCK')
             """
             symbols = [row[0] for row in conn.execute(query, (args.watchlist,)).fetchall()]
         finally:
@@ -308,8 +363,11 @@ if __name__ == "__main__":
     elif args.all:
         conn = get_db_connection()
         try:
-            # Sync symbols that are in ANY watchlist first
-            query = "SELECT DISTINCT symbol FROM watchlist_items"
+            query = """
+                SELECT DISTINCT wli.symbol FROM watchlist_items wli
+                LEFT JOIN nse_delivery_log log ON log.symbol = wli.symbol
+                WHERE log.instrument_type IS NULL OR log.instrument_type = 'STOCK'
+            """
             symbols = [row[0] for row in conn.execute(query).fetchall()]
         finally:
             conn.close()
@@ -325,7 +383,7 @@ if __name__ == "__main__":
     
     for symbol in symbols:
         try:
-            sync_symbol(symbol, ca_overrides=overrides)
+            sync_symbol(symbol, ca_overrides=overrides, force=args.force)
         except Exception as e:
             print(f"Error syncing {symbol}: {e}")
 

@@ -191,7 +191,8 @@ def update_changes_for_date(current_date):
         FROM nse_delivery_log AS curr
         JOIN nse_delivery_log AS prev ON curr.symbol = prev.symbol
         WHERE curr.record_date = '{current_date_str}' AND prev.record_date = '{prev_date_str}'
-        AND prev.volume_total > 0;
+        AND prev.volume_total > 0
+        AND curr.instrument_type = 'INDEX';
         """)
         conn.commit()
         print("[NSE Indices] Metrics updated successfully.")

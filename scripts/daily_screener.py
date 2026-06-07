@@ -149,10 +149,10 @@ def main():
     # Clear old data (we only want the latest state)
     conn.execute("DELETE FROM screener_signals")
     
-    # Get NIFTY 500 stocks
-    row = conn.execute("SELECT id FROM watchlists WHERE name = 'NIFTY 500'").fetchone()
+    # Get NSE F&O stocks
+    row = conn.execute("SELECT id FROM watchlists WHERE name = 'NSE F&O'").fetchone()
     if not row:
-        logger.error("NIFTY 500 watchlist not found. Please ensure it is imported.")
+        logger.error("NSE F&O watchlist not found. Please ensure it is imported.")
         conn.close()
         sys.exit(1)
         
@@ -163,7 +163,7 @@ def main():
         ).fetchall()
     ]
     cores = multiprocessing.cpu_count()
-    logger.info(f"Scanning {len(symbols)} NIFTY 500 symbols using {cores} parallel workers...")
+    logger.info(f"Scanning {len(symbols)} NSE F&O symbols using {cores} parallel workers...")
     
     signals_found = {"entry": 0, "exit": 0, "in-trade": 0, "none": 0}
     results = []

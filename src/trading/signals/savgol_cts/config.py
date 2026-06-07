@@ -311,12 +311,22 @@ class OversoldDecelEntryConfig:
 
 
 @dataclass
+class BayesianSubModelConfig:
+    """Regime-specific Bayesian sub-model parameters."""
+    score_threshold: float = 0.0
+    feature_bins: dict = field(default_factory=dict)
+    feature_weights: dict = field(default_factory=dict)
+
+
+@dataclass
 class CustomBayesianEntryConfig:
     """Symbol-specific custom trained Bayesian entry path configuration."""
     enabled: bool = False
     score_threshold: float = 0.0
     feature_bins: dict = field(default_factory=dict)
     feature_weights: dict = field(default_factory=dict)
+    accumulation: BayesianSubModelConfig = field(default_factory=BayesianSubModelConfig)
+    momentum: BayesianSubModelConfig = field(default_factory=BayesianSubModelConfig)
 
 
 @dataclass
@@ -348,7 +358,7 @@ class SavgolCTSEntryConfig(BaseEntryConfig):
 class UniversalCrossExitConfig:
     """Universal Cross exit: Pure CTS Trailing Logic."""
     enabled: bool = True
-    hard_stop_enabled: bool = False
+    hard_stop_enabled: bool = True
     hard_stop_pct: float = 8.0
     gap_down_enabled: bool = False
     gap_down_atr_mult: float = 0.30

@@ -429,17 +429,20 @@ def update_changes_for_date(current_date):
         INSERT OR REPLACE INTO nse_delivery_log (
             record_date, symbol, price_close, price_open, price_high, price_low, 
             volume_total, delivery_qty, delivery_pct, 
-            price_change_pct, volume_change_pct, delivery_change_pct
+            price_change_pct, volume_change_pct, delivery_change_pct,
+            instrument_type
         )
         SELECT 
             curr.record_date, curr.symbol, curr.price_close, curr.price_open, curr.price_high, curr.price_low,
             curr.volume_total, curr.delivery_qty, curr.delivery_pct, curr.price_change_pct,
             ((curr.volume_total - prev.volume_total) * 100.0 / prev.volume_total),
-            (curr.delivery_pct - prev.delivery_pct)
+            (curr.delivery_pct - prev.delivery_pct),
+            'STOCK'
         FROM nse_delivery_log AS curr
         JOIN nse_delivery_log AS prev ON curr.symbol = prev.symbol
         WHERE curr.record_date = '{current_date_str}' AND prev.record_date = '{prev_date_str}'
-        AND prev.volume_total > 0;
+        AND prev.volume_total > 0
+        AND curr.instrument_type = 'STOCK';
         """)
         conn.commit()
         print("[NSE] Metrics updated successfully.")
