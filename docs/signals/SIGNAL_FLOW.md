@@ -81,7 +81,12 @@ check_entry(row, prev_row, cfg, records, idx)       [signal.py]
 
 The BWO system replaces the deprecated XGBoost ML Guard with a pure technical Bayesian scoring approach:
 
-- **17-Feature Set**: Expands the continuous feature set to include `cwc_slope`, `price_slope_z`, `rdv_slope_z` for rolling slope tracking, and `psz_decel_3b` (3-bar diff of `price_slope_z`) for price decline deceleration context. `psz_decel_3b` allows the model to distinguish genuine bottom accumulation (decelerating decline) from falling-knife scenarios (accelerating decline).
+- **22-Feature Set**: Expands the continuous feature set to 22 features by introducing 5 new lookback context features to handle falling knives, distribution traps, accumulation bases, and bottom rebounds:
+  - `fas_slope`: Derivative of `fas` using Savitzky-Golay coefficients to capture the speed/velocity of range position movement.
+  - `fas_slope_sum_5`: Rolling sum of `fas_slope` over 5 bars. Captures sustained downward momentum (falling knives) when deeply negative.
+  - `fas_min_10`: Rolling minimum of `fas` over 10 bars. Identifies distribution traps (basing at the top) when it remains high.
+  - `fas_max_10`: Rolling maximum of `fas` over 10 bars. Identifies accumulation bases when it remains low.
+  - `fas_slope_change_3`: 3-bar difference in `fas_slope` (`diff(3)`). Captures acceleration of bottom rebound inflections.
 - **Regime-Conditioned Model Partitioning**: Custom Bayesian entries route through two distinct sub-models to handle different market regimes:
   - **Accumulation Model**: Active when `regime` is `'downtrend'` or `'notrend'`. Automatically isolates bottom accumulation setups.
   - **Momentum Model**: Active when `regime` is `'uptrend'` or `'transition'`. Automatically handles breakout momentum signals.

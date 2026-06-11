@@ -50,6 +50,16 @@ class PriceRangeTrend:
             df["prt"] = 0.0
             df["prt_slope"] = 0.0
             df["prt_accel"] = 0.0
+            df["fas_slope"] = 0.0
+            df["fas_accel"] = 0.0
+            df["fas_slope_sum_5"] = 0.0
+            df["prt_slope_sum_5"] = 0.0
+            df["fas_min_5"] = 0.0
+            df["fas_min_10"] = 0.0
+            df["fas_max_5"] = 0.0
+            df["fas_max_10"] = 0.0
+            df["fas_slope_change_3"] = 0.0
+            df["prt_slope_change_3"] = 0.0
             return df
 
         # 1. Composite Score: Average of range positions (0 to 1)
@@ -68,6 +78,25 @@ class PriceRangeTrend:
             df["prt_slope"] = lfilter(self.coeffs_d1, [1.0], vals) * scale_factor
             df["prt_accel"] = lfilter(self.coeffs_d2, [1.0], vals) * scale_factor
             
+            # Compute fas_slope and fas_accel using the same filter & scale factor
+            if "fas" in df.columns:
+                fas_vals = df["fas"].fillna(0.0).values
+                df["fas_slope"] = lfilter(self.coeffs_d1, [1.0], fas_vals) * scale_factor
+                df["fas_accel"] = lfilter(self.coeffs_d2, [1.0], fas_vals) * scale_factor
+            else:
+                df["fas_slope"] = 0.0
+                df["fas_accel"] = 0.0
+
+            # Compute Lookback Context Features
+            df["fas_slope_sum_5"] = df["fas_slope"].rolling(window=5, min_periods=5).sum()
+            df["prt_slope_sum_5"] = df["prt_slope"].rolling(window=5, min_periods=5).sum()
+            df["fas_min_5"] = df["fas"].rolling(window=5, min_periods=5).min()
+            df["fas_min_10"] = df["fas"].rolling(window=10, min_periods=10).min()
+            df["fas_max_5"] = df["fas"].rolling(window=5, min_periods=5).max()
+            df["fas_max_10"] = df["fas"].rolling(window=10, min_periods=10).max()
+            df["fas_slope_change_3"] = df["fas_slope"].diff(3)
+            df["prt_slope_change_3"] = df["prt_slope"].diff(3)
+
             # 3. Adaptive Thresholds
             min_periods = max(30, self.threshold_window // 2)
             df["prt_buy_threshold"] = df["prt"].rolling(
@@ -79,11 +108,27 @@ class PriceRangeTrend:
 
             # Handle warm-up
             warmup = self.window_length - 1
-            cols = ["prt", "prt_slope", "prt_accel", "prt_buy_threshold", "prt_sell_threshold"]
+            cols = [
+                "prt", "prt_slope", "prt_accel", "prt_buy_threshold", "prt_sell_threshold",
+                "fas_slope", "fas_accel",
+                "fas_slope_sum_5", "prt_slope_sum_5",
+                "fas_min_5", "fas_min_10", "fas_max_5", "fas_max_10",
+                "fas_slope_change_3", "prt_slope_change_3"
+            ]
             df.iloc[:warmup, df.columns.get_indexer(cols)] = np.nan
         else:
             df["prt"] = raw_score.clip(-1.0, 1.0)
             df["prt_slope"] = 0.0
             df["prt_accel"] = 0.0
+            df["fas_slope"] = 0.0
+            df["fas_accel"] = 0.0
+            df["fas_slope_sum_5"] = 0.0
+            df["prt_slope_sum_5"] = 0.0
+            df["fas_min_5"] = 0.0
+            df["fas_min_10"] = 0.0
+            df["fas_max_5"] = 0.0
+            df["fas_max_10"] = 0.0
+            df["fas_slope_change_3"] = 0.0
+            df["prt_slope_change_3"] = 0.0
 
         return df

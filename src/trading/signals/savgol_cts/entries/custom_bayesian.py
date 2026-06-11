@@ -119,6 +119,11 @@ def entry_custom_bayesian(row, prev_row, cfg, records, idx):
         "price_slope_z": row.get("price_slope_z", 0.0),
         "rdv_slope_z": row.get("rdv_slope_z", 0.0),
         "psz_decel_3b": row.get("psz_decel_3b", 0.0),
+        "fas_slope": row.get("fas_slope", 0.0),
+        "fas_slope_sum_5": row.get("fas_slope_sum_5", 0.0),
+        "fas_min_10": row.get("fas_min_10", 0.0),
+        "fas_max_10": row.get("fas_max_10", 0.0),
+        "fas_slope_change_3": row.get("fas_slope_change_3", 0.0),
     }
 
     # 3. Regime sub-model routing

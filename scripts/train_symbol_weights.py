@@ -30,7 +30,7 @@ from src.trading.signals.savgol_cts.bwo_settings import (
 )
 from scripts.walk_forward import simulate_trades, get_watchlist_symbols
 
-# List of 16 features for Bayesian model
+# List of features for Bayesian model
 FEATURES = [
     "cwc",
     "psz_v",
@@ -49,6 +49,11 @@ FEATURES = [
     "price_slope_z",
     "rdv_slope_z",
     "psz_decel_3b",
+    "fas_slope",
+    "fas_slope_sum_5",
+    "fas_min_10",
+    "fas_max_10",
+    "fas_slope_change_3",
 ]
 
 def simulate_single_trade(sym, ledger, start_idx, signal, exit_cfg):
