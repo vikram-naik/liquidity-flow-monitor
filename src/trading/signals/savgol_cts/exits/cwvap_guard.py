@@ -315,7 +315,7 @@ def apply_cwvap_guard(
             # Compute peak close for the trade
             peak_close = trade.entry_price
             if records is not None:
-                for j in range(trade.entry_idx, idx + 1):
+                for j in range(trade.entry_idx, min(idx + 1, len(records))):
                     c_val = records[j].get("close", np.nan)
                     if not np.isnan(c_val) and c_val > peak_close:
                         peak_close = c_val

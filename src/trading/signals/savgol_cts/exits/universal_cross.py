@@ -118,7 +118,23 @@ def exit_universal_cross(
         if not any(np.isnan(x) for x in [cts, prev_cts, cts_st, prev_cts_st]):
             if prev_cts >= prev_cts_st and cts < cts_st:
                 if not is_panic_bar:
-                    exit_reason = ExitReason.ST_CROSS
+                    # Determine if this is a momentum trade setup
+                    is_momentum = False
+                    if trade.entry_tag in [
+                        "SavgolCTS Flow-Momentum",
+                        "SavgolCTS Coherent-Pullback",
+                        "SavgolCTS CDVL-CTS"
+                    ]:
+                        is_momentum = True
+                    elif trade.entry_tag == "SavgolCTS Custom-Bayesian":
+                        if trade.regime_at_entry not in ["downtrend", "notrend"]:
+                            is_momentum = True
+
+                    if is_momentum and bars_held <= 1:
+                        # Suppress first ST cross over exit for momentum setups as we enter very near ST
+                        pass
+                    else:
+                        exit_reason = ExitReason.ST_CROSS
 
     # 4. CWC Slope Negative Exit
     if not exit_reason and getattr(cfg, "cwc_slope_neg_exit_enabled", False):
@@ -126,13 +142,6 @@ def exit_universal_cross(
         if not np.isnan(cwc_slope) and cwc_slope < 0:
             if not is_panic_bar:
                 exit_reason = ExitReason.CWVAP_EXHAUSTION
-
-    # 5. CWC Negative Exit
-    if not exit_reason and getattr(cfg, "cwc_neg_exit_enabled", False):
-        cwc = row.get("cwc", np.nan)
-        if not np.isnan(cwc) and cwc < 0:
-            if not is_panic_bar:
-                exit_reason = ExitReason.FAS_FLOOR
 
     # 6. CTS Near-Miss Rollover Check
     if not exit_reason and getattr(cfg, "cts_near_miss_exit_enabled", True) and st.cts_near_miss:

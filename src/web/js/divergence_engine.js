@@ -1125,6 +1125,40 @@
             }
 
             document.getElementById("wl-items").onclick = (e) => { var item = e.target.closest(".wl-item"); if (!item) return; var sym = item.dataset.sym; if (e.target.classList.contains("remove-btn")) { this.api(`/de/api/watchlists/${this.currentWlId}/items/${sym}`, "DELETE").then(() => this.fetchItems()).catch(err => alert("Error removing item: " + err.message)); } else { loadSymbol(sym); } };
+
+            window.addEventListener("keydown", function (e) {
+                if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+                
+                // Do not hijack arrows if focus is in an input or textarea
+                if (document.activeElement && (
+                    document.activeElement.tagName === "INPUT" ||
+                    document.activeElement.tagName === "TEXTAREA" ||
+                    document.activeElement.isContentEditable
+                )) {
+                    return;
+                }
+                
+                var items = Array.from(document.querySelectorAll("#wl-items .wl-item"));
+                if (items.length === 0) return;
+                
+                e.preventDefault(); // prevent window scrolling
+                
+                var activeIdx = items.findIndex(item => item.classList.contains("active"));
+                var nextIdx = 0;
+                
+                if (e.key === "ArrowDown") {
+                    nextIdx = activeIdx === -1 ? 0 : (activeIdx + 1) % items.length;
+                } else if (e.key === "ArrowUp") {
+                    nextIdx = activeIdx === -1 ? items.length - 1 : (activeIdx - 1 + items.length) % items.length;
+                }
+                
+                var nextItem = items[nextIdx];
+                if (nextItem) {
+                    var sym = nextItem.dataset.sym;
+                    loadSymbol(sym);
+                    nextItem.scrollIntoView({ block: "nearest", behavior: "smooth" });
+                }
+            });
         },
         api: function (url, method, body) {
             return fetch(url, { method, headers: { "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : null })

@@ -41,6 +41,7 @@ def main():
                         help="Period to dump (default: test)")
     parser.add_argument("--reason", help="Filter by exit reason (substring match)")
     parser.add_argument("--watchlist", default="NIFTY 50")
+    parser.add_argument("--symbol", help="Filter by symbol (default: all)")
     parser.add_argument("--sort", default="entry_date",
                         choices=["entry_date", "pnl", "symbol", "mfe", "mae", "duration", "score", "cwdist", "cwmax", "psz", "das", "decel", "bt"],
                         help="Sort column (default: entry_date)")
@@ -50,7 +51,10 @@ def main():
     exit_cfg = SavgolCTSExitConfig()
     signal = SignalFactory.get_signal("savgol_cts")
 
-    symbols = get_watchlist_symbols(args.watchlist)
+    if args.symbol:
+        symbols = [args.symbol.upper()]
+    else:
+        symbols = get_watchlist_symbols(args.watchlist)
     test_end = today_str()
 
     all_trades = []

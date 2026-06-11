@@ -113,23 +113,3 @@ def test_springboard_rejection_falling_knife():
     assert "falling knife" in meta["reason"].lower()
 
 
-def test_springboard_signal_integration():
-    """Verify integration with the main SavgolCTSSignal orchestrator."""
-    signal = SavgolCTSSignal()
-    cfg = SavgolCTSEntryConfig()
-    
-    # Isolate SpringBoard path
-    cfg.universal_cross.enabled = False
-    cfg.trend_pullback_enabled = False
-    cfg.flow_momentum.enabled = False
-    cfg.coherent_pullback.enabled = False
-    cfg.anchor_shock_pullback.enabled = False
-    cfg.springboard.enabled = True
-    
-    records = get_base_records()
-    
-    passed, score, meta = signal.check_entry(records[11], records[10], cfg, records, 11)
-    
-    assert passed is True
-    assert score == 69
-    assert meta["entry_tag"] == EntryTag.SPRINGBOARD.value

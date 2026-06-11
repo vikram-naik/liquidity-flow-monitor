@@ -374,7 +374,6 @@ class UniversalCrossExitConfig:
     prt_st_cross_enabled: bool = True
     cts_st_cross_enabled: bool = True
     cwc_slope_neg_exit_enabled: bool = False
-    cwc_neg_exit_enabled: bool = False
 
     # CTS Near-Miss Rollover Exit parameters
     cts_near_miss_exit_enabled: bool = True

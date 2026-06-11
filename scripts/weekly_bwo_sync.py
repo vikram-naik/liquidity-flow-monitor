@@ -25,25 +25,34 @@ from src.trading.signals.savgol_cts.symbol_configs import (
     is_symbol_excluded
 )
 from scripts.walk_forward import simulate_trades, get_watchlist_symbols
-from scripts.train_symbol_weights_parallel import optimize_single_symbol
-
-SL_HIT_PENALTY = -250.0
-
+from scripts.train_symbol_weights import optimize_single_symbol
+from src.trading.signals.savgol_cts.bwo_settings import (
+    SL_HIT_PENALTY,
+    MIN_TRADES,
+    MAX_SL_RATIO,
+    TARGET_PNL_DEFAULT,
+    ZERO_TARGET_PNL_SYMBOLS,
+    TRADE_CAP_SCORE,
+    TRADE_REWARD_COEFF,
+    SL_MAE_THRESHOLD,
+    BWO_START_DATE,
+    CHALLENGER_PROMOTION_DELTA,
+)
 
 # Helper function to compute score
 def calculate_bwo_score(trades_count, avg_pnl, sl_hits):
     sl_ratio = sl_hits / trades_count if trades_count > 0 else 0.0
-    return SL_HIT_PENALTY * sl_ratio + 10.0 * min(trades_count, 15) + avg_pnl
+    return SL_HIT_PENALTY * sl_ratio + TRADE_REWARD_COEFF * min(trades_count, TRADE_CAP_SCORE) + avg_pnl
 
 def backtest_config(sym, ledger, entry_cfg, exit_cfg, signal):
     trades = simulate_trades(sym, ledger, entry_cfg, exit_cfg, signal)
-    trades_2019 = [t for t in trades if t.entry_date >= "2019-01-01"]
+    trades_bwo = [t for t in trades if t.entry_date >= BWO_START_DATE]
     
-    trades_count = len(trades_2019)
+    trades_count = len(trades_bwo)
     if trades_count > 0:
-        pnls = [t.pnl_pct for t in trades_2019]
+        pnls = [t.pnl_pct for t in trades_bwo]
         avg_pnl = np.mean(pnls)
-        sl_hits = sum(1 for t in trades_2019 if t.mae_pct >= 8.0)
+        sl_hits = sum(1 for t in trades_bwo if t.mae_pct >= SL_MAE_THRESHOLD)
     else:
         avg_pnl = 0.0
         sl_hits = 0
@@ -128,7 +137,7 @@ def evaluate_and_sync_symbol(sym):
     exit_cfg = SavgolCTSExitConfig()
     
     # Target P&L
-    target_pnl = 0.0 if sym in ["ETERNAL", "INFY", "JIOFIN"] else 5.0
+    target_pnl = 0.0 if sym in ZERO_TARGET_PNL_SYMBOLS else TARGET_PNL_DEFAULT
 
     # 1. Backtest existing Champion configuration (if exists)
     champ_exists = False
@@ -145,9 +154,9 @@ def evaluate_and_sync_symbol(sym):
             
             # Check if Champion still passes gates
             champ_sl_ratio = champ_metrics["sl_hits"] / champ_metrics["trades"] if champ_metrics["trades"] > 0 else 0.0
-            if (champ_metrics["trades"] >= 3 and 
+            if (champ_metrics["trades"] >= MIN_TRADES and 
                 champ_metrics["avg_pnl"] >= target_pnl and 
-                champ_sl_ratio <= 0.25):
+                champ_sl_ratio <= MAX_SL_RATIO):
                 champ_passed = True
         except Exception as e:
             print(f"[{sym}] Error backtesting Champion: {e}")
@@ -171,9 +180,9 @@ def evaluate_and_sync_symbol(sym):
         
         # Check safety gates on Challenger
         chal_sl_ratio = chal_metrics["sl_hits"] / chal_metrics["trades"] if chal_metrics["trades"] > 0 else 0.0
-        if (chal_metrics["trades"] >= 3 and 
+        if (chal_metrics["trades"] >= MIN_TRADES and 
             chal_metrics["avg_pnl"] >= target_pnl and 
-            chal_sl_ratio <= 0.25):
+            chal_sl_ratio <= MAX_SL_RATIO):
             chal_passed = True
 
     # 3. Decision Matrix
@@ -183,7 +192,7 @@ def evaluate_and_sync_symbol(sym):
     if chal_passed:
         # If Challenger passes, check if we should promote it
         # Promote if Challenger score is strictly better than Champion by a delta of 0.5, or if Champion does not exist/failed gates
-        if not champ_exists or not champ_passed or (chal_metrics["score"] > champ_metrics["score"] + 0.5):
+        if not champ_exists or not champ_passed or (chal_metrics["score"] > champ_metrics["score"] + CHALLENGER_PROMOTION_DELTA):
             status = "PROMOTED"
             reason = f"Challenger score ({chal_metrics['score']:.2f}) beats Champion score ({champ_metrics['score']:.2f})."
             # Write to JSON and remove from exclusion
@@ -320,7 +329,7 @@ def main():
     # Flush Redis cache if any promotions or exclusions occurred
     if updated_any:
         print("\nChanges detected! Flushing the engine cache to ensure all live/screener calculations use updated configs...")
-        os.system("python scripts/flush_cache.py --all")
+        os.system(f"{sys.executable} scripts/flush_cache.py --all")
     else:
         print("\nNo changes made. Cache is clean.")
 

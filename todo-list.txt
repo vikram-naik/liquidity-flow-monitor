@@ -1,0 +1,11 @@
+- I can still see we are identifying setups  via custom_bayesian entry where the price is falling, or its in distribution trap, or we completely miss a bottom rebound or mean-reversion setups. We need further fine tuning.
+- fas has lot of noise, can derivative of fas help detecting falling price better? We also have prt_slope we should check the co-relation.
+
+## Rollback Log
+### 2026-06-10: FAS ST Crossover Exit (fas_st_cross_enabled)
+- **Objective**: Use FAS crossing below its sell threshold (FAS_ST) as an exit signal.
+- **Impact Analysis (NIFTY 50)**:
+  - Baseline (with momentum ST suppression): 77.6% win rate, +4.69% Avg P&L, 6.96 profit factor.
+  - Enabled FAS ST exit: 75.8% win rate, +4.42% Avg P&L, 6.44 profit factor.
+- **Result**: Degraded P&L and win rate. FAS is too volatile for direct threshold crossover exits.
+- **Action**: Completely removed the code for FAS ST Crossover Exit from the codebase.

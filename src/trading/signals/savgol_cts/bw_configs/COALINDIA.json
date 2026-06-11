@@ -818,7 +818,7 @@
             }
         },
         "momentum": {
-            "score_threshold": -1.799999999999998,
+            "score_threshold": 1.0000000000000044,
             "feature_bins": {
                 "cwc": [
                     "-inf",

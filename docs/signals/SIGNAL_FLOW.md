@@ -1,7 +1,7 @@
 # SavgolCTS Signal — Entry / Exit Flow
 
 **Package**: `src/trading/signals/savgol_cts/`
-**Last updated**: 2026-06-06
+**Last updated**: 2026-06-10
 
 ## ⚠️ Mandatory Execution Model (EOD-Lag)
 The LFM system operates on an **End-of-Day Lag (EOD-Lag)** model. All signal research and production logic MUST adhere to this:
@@ -81,11 +81,12 @@ check_entry(row, prev_row, cfg, records, idx)       [signal.py]
 
 The BWO system replaces the deprecated XGBoost ML Guard with a pure technical Bayesian scoring approach:
 
-- **16-Feature Set**: Expands the continuous feature set to include `cwc_slope`, `price_slope_z`, and `rdv_slope_z` for rolling 10-bar slope tracking.
+- **17-Feature Set**: Expands the continuous feature set to include `cwc_slope`, `price_slope_z`, `rdv_slope_z` for rolling slope tracking, and `psz_decel_3b` (3-bar diff of `price_slope_z`) for price decline deceleration context. `psz_decel_3b` allows the model to distinguish genuine bottom accumulation (decelerating decline) from falling-knife scenarios (accelerating decline).
 - **Regime-Conditioned Model Partitioning**: Custom Bayesian entries route through two distinct sub-models to handle different market regimes:
   - **Accumulation Model**: Active when `regime` is `'downtrend'` or `'notrend'`. Automatically isolates bottom accumulation setups.
   - **Momentum Model**: Active when `regime` is `'uptrend'` or `'transition'`. Automatically handles breakout momentum signals.
-- **Training**: `scripts/train_symbol_weights_parallel.py` (and sequential `scripts/train_symbol_weights.py`) partitions historical candidate bars and independently optimizes weights/thresholds for both sub-models, applying a relaxed `-250.0` SL ratio penalty to improve recall.
+- **Minimum Probability Gate**: After passing the symbol-specific score threshold, entries are additionally rejected if `bayesian_score < 0` (equivalent to `conviction_score < 50`, i.e. the model's log-odds imply < 50% win probability). This is a global floor that applies regardless of threshold calibration and removes low-confidence entries that inflate trade count without adding expectancy.
+- **Training**: `scripts/train_symbol_weights.py` (which supports both parallel and sequential execution, with parallel enabled by default) partitions historical candidate bars and independently optimizes weights/thresholds for both sub-models, applying a relaxed `-250.0` SL ratio penalty to improve recall. A compatibility wrapper is maintained at `scripts/train_symbol_weights_parallel.py`.
 - **Configs**: Output JSON files with `accumulation` and `momentum` sub-blocks are stored in `bw_configs/` (configurable via `BW_CONFIGS_DIR` env var).
 - **Loading**: `symbol_configs.py` dynamically parses, loads, and caches the partitioned JSON overrides at runtime.
 - **Weekly Tuning**: Challenger-Champion promo loop verifies both unified and partitioned configurations against safety gates.
@@ -101,7 +102,7 @@ All entry paths route through the standardized exit logic:
 check_exit(row, prev_row, trade, ...)                [signal.py]
   |
   |-- Dispatch to exit_universal_cross()             [exits/universal_cross.py]
-  |     |-- [Trigger] CTS crosses below ST trend
+  |     |-- [Trigger] CTS crosses below ST trend (Suppressed on first bar held (bars_held <= 1) for momentum setups)
   |     |-- [Trigger] PRT slope turns negative
   |     |-- [Trigger] CTS near-miss rollover
   |

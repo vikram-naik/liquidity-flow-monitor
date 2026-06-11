@@ -23,7 +23,7 @@
     },
     "custom_bayesian": {
         "enabled": true,
-        "score_threshold": 1.3000000000000043,
+        "score_threshold": 1.3,
         "feature_bins": {
             "cwc": [
                 "-inf",
@@ -420,7 +420,7 @@
             ]
         },
         "accumulation": {
-            "score_threshold": 1.100000000000005,
+            "score_threshold": 1.1,
             "feature_bins": {
                 "cwc": [
                     "-inf",
@@ -818,7 +818,7 @@
             }
         },
         "momentum": {
-            "score_threshold": -0.3999999999999968,
+            "score_threshold": 0.0,
             "feature_bins": {
                 "cwc": [
                     "-inf",

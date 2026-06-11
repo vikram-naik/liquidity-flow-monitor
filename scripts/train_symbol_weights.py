@@ -8,6 +8,7 @@ import os
 import json
 import argparse
 from pathlib import Path
+from concurrent.futures import ProcessPoolExecutor, as_completed
 
 # Add root folder to sys.path
 sys.path.insert(0, "/home/vn/python-projects/liquidity-flow-monitor")
@@ -15,6 +16,18 @@ sys.path.insert(0, "/home/vn/python-projects/liquidity-flow-monitor")
 from src.divergence_engine.engine import DivergenceEngine
 from src.trading.signals import SignalFactory, Trade
 from src.trading.signals.savgol_cts import SavgolCTSEntryConfig, SavgolCTSExitConfig
+from src.trading.signals.savgol_cts.entries.custom_bayesian import check_bayesian_triggers
+from src.trading.signals.savgol_cts.bwo_settings import (
+    SL_HIT_PENALTY,
+    MIN_TRADES,
+    MAX_SL_RATIO,
+    TARGET_PNL_DEFAULT,
+    ZERO_TARGET_PNL_SYMBOLS,
+    TRADE_CAP_SCORE,
+    TRADE_REWARD_COEFF,
+    SL_MAE_THRESHOLD,
+    BWO_START_DATE,
+)
 from scripts.walk_forward import simulate_trades, get_watchlist_symbols
 
 # List of 16 features for Bayesian model
@@ -37,7 +50,6 @@ FEATURES = [
     "rdv_slope_z",
     "psz_decel_3b",
 ]
-SL_HIT_PENALTY = -250.0
 
 def simulate_single_trade(sym, ledger, start_idx, signal, exit_cfg):
     records = ledger.to_dict("records")
@@ -131,61 +143,11 @@ def label_candidate_bars_sim(sym, ledger, signal, exit_cfg, success_mult=1.2, dd
     else:
         drawdown_limit = dd_limit
     
-    from src.trading.signals.savgol_cts.entries.utils import evaluate_spearman_trend
-    
     for i in range(1, n - 2):
         row = records[i]
         prev_row = records[i - 1]
         
-        prev_cs = prev_row.get("cts_slope", 0.0)
-        cs = row.get("cts_slope", 0.0)
-        trigger_cs = (prev_cs <= 0 and cs > 0)
-
-        fas_bt = row.get("fas_buy_threshold", -0.8)
-        prev_fas = prev_row.get("fas", 0.0)
-        fas = row.get("fas", 0.0)
-        trigger_fas = (prev_fas <= fas_bt and fas > fas_bt)
-
-        prt = row.get("prt_slope", 0.0)
-        prev_prt = prev_row.get("prt_slope", 0.0)
-        trigger_prt = (prev_prt <= 0 and prt > 0)
-
-        trigger_cwc = False
-        if i >= 3:
-            cwc_vals = [records[k].get("cwc", 0.0) for k in range(i - 3, i)]
-            cwc_curr = row.get("cwc", 0.0)
-            cwc_avg = sum(cwc_vals) / len(cwc_vals) if cwc_vals else 0.0
-            cwc_disp = max(cwc_vals) - min(cwc_vals) if cwc_vals else 0.0
-            regime = row.get("regime", "notrend")
-            if 0.80 <= cwc_avg <= 1.00 and cwc_disp <= 0.10:
-                if cwc_curr > cwc_avg and (cwc_curr - cwc_avg) >= 0.01:
-                    if regime != "downtrend":
-                        trigger_cwc = True
-
-        trigger_5 = False
-        cwc_val = row.get("cwc", 0.0)
-        cts_accel = row.get("cts_accel", 0.0)
-        pdd_120 = row.get("pdd_120", 0.0)
-        bt = row.get("base_tightness", 1.0)
-        price_slope_z = row.get("price_slope_z", 0.0)
-        
-        if cwc_val >= 0.40 and cts_accel >= 0.01 and pdd_120 <= -4.0 and bt <= 0.45 and price_slope_z <= -0.15:
-            tps_10 = []
-            for k in range(max(0, i - 9), i + 1):
-                r = records[k]
-                tp = (r.get("high", 0.0) + r.get("low", 0.0) + r.get("close", 0.0)) / 3.0
-                tps_10.append(tp)
-            if len(tps_10) >= 5:
-                spearman_10 = evaluate_spearman_trend(tps_10)
-                if spearman_10 > -0.90:
-                    trigger_5 = True
-                    
-        prev_cts = prev_row.get("cts", 0.0)
-        cts = row.get("cts", 0.0)
-        if cts < prev_cts:
-            continue
-            
-        if not (trigger_cs or trigger_fas or trigger_prt or trigger_cwc or trigger_5):
+        if not check_bayesian_triggers(row, prev_row, records, i):
             continue
             
         entry_price = records[i + 1].get("close", np.nan)
@@ -291,8 +253,8 @@ def evaluate_config_partitioned(sym, ledger, fb_accum, fw_accum, fb_mom, fw_mom,
     custom_bayesian_cfg.custom_bayesian.feature_bins = fb_uni
     custom_bayesian_cfg.custom_bayesian.feature_weights = fw_uni
     
-    thresholds = np.arange(-4.0, 8.01, 0.1)
-    target_pnl = 0.0 if sym in ["ETERNAL", "INFY", "JIOFIN"] else 5.0
+    thresholds = np.arange(0.0, 8.01, 0.1)
+    target_pnl = 0.0 if sym in ZERO_TARGET_PNL_SYMBOLS else TARGET_PNL_DEFAULT
     
     # A. Optimize Accumulation Model Threshold (Disable momentum signals via high threshold)
     best_th_accum = 0.0
@@ -305,20 +267,20 @@ def evaluate_config_partitioned(sym, ledger, fb_accum, fw_accum, fb_mom, fw_mom,
         test_cfg.custom_bayesian.accumulation.score_threshold = float(th)
         
         trades = simulate_trades(sym, ledger, test_cfg, exit_cfg, signal)
-        trades_2019 = [t for t in trades if t.entry_date >= "2019-01-01"]
+        trades_bwo = [t for t in trades if t.entry_date >= BWO_START_DATE]
         
-        if trades_2019:
-            pnls = [t.pnl_pct for t in trades_2019]
+        if trades_bwo:
+            pnls = [t.pnl_pct for t in trades_bwo]
             avg_pnl = np.mean(pnls)
-            sl_hits = sum(1 for t in trades_2019 if t.mae_pct >= 8.0)
-            sl_ratio = sl_hits / len(trades_2019)
+            sl_hits = sum(1 for t in trades_bwo if t.mae_pct >= SL_MAE_THRESHOLD)
+            sl_ratio = sl_hits / len(trades_bwo)
             
             # Optimized score function: SL_HIT_PENALTY SL ratio penalty instead of -1000.0
-            score = SL_HIT_PENALTY * sl_ratio + 10.0 * min(len(trades_2019), 15) + avg_pnl
+            score = SL_HIT_PENALTY * sl_ratio + TRADE_REWARD_COEFF * min(len(trades_bwo), TRADE_CAP_SCORE) + avg_pnl
             
             if avg_pnl > target_pnl:
-                passing_accum.append({"threshold": th, "score": score, "trades": len(trades_2019), "avg_pnl": avg_pnl, "sl_hits": sl_hits})
-            fallback_accum.append({"threshold": th, "avg_pnl": avg_pnl, "trades": len(trades_2019), "sl_hits": sl_hits})
+                passing_accum.append({"threshold": th, "score": score, "trades": len(trades_bwo), "avg_pnl": avg_pnl, "sl_hits": sl_hits})
+            fallback_accum.append({"threshold": th, "avg_pnl": avg_pnl, "trades": len(trades_bwo), "sl_hits": sl_hits})
             
     if passing_accum:
         passing_accum.sort(key=lambda x: x["score"], reverse=True)
@@ -339,19 +301,19 @@ def evaluate_config_partitioned(sym, ledger, fb_accum, fw_accum, fb_mom, fw_mom,
         test_cfg.custom_bayesian.momentum.score_threshold = float(th)
         
         trades = simulate_trades(sym, ledger, test_cfg, exit_cfg, signal)
-        trades_2019 = [t for t in trades if t.entry_date >= "2019-01-01"]
+        trades_bwo = [t for t in trades if t.entry_date >= BWO_START_DATE]
         
-        if trades_2019:
-            pnls = [t.pnl_pct for t in trades_2019]
+        if trades_bwo:
+            pnls = [t.pnl_pct for t in trades_bwo]
             avg_pnl = np.mean(pnls)
-            sl_hits = sum(1 for t in trades_2019 if t.mae_pct >= 8.0)
-            sl_ratio = sl_hits / len(trades_2019)
+            sl_hits = sum(1 for t in trades_bwo if t.mae_pct >= SL_MAE_THRESHOLD)
+            sl_ratio = sl_hits / len(trades_bwo)
             
-            score = SL_HIT_PENALTY * sl_ratio + 10.0 * min(len(trades_2019), 15) + avg_pnl
+            score = SL_HIT_PENALTY * sl_ratio + TRADE_REWARD_COEFF * min(len(trades_bwo), TRADE_CAP_SCORE) + avg_pnl
             
             if avg_pnl > target_pnl:
-                passing_mom.append({"threshold": th, "score": score, "trades": len(trades_2019), "avg_pnl": avg_pnl, "sl_hits": sl_hits})
-            fallback_mom.append({"threshold": th, "avg_pnl": avg_pnl, "trades": len(trades_2019), "sl_hits": sl_hits})
+                passing_mom.append({"threshold": th, "score": score, "trades": len(trades_bwo), "avg_pnl": avg_pnl, "sl_hits": sl_hits})
+            fallback_mom.append({"threshold": th, "avg_pnl": avg_pnl, "trades": len(trades_bwo), "sl_hits": sl_hits})
             
     if passing_mom:
         passing_mom.sort(key=lambda x: x["score"], reverse=True)
@@ -374,19 +336,19 @@ def evaluate_config_partitioned(sym, ledger, fb_accum, fw_accum, fb_mom, fw_mom,
         test_cfg.custom_bayesian.score_threshold = float(th)
         
         trades = simulate_trades(sym, ledger, test_cfg, exit_cfg, signal)
-        trades_2019 = [t for t in trades if t.entry_date >= "2019-01-01"]
+        trades_bwo = [t for t in trades if t.entry_date >= BWO_START_DATE]
         
-        if trades_2019:
-            pnls = [t.pnl_pct for t in trades_2019]
+        if trades_bwo:
+            pnls = [t.pnl_pct for t in trades_bwo]
             avg_pnl = np.mean(pnls)
-            sl_hits = sum(1 for t in trades_2019 if t.mae_pct >= 8.0)
-            sl_ratio = sl_hits / len(trades_2019)
+            sl_hits = sum(1 for t in trades_bwo if t.mae_pct >= SL_MAE_THRESHOLD)
+            sl_ratio = sl_hits / len(trades_bwo)
             
-            score = SL_HIT_PENALTY * sl_ratio + 10.0 * min(len(trades_2019), 15) + avg_pnl
+            score = SL_HIT_PENALTY * sl_ratio + TRADE_REWARD_COEFF * min(len(trades_bwo), TRADE_CAP_SCORE) + avg_pnl
             
             if avg_pnl > target_pnl:
-                passing_uni.append({"threshold": th, "score": score, "trades": len(trades_2019), "avg_pnl": avg_pnl, "sl_hits": sl_hits})
-            fallback_uni.append({"threshold": th, "avg_pnl": avg_pnl, "trades": len(trades_2019), "sl_hits": sl_hits})
+                passing_uni.append({"threshold": th, "score": score, "trades": len(trades_bwo), "avg_pnl": avg_pnl, "sl_hits": sl_hits})
+            fallback_uni.append({"threshold": th, "avg_pnl": avg_pnl, "trades": len(trades_bwo), "sl_hits": sl_hits})
             
     if passing_uni:
         passing_uni.sort(key=lambda x: x["score"], reverse=True)
@@ -402,13 +364,13 @@ def evaluate_config_partitioned(sym, ledger, fb_accum, fw_accum, fb_mom, fw_mom,
     final_cfg.custom_bayesian.score_threshold = float(best_th_uni)
     
     trades = simulate_trades(sym, ledger, final_cfg, exit_cfg, signal)
-    trades_2019 = [t for t in trades if t.entry_date >= "2019-01-01"]
+    trades_bwo = [t for t in trades if t.entry_date >= BWO_START_DATE]
     
-    total_trades = len(trades_2019)
+    total_trades = len(trades_bwo)
     if total_trades > 0:
-        pnls = [t.pnl_pct for t in trades_2019]
+        pnls = [t.pnl_pct for t in trades_bwo]
         avg_pnl = np.mean(pnls)
-        sl_hits = sum(1 for t in trades_2019 if t.mae_pct >= 8.0)
+        sl_hits = sum(1 for t in trades_bwo if t.mae_pct >= SL_MAE_THRESHOLD)
         sl_ratio = sl_hits / total_trades
     else:
         avg_pnl = 0.0
@@ -416,7 +378,7 @@ def evaluate_config_partitioned(sym, ledger, fb_accum, fw_accum, fb_mom, fw_mom,
         sl_ratio = 0.0
         
     passed = False
-    if total_trades >= 3 and avg_pnl >= target_pnl and sl_ratio <= 0.25:
+    if total_trades >= MIN_TRADES and avg_pnl >= target_pnl and sl_ratio <= MAX_SL_RATIO:
         passed = True
         
     return passed, best_th_accum, best_th_mom, best_th_uni, total_trades, avg_pnl, sl_hits
@@ -577,6 +539,7 @@ def main():
     parser = argparse.ArgumentParser(description="Bayesian Weight Optimization (BWO)")
     parser.add_argument("--symbol", type=str, help="Target a single symbol for BWO tuning")
     parser.add_argument("--watchlist", type=str, default="NIFTY 50", help="Watchlist of symbols to tune (default: NIFTY 50)")
+    parser.add_argument("--sequential", action="store_true", help="Run BWO sequentially instead of parallel")
     args = parser.parse_args()
     
     if args.symbol:
@@ -584,19 +547,40 @@ def main():
         print(f"BWO: Targeted optimization for single symbol {symbols[0]}...")
     else:
         symbols = get_watchlist_symbols(args.watchlist)
-        print(f"BWO: Loaded {len(symbols)} symbols from watchlist '{args.watchlist}'. Starting sequential optimization...")
         
     os.makedirs(BW_CONFIGS_DIR, exist_ok=True)
     optimal_overrides = {}
     
-    for idx, sym in enumerate(symbols):
-        print(f"\n--- Optimizing {sym} ({idx+1}/{len(symbols)}) ---")
-        res = optimize_single_symbol(sym)
-        if res["success"]:
-            optimal_overrides[sym] = res
-            print(f"Optimized {sym} | Setup: {res['hyper_params']} | Th: {res['score_threshold']:.2f} | Trades: {res['trades']} | Avg P&L: {res['avg_pnl']:.2f}% | Final SL Hits: {res['sl_hits']}")
-        else:
-            print(f"Failed {sym}: {res['error']}")
+    if args.symbol or args.sequential:
+        # Run sequentially
+        mode_str = "sequential" if args.sequential else "targeted sequential"
+        if not args.symbol:
+            print(f"BWO: Loaded {len(symbols)} symbols from watchlist '{args.watchlist}'. Starting {mode_str} optimization...")
+        for idx, sym in enumerate(symbols):
+            if not args.symbol:
+                print(f"\n--- Optimizing {sym} ({idx+1}/{len(symbols)}) ---")
+            res = optimize_single_symbol(sym)
+            if res["success"]:
+                optimal_overrides[sym] = res
+                print(f"Optimized {sym} | Setup: {res['hyper_params']} | Th: {res['score_threshold']:.2f} | Trades: {res['trades']} | Avg P&L: {res['avg_pnl']:.2f}% | Final SL Hits: {res['sl_hits']}")
+            else:
+                print(f"Failed {sym}: {res['error']}")
+    else:
+        # Run in parallel
+        print(f"BWO: Loaded {len(symbols)} symbols from watchlist '{args.watchlist}'. Starting parallel optimization...")
+        with ProcessPoolExecutor() as executor:
+            futures = {executor.submit(optimize_single_symbol, sym): sym for sym in symbols}
+            for idx, fut in enumerate(as_completed(futures)):
+                sym = futures[fut]
+                try:
+                    res = fut.result()
+                    if res["success"]:
+                        optimal_overrides[sym] = res
+                        print(f"[{idx+1}/{len(symbols)}] Optimized {sym:<15} | Setup: {res['hyper_params']:<45} | Th: {res['score_threshold']:.2f} | Trades: {res['trades']:<3} | Avg P&L: {res['avg_pnl']:.2f}% | Final SL Hits: {res['sl_hits']}")
+                    else:
+                        print(f"[{idx+1}/{len(symbols)}] Failed {sym}: {res['error']}")
+                except Exception as e:
+                    print(f"[{idx+1}/{len(symbols)}] Future error for {sym}: {e}")
 
     # Generate and write individual JSON files
     print(f"\nSerializing Bayesian Weights (BW) configs directly to {BW_CONFIGS_DIR}...")

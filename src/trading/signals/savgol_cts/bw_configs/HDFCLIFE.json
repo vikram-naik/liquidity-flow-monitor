@@ -420,7 +420,7 @@
             ]
         },
         "accumulation": {
-            "score_threshold": 2.100000000000005,
+            "score_threshold": 1.100000000000005,
             "feature_bins": {
                 "cwc": [
                     "-inf",
@@ -818,7 +818,7 @@
             }
         },
         "momentum": {
-            "score_threshold": -0.8999999999999972,
+            "score_threshold": 0.7000000000000046,
             "feature_bins": {
                 "cwc": [
                     "-inf",
