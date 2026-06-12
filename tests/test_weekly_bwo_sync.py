@@ -172,5 +172,34 @@ class TestWeeklyBwoSync(unittest.TestCase):
         self.assertEqual(cb_cfg.momentum.feature_bins["cwc"], [float("-inf"), 0.6, float("inf")])
         self.assertEqual(cb_cfg.momentum.feature_weights["cwc"][0], (float("-inf"), 0.6, 0.22))
 
+    def test_load_bw_override_fallback(self):
+        # Create a mock config file inside the fallback location (sc.__file__'s bw_configs)
+        default_dir = os.path.join(os.path.dirname(sc.__file__), "bw_configs")
+        os.makedirs(default_dir, exist_ok=True)
+        
+        fallback_file = os.path.join(default_dir, "MOCKFALLBACKSYM.json")
+        mock_data = {
+            "custom_bayesian": {
+                "enabled": True,
+                "score_threshold": 1.99,
+                "feature_bins": {},
+                "feature_weights": {}
+            }
+        }
+        
+        try:
+            with open(fallback_file, "w") as f:
+                json.dump(mock_data, f)
+                
+            # Attempt to load config for MOCKFALLBACKSYM. It doesn't exist in sc.BW_CONFIGS_DIR (self.test_dir)
+            # but should be resolved from the default fallback path.
+            loaded = sc.load_bw_override("MOCKFALLBACKSYM")
+            self.assertIsNotNone(loaded)
+            self.assertEqual(loaded["custom_bayesian"]["score_threshold"], 1.99)
+        finally:
+            # Clean up default file to prevent polluting the codebase
+            if os.path.exists(fallback_file):
+                os.remove(fallback_file)
+
 if __name__ == "__main__":
     unittest.main()

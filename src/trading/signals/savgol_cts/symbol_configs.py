@@ -59,6 +59,12 @@ def remove_from_exclusion_list(symbol: str):
 def load_bw_override(symbol: str) -> dict | None:
     json_path = os.path.join(BW_CONFIGS_DIR, f"{symbol}.json")
     if not os.path.exists(json_path):
+        default_dir = os.path.join(os.path.dirname(__file__), "bw_configs")
+        default_path = os.path.join(default_dir, f"{symbol}.json")
+        if os.path.exists(default_path) and os.path.abspath(default_path) != os.path.abspath(json_path):
+            json_path = default_path
+            
+    if not os.path.exists(json_path):
         if symbol in _BW_OVERRIDE_CACHE:
             del _BW_OVERRIDE_CACHE[symbol]
         return None
