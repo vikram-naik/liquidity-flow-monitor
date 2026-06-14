@@ -1,8 +1,41 @@
-## Rollback Log
-### 2026-06-10: FAS ST Crossover Exit (fas_st_cross_enabled)
-- **Objective**: Use FAS crossing below its sell threshold (FAS_ST) as an exit signal.
-- **Impact Analysis (NIFTY 50)**:
-  - Baseline (with momentum ST suppression): 77.6% win rate, +4.69% Avg P&L, 6.96 profit factor.
-  - Enabled FAS ST exit: 75.8% win rate, +4.42% Avg P&L, 6.44 profit factor.
-- **Result**: Degraded P&L and win rate. FAS is too volatile for direct threshold crossover exits.
-- **Action**: Completely removed the code for FAS ST Crossover Exit from the codebase.
+# Active Todo List
+
+## BWO Parameter Suggestion Improvements
+- [ ] Implement dynamic target P&L ceiling scaling in `scripts/suggest_bwo_params.py` based on symbol volatility:
+  `Max Target Ceiling = min(10.0, 3.0 * Average ATR %)`
+  This allows high-volatility, trending symbols to scale their target P&L hurdles up to 10% during hyperparameter sweeps, while keeping lower-volatility symbols safely capped.
+
+# Rejected & Rolled Back Studies
+
+## [Rejected] Volume Selloff Exit (JINDALSTEL Case Study)
+* **Date**: 2026-06-12
+* **Objective**: Investigate the JINDALSTEL massive selloff on 2026-05-29 (EOD return -1.10%, RDV 4.16, Shock 3.05) and determine if high-volume down days should trigger exits.
+* **Findings**:
+  * For JINDALSTEL, exiting on the volume selloff would have cut the trade on June 1 at `1219.00` for a profit of `+0.55%`, avoiding a drawdown to `1121.30` (loss of `-7.51%`).
+  * However, testing on the full `NIFTY 50` and `NSE F&O` watchlists (from `2024-01-01` to `2026-06-12`) showed consistent metric degradation.
+  * Stricter checks (e.g. `RDV >= 3.5, Return <= -1.0%, PnL <= 0.0%`) minimized the degradation but still reduced the F&O Win Rate (from 78.48% to 76.64%), Avg PnL (from +6.49% to +6.28%), and Profit Factor (from 7.77 to 7.25).
+* **Rationale**: High-volume down days often act as shakeouts in healthy uptrends. Exiting globally on these events cuts profitable trades short, causing degradation in watchlist-level metrics.
+* **Status**: Rejected to preserve baseline metrics. No codebase changes applied.
+
+## [Rejected] Bayesian Weight Optimization (BWO) Hard Stop Minimization Sweep
+* **Date**: 2026-06-13
+* **Objective**: Minimize hard-stop exits on NIFTY 50 and NSE F&O by tuning Bayesian Weight (BW) configs using custom expert bins, catastrophic SL outcome classification (-1), and hard-stop penalties (HARD_STOP_MULT).
+* **Findings**:
+  * **Sweep 1 (Floor = 1.0, Hard Stop Mult = 2.0)**: Resulted in 14 hard stops out-of-sample (baseline: 12) and Avg P&L +4.80% (baseline: +4.84%).
+  * **Sweep 2 (Floor = 1.5, Hard Stop Mult = 10.0)**: Resulted in 8 hard stops out-of-sample (a 33.3% reduction), but degraded Avg P&L to +4.35% (baseline: +4.84%).
+  * **Sweep 3 (Floor = 1.2, Hard Stop Mult = 5.0)**: Resulted in 11 hard stops out-of-sample, but degraded Win Rate (72.8% vs 78.0%) and Avg P&L (+4.45% vs +4.84%).
+* **Rationale**:
+  1. **Threshold Gate Loosening**: Penalizing hard stops in the training score calculation makes the training data look artificially safe, prompting the threshold optimizer to lower the score thresholds. This lets lower-confidence setups slip through out-of-sample, resulting in more hard stops (e.g. Sweep 1).
+  2. **Sample Size Insufficiency**: Hard-stop exits are rare events (typically 1-2 per symbol in the 5-year training period). Aggressively penalizing the bins where they occurred forces the model to overfit to specific features of these few trades, blocking valid high-probability setups and reducing expectancy out-of-sample.
+  3. **Post-Entry Nature**: 60.5% of hard stops are post-entry developments (Distribution Traps, Systemic Shocks, Low Volume Drifts) that cannot be predicted at the entry point. Relying strictly on entry-level BWO filtering is mathematically limited.
+* **Status**: Rejected. Configuration changes rolled back to baseline weights to preserve performance. Future improvements must target exit-phase logic.
+
+## [Rejected] Time-Decay / Inactivity Exit (Drift Control)
+* **Date**: 2026-06-13
+* **Objective**: Implement a time-decay exit for low-volume drifts (13.6% of hard-stops) that fail to develop momentum within 5-7 bars on dry volume.
+* **Findings**:
+  * Swept inactivity decay parameters: bars in `[6, 8, 10, 12]`, PnL threshold in `[0.5%, 1.0%, 1.5%, 2.0%]`, and average RDV threshold in `[0.4, 0.6, 0.8, 1.0]`.
+  * **NIFTY 50 (TEST)**: Every parameter combination that successfully reduced hard stops (e.g. `bars = 10`, `rdv_thresh = 0.8` reduced stops from 12 to 10) degraded the Avg P&L (fell to +4.81% vs baseline of +4.84%) and win rate (77.6% vs 78.0%).
+  * **NSE F&O (TEST)**: Similarly, any config reducing hard stops (e.g. `bars = 8`, `rdv_thresh = 0.8` reduced stops from 81 to 71) degraded the watchlist expectancy (Avg P&L fell to +6.42% vs baseline of +6.53%).
+* **Rationale**: Early exit on inactivity releases trades sooner, freeing up capital and cooldown states. This allows the strategy to take additional, new trades out-of-sample. However, since the baseline entry logic already selects high-conviction inflections, the extra trades taken in these newly freed slots are of lower quality, which overall dilutes the system's expectancy and degrades the Avg P&L.
+* **Status**: Rejected. Code modifications rolled back to baseline state to prevent watchlist performance degradation.

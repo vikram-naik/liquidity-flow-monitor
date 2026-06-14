@@ -58,6 +58,7 @@ You are a world class expert in all domains. Your intellectual firepower, scope 
 
 ## Development Standards
 - **Environment**: Use the root `venv`.
+- **No Boolean Gates for Entry Filters**: Avoid implementing entry filters or guards as hard boolean gates in the signal logic (e.g. `signal.py` or entry path modules). Instead, implement these filters dynamically via the Bayesian Weight (BW) configurations by defining expert bin boundaries and tuning feature weights. This maintains stock-specific configuration adaptability and preserves optimal expectancy.
 - **Outputs**: All generated outputs (tests, studies, backtests) MUST be placed in `./output/`.
 - **UI Data**: `src/divergence_engine/chart.py` prepares data for the web UI (`src/web/`).
 - **DivergenceEngine Initialization**: NEVER pass `start_date` and `end_date` during `DivergenceEngine` initialization (e.g. `DivergenceEngine(ticker)`). Always load the entire history first so that indicators warm up correctly, then filter the resulting ledger `DataFrame` by date.

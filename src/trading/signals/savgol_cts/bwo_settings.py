@@ -35,3 +35,56 @@ BWO_START_DATE = os.getenv("BWO_START_DATE", "2019-01-01")
 
 # Score delta required to promote Challenger over existing Champion
 CHALLENGER_PROMOTION_DELTA = float(os.getenv("BWO_CHALLENGER_PROMOTION_DELTA", "0.5"))
+
+import json
+
+BWO_SYMBOL_PARAMS_PATH = os.getenv("BWO_SYMBOL_PARAMS_PATH", os.path.join(os.path.dirname(__file__), "bwo_symbol_params.json"))
+
+def get_bwo_settings_for_symbol(symbol: str) -> dict:
+    symbol = symbol.strip().upper()
+    
+    # Base defaults
+    settings = {
+        "SL_HIT_PENALTY": SL_HIT_PENALTY,
+        "MIN_TRADES": MIN_TRADES,
+        "MAX_SL_RATIO": MAX_SL_RATIO,
+        "TARGET_PNL": 0.0 if symbol in ZERO_TARGET_PNL_SYMBOLS else TARGET_PNL_DEFAULT,
+        "TRADE_CAP_SCORE": TRADE_CAP_SCORE,
+        "TRADE_REWARD_COEFF": TRADE_REWARD_COEFF,
+        "SL_MAE_THRESHOLD": SL_MAE_THRESHOLD,
+        "BWO_START_DATE": BWO_START_DATE,
+        "CHALLENGER_PROMOTION_DELTA": CHALLENGER_PROMOTION_DELTA,
+        "NUM_BINS_CHOICES": [3, 4],
+        "SUCCESS_MULT_CHOICES": [1.2, 1.5, 1.8],
+        "DD_LIMIT_CHOICES": [5.0, 6.0, 7.0]
+    }
+    
+    if os.path.exists(BWO_SYMBOL_PARAMS_PATH):
+        try:
+            with open(BWO_SYMBOL_PARAMS_PATH, "r") as f:
+                overrides = json.load(f)
+            if isinstance(overrides, dict) and symbol in overrides:
+                sym_overrides = overrides[symbol]
+                if isinstance(sym_overrides, dict):
+                    # Update settings with overrides
+                    for k, v in sym_overrides.items():
+                        k_upper = k.upper()
+                        if k_upper in settings:
+                            if k_upper in ["MIN_TRADES", "TRADE_CAP_SCORE"]:
+                                settings[k_upper] = int(v)
+                            elif k_upper in [
+                                "SL_HIT_PENALTY", "MAX_SL_RATIO", "TARGET_PNL", 
+                                "TRADE_REWARD_COEFF", "SL_MAE_THRESHOLD", 
+                                "CHALLENGER_PROMOTION_DELTA"
+                            ]:
+                                settings[k_upper] = float(v)
+                            elif k_upper == "BWO_START_DATE":
+                                settings[k_upper] = str(v)
+                            elif k_upper in ["NUM_BINS_CHOICES", "SUCCESS_MULT_CHOICES", "DD_LIMIT_CHOICES"]:
+                                if isinstance(v, list):
+                                    settings[k_upper] = v
+        except Exception as e:
+            print(f"Error loading symbol BWO overrides from {BWO_SYMBOL_PARAMS_PATH}: {e}")
+            
+    return settings
+

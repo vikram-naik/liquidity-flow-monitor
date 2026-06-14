@@ -12,7 +12,9 @@ from pathlib import Path
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
 # Add root folder to sys.path
-sys.path.insert(0, "/home/vn/python-projects/liquidity-flow-monitor")
+root_dir = str(Path(__file__).resolve().parent.parent)
+if root_dir not in sys.path:
+    sys.path.insert(0, root_dir)
 
 from src.database import BW_CONFIGS_DIR, EXCLUDED_SYMBOLS_PATH
 from src.divergence_engine.engine import DivergenceEngine
@@ -37,27 +39,35 @@ from src.trading.signals.savgol_cts.bwo_settings import (
     SL_MAE_THRESHOLD,
     BWO_START_DATE,
     CHALLENGER_PROMOTION_DELTA,
+    get_bwo_settings_for_symbol,
 )
 
 # Helper function to compute score
-def calculate_bwo_score(trades_count, avg_pnl, sl_hits):
-    sl_ratio = sl_hits / trades_count if trades_count > 0 else 0.0
-    return SL_HIT_PENALTY * sl_ratio + TRADE_REWARD_COEFF * min(trades_count, TRADE_CAP_SCORE) + avg_pnl
+def calculate_bwo_score(trades_count, avg_pnl, sl_hits, bwo_set=None):
+    if bwo_set is None:
+        sl_ratio = sl_hits / trades_count if trades_count > 0 else 0.0
+        return SL_HIT_PENALTY * sl_ratio + TRADE_REWARD_COEFF * min(trades_count, TRADE_CAP_SCORE) + avg_pnl
+    else:
+        sl_ratio = sl_hits / trades_count if trades_count > 0 else 0.0
+        return bwo_set["SL_HIT_PENALTY"] * sl_ratio + bwo_set["TRADE_REWARD_COEFF"] * min(trades_count, bwo_set["TRADE_CAP_SCORE"]) + avg_pnl
 
-def backtest_config(sym, ledger, entry_cfg, exit_cfg, signal):
+def backtest_config(sym, ledger, entry_cfg, exit_cfg, signal, bwo_set=None):
+    if bwo_set is None:
+        bwo_set = get_bwo_settings_for_symbol(sym)
+        
     trades = simulate_trades(sym, ledger, entry_cfg, exit_cfg, signal)
-    trades_bwo = [t for t in trades if t.entry_date >= BWO_START_DATE]
+    trades_bwo = [t for t in trades if t.entry_date >= bwo_set["BWO_START_DATE"]]
     
     trades_count = len(trades_bwo)
     if trades_count > 0:
         pnls = [t.pnl_pct for t in trades_bwo]
         avg_pnl = np.mean(pnls)
-        sl_hits = sum(1 for t in trades_bwo if t.mae_pct >= SL_MAE_THRESHOLD)
+        sl_hits = sum(1 for t in trades_bwo if t.mae_pct >= bwo_set["SL_MAE_THRESHOLD"])
     else:
         avg_pnl = 0.0
         sl_hits = 0
         
-    score = calculate_bwo_score(trades_count, avg_pnl, sl_hits)
+    score = calculate_bwo_score(trades_count, avg_pnl, sl_hits, bwo_set)
     return {
         "trades": trades_count,
         "avg_pnl": avg_pnl,
@@ -136,37 +146,20 @@ def evaluate_and_sync_symbol(sym):
     signal = SignalFactory.get_signal("savgol_cts")
     exit_cfg = SavgolCTSExitConfig()
     
-    # Target P&L
-    target_pnl = 0.0 if sym in ZERO_TARGET_PNL_SYMBOLS else TARGET_PNL_DEFAULT
+    # Load symbol-specific BWO settings
+    bwo_set = get_bwo_settings_for_symbol(sym)
+    min_trades = bwo_set["MIN_TRADES"]
+    max_sl_ratio = bwo_set["MAX_SL_RATIO"]
+    challenger_promotion_delta = bwo_set["CHALLENGER_PROMOTION_DELTA"]
 
-    # 1. Backtest existing Champion configuration (if exists)
-    champ_exists = False
-    champ_passed = False
-    champ_metrics = {"trades": 0, "avg_pnl": 0.0, "sl_hits": 0, "score": -9999.0}
-    
-    json_path = os.path.join(BW_CONFIGS_DIR, f"{sym}.json")
-    # Note: If it is currently excluded, we don't treat Champion as active
-    if os.path.exists(json_path) and not is_symbol_excluded(sym):
-        champ_exists = True
-        try:
-            champ_cfg = get_symbol_entry_config(sym)
-            champ_metrics = backtest_config(sym, ledger, champ_cfg, exit_cfg, signal)
-            
-            # Check if Champion still passes gates
-            champ_sl_ratio = champ_metrics["sl_hits"] / champ_metrics["trades"] if champ_metrics["trades"] > 0 else 0.0
-            if (champ_metrics["trades"] >= MIN_TRADES and 
-                champ_metrics["avg_pnl"] >= target_pnl and 
-                champ_sl_ratio <= MAX_SL_RATIO):
-                champ_passed = True
-        except Exception as e:
-            print(f"[{sym}] Error backtesting Champion: {e}")
-
-    # 2. Run BWO optimizer to find candidate Challenger
+    # 1. Run BWO optimizer to find candidate Challenger and determine target P&L
     challenger_opt = optimize_single_symbol(sym)
     chal_passed = False
     chal_metrics = {"trades": 0, "avg_pnl": 0.0, "sl_hits": 0, "score": -9999.0}
     
     if challenger_opt and challenger_opt.get("success"):
+        # Use dynamically determined target P&L
+        target_pnl = challenger_opt.get("target_pnl", bwo_set["TARGET_PNL"])
         chal_metrics = {
             "trades": challenger_opt["trades"],
             "avg_pnl": challenger_opt["avg_pnl"],
@@ -174,25 +167,48 @@ def evaluate_and_sync_symbol(sym):
             "score": calculate_bwo_score(
                 challenger_opt["trades"],
                 challenger_opt["avg_pnl"],
-                challenger_opt["sl_hits"]
+                challenger_opt["sl_hits"],
+                bwo_set
             )
         }
         
         # Check safety gates on Challenger
         chal_sl_ratio = chal_metrics["sl_hits"] / chal_metrics["trades"] if chal_metrics["trades"] > 0 else 0.0
-        if (chal_metrics["trades"] >= MIN_TRADES and 
+        if (chal_metrics["trades"] >= min_trades and 
             chal_metrics["avg_pnl"] >= target_pnl and 
-            chal_sl_ratio <= MAX_SL_RATIO):
+            chal_sl_ratio <= max_sl_ratio):
             chal_passed = True
+    else:
+        target_pnl = bwo_set["TARGET_PNL"]
+
+    # 2. Backtest existing Champion configuration (if exists) using same target_pnl hurdle
+    champ_exists = False
+    champ_passed = False
+    champ_metrics = {"trades": 0, "avg_pnl": 0.0, "sl_hits": 0, "score": -9999.0}
+    
+    json_path = os.path.join(BW_CONFIGS_DIR, f"{sym}.json")
+    if os.path.exists(json_path) and not is_symbol_excluded(sym):
+        champ_exists = True
+        try:
+            champ_cfg = get_symbol_entry_config(sym)
+            champ_metrics = backtest_config(sym, ledger, champ_cfg, exit_cfg, signal, bwo_set)
+            
+            # Check if Champion still passes gates
+            champ_sl_ratio = champ_metrics["sl_hits"] / champ_metrics["trades"] if champ_metrics["trades"] > 0 else 0.0
+            if (champ_metrics["trades"] >= min_trades and 
+                champ_metrics["avg_pnl"] >= target_pnl and 
+                champ_sl_ratio <= max_sl_ratio):
+                champ_passed = True
+        except Exception as e:
+            print(f"[{sym}] Error backtesting Champion: {e}")
 
     # 3. Decision Matrix
     status = "RETAINED"
     reason = "Champion is optimal."
     
     if chal_passed:
-        # If Challenger passes, check if we should promote it
-        # Promote if Challenger score is strictly better than Champion by a delta of 0.5, or if Champion does not exist/failed gates
-        if not champ_exists or not champ_passed or (chal_metrics["score"] > champ_metrics["score"] + CHALLENGER_PROMOTION_DELTA):
+        # Promote if Challenger score is strictly better than Champion by the delta, or if Champion does not exist/failed gates
+        if not champ_exists or not champ_passed or (chal_metrics["score"] > champ_metrics["score"] + challenger_promotion_delta):
             status = "PROMOTED"
             reason = f"Challenger score ({chal_metrics['score']:.2f}) beats Champion score ({champ_metrics['score']:.2f})."
             # Write to JSON and remove from exclusion
@@ -216,7 +232,7 @@ def evaluate_and_sync_symbol(sym):
             reason = f"Challenger failed safety gates. Active Champion (Score: {champ_metrics['score']:.2f}) retained."
         else:
             status = "EXCLUDED"
-            reason = f"Both Champion and Challenger failed safety gates (Champ: {champ_metrics['score']:.2f}, Chal: {chal_metrics['score']:.2f})."
+            reason = f"Both Champion and Challenger failed safety gates (Champ: {champ_metrics['score']:.2f}, Chal: {chal_metrics['score']:.2f}). Target P&L was {target_pnl:.2f}%."
             # Exclude symbol
             add_to_exclusion_list(sym)
             if os.path.exists(json_path):
@@ -248,6 +264,7 @@ def main():
     parser = argparse.ArgumentParser(description="Weekly BWO Sync & Verification System")
     parser.add_argument("--symbol", type=str, help="Sync/evaluate a single symbol")
     parser.add_argument("--watchlist", type=str, help="Tuning targets in watchlist (default: all configured symbols)")
+    parser.add_argument("--no-suggest", action="store_true", help="Disable running BWO parameter suggestion before optimizing")
     args = parser.parse_args()
 
     # Find symbols to evaluate
@@ -282,30 +299,101 @@ def main():
         print("No symbols found to optimize. Exit.")
         return
 
+    # Dynamic parameter suggestion sweep before BWO training
+    if not getattr(args, "no_suggest", False):
+        print("\nRunning BWO parameter suggestions for watchlist to dynamically tune constraints...")
+        from scripts.suggest_bwo_params import suggest_params_for_symbol
+        from src.trading.signals.savgol_cts.bwo_settings import BWO_SYMBOL_PARAMS_PATH
+        
+        all_overrides = {}
+        if os.path.exists(BWO_SYMBOL_PARAMS_PATH):
+            try:
+                with open(BWO_SYMBOL_PARAMS_PATH, "r") as f:
+                    all_overrides = json.load(f)
+            except Exception:
+                pass
+                
+        for sym in symbols:
+            try:
+                suggestions = suggest_params_for_symbol(sym)
+                if suggestions:
+                    all_overrides[sym] = suggestions
+            except Exception as e:
+                print(f"Error suggesting parameters for {sym}: {e}")
+                
+        try:
+            os.makedirs(os.path.dirname(BWO_SYMBOL_PARAMS_PATH), exist_ok=True)
+            with open(BWO_SYMBOL_PARAMS_PATH, "w") as f:
+                json.dump(all_overrides, f, indent=4)
+            print("Successfully updated bwo_symbol_params.json with dynamic suggestions!\n")
+        except Exception as e:
+            print(f"Error writing suggested parameters to bwo_symbol_params.json: {e}\n")
+
     os.makedirs(BW_CONFIGS_DIR, exist_ok=True)
     results = []
     updated_any = False
 
     print(f"Starting parallel Champion-Challenger validation across {len(symbols)} symbols...\n")
     
-    with ProcessPoolExecutor() as executor:
-        futures = {executor.submit(evaluate_and_sync_symbol, sym): sym for sym in symbols}
-        
-        for idx, fut in enumerate(as_completed(futures)):
-            sym = futures[fut]
-            try:
-                res = fut.result()
-                results.append(res)
-                if not res["success"]:
-                    print(f"[{idx+1}/{len(symbols)}] Failed {sym}: {res['error']}")
-                else:
-                    status = res["status"]
-                    reason = res["reason"]
-                    print(f"[{idx+1}/{len(symbols)}] Evaluated {sym:<15} | Status: {status:<10} | Reason: {reason}")
-                    if status in ["PROMOTED", "EXCLUDED"]:
-                        updated_any = True
-            except Exception as e:
-                print(f"[{idx+1}/{len(symbols)}] Future error for {sym}: {e}")
+    if len(symbols) == 1:
+        # Run sequentially in MainProcess so that optimize_single_symbol sweeps can run in parallel
+        sym = symbols[0]
+        try:
+            res = evaluate_and_sync_symbol(sym)
+            results.append(res)
+            if not res["success"]:
+                print(f"[1/1] Failed {sym}: {res['error']}")
+            else:
+                status = res["status"]
+                reason = res["reason"]
+                print(f"[1/1] Evaluated {sym:<15} | Status: {status:<10} | Reason: {reason}")
+                if status in ["PROMOTED", "EXCLUDED"]:
+                    updated_any = True
+        except Exception as e:
+            print(f"[1/1] Error evaluating {sym}: {e}")
+    else:
+        # Run in parallel across symbols
+        try:
+            from tqdm import tqdm
+            use_tqdm = True
+        except ImportError:
+            use_tqdm = False
+            
+        with ProcessPoolExecutor() as executor:
+            futures = {executor.submit(evaluate_and_sync_symbol, sym): sym for sym in symbols}
+            
+            if use_tqdm:
+                for fut in tqdm(as_completed(futures), total=len(symbols), desc="Weekly BWO Sync Progress", unit="symbol"):
+                    sym = futures[fut]
+                    try:
+                        res = fut.result()
+                        results.append(res)
+                        if not res["success"]:
+                            tqdm.write(f"Failed {sym}: {res['error']}")
+                        else:
+                            status = res["status"]
+                            reason = res["reason"]
+                            tqdm.write(f"Evaluated {sym:<15} | Status: {status:<10} | Reason: {reason}")
+                            if status in ["PROMOTED", "EXCLUDED"]:
+                                updated_any = True
+                    except Exception as e:
+                        tqdm.write(f"Future error for {sym}: {e}")
+            else:
+                for idx, fut in enumerate(as_completed(futures)):
+                    sym = futures[fut]
+                    try:
+                        res = fut.result()
+                        results.append(res)
+                        if not res["success"]:
+                            print(f"[{idx+1}/{len(symbols)}] Failed {sym}: {res['error']}")
+                        else:
+                            status = res["status"]
+                            reason = res["reason"]
+                            print(f"[{idx+1}/{len(symbols)}] Evaluated {sym:<15} | Status: {status:<10} | Reason: {reason}")
+                            if status in ["PROMOTED", "EXCLUDED"]:
+                                updated_any = True
+                    except Exception as e:
+                        print(f"[{idx+1}/{len(symbols)}] Future error for {sym}: {e}")
 
     # Output formatted summary table
     print("\n" + "="*80)

@@ -92,6 +92,67 @@ def entry_custom_bayesian(row, prev_row, cfg, records, idx):
     if not getattr(cfg.custom_bayesian, "enabled", False):
         return False, 0, {"reason": "Custom Bayesian path disabled"}
 
+    # 0. Precalculated bypass path
+    # Note: These precalculated columns (triggers and scores) are only computed and injected
+    # into the ledger during training/BWO sweeps (via train_symbol_weights.py) to bypass millions
+    # of redundant python feature-bin checks. Live trading and normal backtests skip this block
+    # and perform standard dynamic scoring.
+    if "precalc_bayesian_score_accum" in row:
+        if not row.get("precalc_bayesian_trigger", False):
+            return False, 0, {"reason": "No structural inflection (precalc)"}
+            
+        regime = row.get("regime", "notrend")
+        cb_cfg = cfg.custom_bayesian
+        has_accum = hasattr(cb_cfg, "accumulation") and getattr(cb_cfg.accumulation, "feature_weights", None)
+        has_mom = hasattr(cb_cfg, "momentum") and getattr(cb_cfg.momentum, "feature_weights", None)
+        
+        if has_accum and has_mom:
+            if regime in ["downtrend", "notrend"]:
+                bayesian_score = row["precalc_bayesian_score_accum"]
+                score_threshold = cb_cfg.accumulation.score_threshold
+                sub_name = "accumulation"
+            else:
+                bayesian_score = row["precalc_bayesian_score_mom"]
+                score_threshold = cb_cfg.momentum.score_threshold
+                sub_name = "momentum"
+        else:
+            bayesian_score = row["precalc_bayesian_score_uni"]
+            score_threshold = cb_cfg.score_threshold
+            sub_name = "unified"
+            
+        if bayesian_score < score_threshold:
+            return False, 0, {
+                "reason": f"Custom Bayesian rejected (precalc): score ({bayesian_score:.4f}) < {score_threshold:.4f} (model={sub_name})",
+                "bayesian_score": bayesian_score,
+                "score_threshold": score_threshold,
+                "regime": regime,
+            }
+            
+        try:
+            prob = 1.0 / (1.0 + math.exp(-bayesian_score))
+        except OverflowError:
+            prob = 1.0 if bayesian_score > 0 else 0.0
+        score = int(prob * 100)
+        
+        if bayesian_score < 0:
+            return False, 0, {
+                "reason": f"Custom Bayesian rejected (precalc): prob < 50% (bayesian_score={bayesian_score:.4f}, model={sub_name})",
+                "bayesian_score": bayesian_score,
+                "score_threshold": score_threshold,
+                "regime": regime,
+            }
+            
+        details = {
+            "reason": f"Custom Bayesian accepted (score={bayesian_score:.4f}, model={sub_name})",
+            "entry_tag": EntryTag.CUSTOM_BAYESIAN.value,
+            "score": score,
+            "conv_score": score,
+            "bayesian_score": bayesian_score,
+            "score_threshold": score_threshold,
+            "regime": regime,
+        }
+        return True, score, details
+
     # 1. Structural triggers (inflection check) & safety filter
     if not check_bayesian_triggers(row, prev_row, records, idx):
         prev_cts = prev_row.get("cts", 0)

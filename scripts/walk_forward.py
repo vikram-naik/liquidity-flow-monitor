@@ -66,11 +66,11 @@ def get_watchlist_symbols(name: str) -> list[str]:
 
 
 def simulate_trades(
-    ticker: str, df: pd.DataFrame,
+    ticker: str, df: pd.DataFrame | list[dict],
     entry_cfg: BaseEntryConfig, exit_cfg: BaseExitConfig, signal
 ) -> list[Trade]:
     """Walk through ledger bar-by-bar, enter and exit trades."""
-    records = df.to_dict("records")
+    records = df if isinstance(df, list) else df.to_dict("records")
     n = len(records)
     trades = []
     in_trade = False

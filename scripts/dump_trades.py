@@ -43,7 +43,7 @@ def main():
     parser.add_argument("--watchlist", default="NIFTY 50")
     parser.add_argument("--symbol", help="Filter by symbol (default: all)")
     parser.add_argument("--sort", default="entry_date",
-                        choices=["entry_date", "pnl", "symbol", "mfe", "mae", "duration", "score", "cwdist", "cwmax", "psz", "das", "decel", "bt"],
+                        choices=["entry_date", "pnl", "symbol", "mfe", "mae", "duration", "score"],
                         help="Sort column (default: entry_date)")
     args = parser.parse_args()
 
@@ -208,35 +208,28 @@ def main():
         "mae": lambda t: t.mae_pct,
         "duration": lambda t: t.duration,
         "score": lambda t: t.conviction_score,
-        "cwdist": lambda t: t.cwvap_dist_signal,
-        "cwmax": lambda t: t.cwvap_dist_max,
-        "psz": lambda t: t.psz,
-        "cdvl": lambda t: t.cdvl,
-        "das": lambda t: t.das,
-        "decel": lambda t: t.psz_decel,
-        "bt": lambda t: t.bt,
     }
-    reverse = args.sort in ("pnl", "mfe", "score", "cwmax", "psz", "cdvl", "das", "decel")
+    reverse = args.sort in ("pnl", "mfe", "score")
     filtered.sort(key=sort_map[args.sort], reverse=reverse)
 
     # Print
     print(f"\n--- {label} TRADES: STUDY REPORT ({args.period.upper()}) ---")
-    header = (f"{'#':>3} | {'Symbol':<12} | {'Sig Date':<10} | {'PnL%':>7} | {'MFE%':>7} | "
-              f"{'CTS':>7} | {'PRT':>7} | {'CDVL':>7} | {'PSZv':>7} | "
-              f"{'>VAH':>4} | {'Bars':>4} | {'SCORE':>5} | {'ML%':>5} | "
-              f"{'RP10':>4} | {'RP22':>4} | {'RP63':>4} | {'RP252':>4} | {'CWC':>7} | {'PSZ':>7} | "
-              f"{'DAS':>7} | {'DECL':>7} | {'BT':>7} | {'Exit Reason'}")
+    header = (f"{'#':>3} | {'Symbol':<12} | {'Sig Date':<10} | {'PnL%':>7} | {'MFE%':>7} | {'MAE%':>7} | "
+              f"{'CTS':>7} | {'Bars':>4} | {'SCORE':>5} | "
+              f"{'RP10':>4} | {'RP252':>4} | {'Exit Reason'}")
     print(header)
     print("-" * len(header))
     for i, t in enumerate(filtered, 1):
         reason = t.exit_reason.value if hasattr(t.exit_reason, "value") else str(t.exit_reason)
-        ml_str = f"{t.ml_score:>5.1f}" if t.entry_tag == EntryTag.UNIVERSAL_CROSS.value else "  N/A"
         print(f"{i:>3} | {t.symbol:<12} | {t.signal_date:<10} | {t.pnl_pct:>7.2f} | "
-              f"{t.mfe_pct:>7.2f} | {t.cts_signal:>7.3f} | {t.prt_signal:>7.3f} | {t.cdvl:>7.4f} | "
-              f"{t.psz_v_signal:>7.4f} | "
-              f"{t.above_va_high:>4} | {t.duration:>4} | {t.conviction_score:>+5} | {ml_str} | "
-              f"{t.rp_10:>4} | {t.rp_22:>4} | {t.rp_63:>4} | {t.rp_252:>4} | {t.cwc:>7.4f} | {t.psz:>7.4f} | "
-              f"{t.das:>7.3f} | {t.psz_decel:>7.4f} | {t.bt:>7.4f} | {reason}")
+              f"{t.mfe_pct:>7.2f} | {t.mae_pct:>7.2f} | {t.cts_signal:>7.3f} | "
+              f"{t.duration:>4} | {t.conviction_score:>+5} | "
+              f"{t.rp_10:>4} | {t.rp_252:>4} | {reason}")
+    if filtered:
+        avg_pnl = np.mean([t.pnl_pct for t in filtered])
+        avg_dur = np.mean([t.duration for t in filtered])
+        print("-" * len(header))
+        print(f"Aggregates | Trades: {len(filtered):<4} | Avg PnL: {avg_pnl:>+6.2f}% | Avg Duration: {avg_dur:>5.1f} bars")
 
 if __name__ == "__main__":
     main()

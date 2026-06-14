@@ -1,0 +1,4477 @@
+{
+    "INFY": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 4.8,
+        "SL_MAE_THRESHOLD": 6.3,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.2,
+            1.5,
+            1.8
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.0,
+            5.5,
+            7.0
+        ]
+    },
+    "TATASTEEL": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 8.6,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.6,
+            6.1,
+            7.6
+        ]
+    },
+    "JIOFIN": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 3.7,
+        "SL_MAE_THRESHOLD": 8.1,
+        "NUM_BINS_CHOICES": [
+            3,
+            4
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.2,
+            1.5,
+            1.8
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.3,
+            5.8,
+            7.3
+        ]
+    },
+    "ADANIENT": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.25,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 10.0,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            5.9,
+            7.4,
+            8.9
+        ]
+    },
+    "MARUTI": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 6.8,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.2,
+            1.5,
+            1.8
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.0,
+            5.5,
+            7.0
+        ]
+    },
+    "RELIANCE": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 6.2,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.2,
+            1.5,
+            1.8
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.0,
+            5.5,
+            7.0
+        ]
+    },
+    "BAJFINANCE": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 8.0,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.2,
+            1.5,
+            1.8
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.3,
+            5.8,
+            7.3
+        ]
+    },
+    "M&M": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 8.0,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.2,
+            1.5,
+            1.8
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.3,
+            5.8,
+            7.3
+        ]
+    },
+    "MAXHEALTH": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.25,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 10.0,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            5.4,
+            6.9,
+            8.4
+        ]
+    },
+    "ULTRACEMCO": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 5.6,
+        "SL_MAE_THRESHOLD": 6.7,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.2,
+            1.5,
+            1.8
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.0,
+            5.5,
+            7.0
+        ]
+    },
+    "JINDALSTEL": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.25,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 10.0,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            5.9,
+            7.4,
+            8.9
+        ]
+    },
+    "BIOCON": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 4.2,
+        "SL_MAE_THRESHOLD": 8.5,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.5,
+            6.0,
+            7.5
+        ]
+    },
+    "SUZLON": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.25,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 10.0,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            8.0,
+            9.5,
+            11.0
+        ]
+    },
+    "DRREDDY": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 4.4,
+        "SL_MAE_THRESHOLD": 6.5,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.2,
+            1.5,
+            1.8
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.0,
+            5.5,
+            7.0
+        ]
+    },
+    "JSWENERGY": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.25,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 10.0,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            6.2,
+            7.7,
+            9.2
+        ]
+    },
+    "CANBK": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.25,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 10.0,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            5.4,
+            6.9,
+            8.4
+        ]
+    },
+    "CDSL": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 9.5,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            5.1,
+            6.6,
+            8.1
+        ]
+    },
+    "IREDA": {
+        "MIN_TRADES": 5,
+        "MAX_SL_RATIO": 0.25,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 10.0,
+        "NUM_BINS_CHOICES": [
+            3,
+            4
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            6.3,
+            7.8,
+            9.3
+        ]
+    },
+    "PREMIERENE": {
+        "MIN_TRADES": 5,
+        "MAX_SL_RATIO": 0.25,
+        "TARGET_PNL": 5.6,
+        "SL_MAE_THRESHOLD": 10.0,
+        "NUM_BINS_CHOICES": [
+            3,
+            4
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            6.7,
+            8.2,
+            9.7
+        ]
+    },
+    "VOLTAS": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 5.1,
+        "SL_MAE_THRESHOLD": 8.2,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.2,
+            1.5,
+            1.8
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.4,
+            5.9,
+            7.4
+        ]
+    },
+    "ANGELONE": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.25,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 10.0,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            6.4,
+            7.9,
+            9.4
+        ]
+    },
+    "PETRONET": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 4.0,
+        "SL_MAE_THRESHOLD": 7.5,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.2,
+            1.5,
+            1.8
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.0,
+            5.5,
+            7.0
+        ]
+    },
+    "ICICIBANK": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 5.3,
+        "SL_MAE_THRESHOLD": 6.6,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.2,
+            1.5,
+            1.8
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.0,
+            5.5,
+            7.0
+        ]
+    },
+    "AXISBANK": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 4.8,
+        "SL_MAE_THRESHOLD": 7.5,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.2,
+            1.5,
+            1.8
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.0,
+            5.5,
+            7.0
+        ]
+    },
+    "ONGC": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 8.4,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.2,
+            1.5,
+            1.8
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.5,
+            6.0,
+            7.5
+        ]
+    },
+    "TMPV": {
+        "MIN_TRADES": 3,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 7.8,
+        "NUM_BINS_CHOICES": [
+            3,
+            4
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.2,
+            1.5,
+            1.8
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.2,
+            5.7,
+            7.2
+        ]
+    },
+    "JSWSTEEL": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 8.4,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.5,
+            6.0,
+            7.5
+        ]
+    },
+    "GUFICBIO": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.25,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 10.0,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            7.1,
+            8.6,
+            10.1
+        ]
+    },
+    "LAURUSLABS": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 9.6,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            5.1,
+            6.6,
+            8.1
+        ]
+    },
+    "LTF": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 8.7,
+        "NUM_BINS_CHOICES": [
+            3,
+            4
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.7,
+            6.2,
+            7.7
+        ]
+    },
+    "BANKBARODA": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.25,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 9.8,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            5.3,
+            6.8,
+            8.3
+        ]
+    },
+    "CONCOR": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 8.8,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.7,
+            6.2,
+            7.7
+        ]
+    },
+    "RVNL": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.25,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 10.0,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            6.2,
+            7.7,
+            9.2
+        ]
+    },
+    "LODHA": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.25,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 10.0,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            6.5,
+            8.0,
+            9.5
+        ]
+    },
+    "VEDL": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.25,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 10.0,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            5.4,
+            6.9,
+            8.4
+        ]
+    },
+    "BDL": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.25,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 10.0,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            6.3,
+            7.8,
+            9.3
+        ]
+    },
+    "INDIANB": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.25,
+        "TARGET_PNL": 5.6,
+        "SL_MAE_THRESHOLD": 10.0,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            6.0,
+            7.5,
+            9.0
+        ]
+    },
+    "GAIL": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 8.6,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.6,
+            6.1,
+            7.6
+        ]
+    },
+    "HAL": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 9.2,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.9,
+            6.4,
+            7.9
+        ]
+    },
+    "NAM-INDIA": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.25,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 10.0,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            5.4,
+            6.9,
+            8.4
+        ]
+    },
+    "DMART": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 5.0,
+        "SL_MAE_THRESHOLD": 7.9,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.2,
+            1.5,
+            1.8
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.3,
+            5.8,
+            7.3
+        ]
+    },
+    "COLPAL": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 6.3,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.2,
+            1.5,
+            1.8
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.0,
+            5.5,
+            7.0
+        ]
+    },
+    "RBLBANK": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.25,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 10.0,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            6.7,
+            8.2,
+            9.7
+        ]
+    },
+    "AUBANK": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.25,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 9.8,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            5.3,
+            6.8,
+            8.3
+        ]
+    },
+    "MAZDOCK": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.25,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 10.0,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            6.3,
+            7.8,
+            9.3
+        ]
+    },
+    "APOLLOHOSP": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 7.8,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.2,
+            1.5,
+            1.8
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.2,
+            5.7,
+            7.2
+        ]
+    },
+    "DLF": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 9.8,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            5.2,
+            6.7,
+            8.2
+        ]
+    },
+    "DALBHARAT": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 9.6,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            5.2,
+            6.7,
+            8.2
+        ]
+    },
+    "BHARTIARTL": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 4.6,
+        "SL_MAE_THRESHOLD": 7.2,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.2,
+            1.5,
+            1.8
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.0,
+            5.5,
+            7.0
+        ]
+    },
+    "POWERINDIA": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.25,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 10.0,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            6.1,
+            7.6,
+            9.1
+        ]
+    },
+    "HDFCBANK": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 3.1,
+        "SL_MAE_THRESHOLD": 5.7,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.2,
+            1.5,
+            1.8
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.0,
+            5.5,
+            7.0
+        ]
+    },
+    "SRF": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 8.0,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.2,
+            1.5,
+            1.8
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.3,
+            5.8,
+            7.3
+        ]
+    },
+    "HINDUNILVR": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 4.6,
+        "SL_MAE_THRESHOLD": 5.6,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.2,
+            1.5,
+            1.8
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.0,
+            5.5,
+            7.0
+        ]
+    },
+    "LTM": {
+        "MIN_TRADES": 3,
+        "MAX_SL_RATIO": 0.25,
+        "TARGET_PNL": 2.0,
+        "SL_MAE_THRESHOLD": 9.9,
+        "NUM_BINS_CHOICES": [
+            3,
+            4
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            5.3,
+            6.8,
+            8.3
+        ]
+    },
+    "ZYDUSLIFE": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 6.8,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.2,
+            1.5,
+            1.8
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.0,
+            5.5,
+            7.0
+        ]
+    },
+    "HYUNDAI": {
+        "MIN_TRADES": 5,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 8.4,
+        "NUM_BINS_CHOICES": [
+            3,
+            4
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.2,
+            1.5,
+            1.8
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.5,
+            6.0,
+            7.5
+        ]
+    },
+    "PAGEIND": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 5.2,
+        "SL_MAE_THRESHOLD": 7.9,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.2,
+            1.5,
+            1.8
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.2,
+            5.7,
+            7.2
+        ]
+    },
+    "GODREJPROP": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.25,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 10.0,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            5.5,
+            7.0,
+            8.5
+        ]
+    },
+    "JUBLFOOD": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 9.0,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.8,
+            6.3,
+            7.8
+        ]
+    },
+    "BANKINDIA": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.25,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 10.0,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            5.8,
+            7.3,
+            8.8
+        ]
+    },
+    "MOTILALOFS": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.25,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 10.0,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            6.0,
+            7.5,
+            9.0
+        ]
+    },
+    "PFC": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 9.2,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            5.0,
+            6.5,
+            8.0
+        ]
+    },
+    "POLICYBZR": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.25,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 10.0,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            6.7,
+            8.2,
+            9.7
+        ]
+    },
+    "RECLTD": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 9.2,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.9,
+            6.4,
+            7.9
+        ]
+    },
+    "BRITANNIA": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 3.9,
+        "SL_MAE_THRESHOLD": 6.2,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.2,
+            1.5,
+            1.8
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.0,
+            5.5,
+            7.0
+        ]
+    },
+    "INDUSINDBK": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.25,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 10.0,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            5.4,
+            6.9,
+            8.4
+        ]
+    },
+    "BEL": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 9.1,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.9,
+            6.4,
+            7.9
+        ]
+    },
+    "HINDPETRO": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 9.7,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            5.2,
+            6.7,
+            8.2
+        ]
+    },
+    "NATIONALUM": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.25,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 10.0,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            5.7,
+            7.2,
+            8.7
+        ]
+    },
+    "ABCAPITAL": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.25,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 10.0,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            5.4,
+            6.9,
+            8.4
+        ]
+    },
+    "HCLTECH": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 6.9,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.2,
+            1.5,
+            1.8
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.0,
+            5.5,
+            7.0
+        ]
+    },
+    "TATAPOWER": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 9.0,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.8,
+            6.3,
+            7.8
+        ]
+    },
+    "RADICO": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.25,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 10.0,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            5.7,
+            7.2,
+            8.7
+        ]
+    },
+    "LUPIN": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 5.0,
+        "SL_MAE_THRESHOLD": 7.6,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.2,
+            1.5,
+            1.8
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.1,
+            5.6,
+            7.1
+        ]
+    },
+    "ADANIENSOL": {
+        "MIN_TRADES": 5,
+        "MAX_SL_RATIO": 0.25,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 10.0,
+        "NUM_BINS_CHOICES": [
+            3,
+            4
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            5.8,
+            7.3,
+            8.8
+        ]
+    },
+    "TORNTPHARM": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 3.7,
+        "SL_MAE_THRESHOLD": 7.4,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.2,
+            1.5,
+            1.8
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.0,
+            5.5,
+            7.0
+        ]
+    },
+    "SUNPHARMA": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 6.9,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.2,
+            1.5,
+            1.8
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.0,
+            5.5,
+            7.0
+        ]
+    },
+    "BOSCHLTD": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 7.7,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.2,
+            1.5,
+            1.8
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.1,
+            5.6,
+            7.1
+        ]
+    },
+    "BAJAJFINSV": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 7.7,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.2,
+            1.5,
+            1.8
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.1,
+            5.6,
+            7.1
+        ]
+    },
+    "TATACONSUM": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 6.9,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.2,
+            1.5,
+            1.8
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.0,
+            5.5,
+            7.0
+        ]
+    },
+    "COALINDIA": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 7.7,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.2,
+            1.5,
+            1.8
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.1,
+            5.6,
+            7.1
+        ]
+    },
+    "BPCL": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 8.4,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.2,
+            1.5,
+            1.8
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.5,
+            6.0,
+            7.5
+        ]
+    },
+    "HAVELLS": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 5.1,
+        "SL_MAE_THRESHOLD": 7.6,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.2,
+            1.5,
+            1.8
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.1,
+            5.6,
+            7.1
+        ]
+    },
+    "VMM": {
+        "MIN_TRADES": 5,
+        "MAX_SL_RATIO": 0.25,
+        "TARGET_PNL": 5.9,
+        "SL_MAE_THRESHOLD": 10.0,
+        "NUM_BINS_CHOICES": [
+            3,
+            4
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            5.4,
+            6.9,
+            8.4
+        ]
+    },
+    "OLAELEC": {
+        "MIN_TRADES": 5,
+        "MAX_SL_RATIO": 0.25,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 10.0,
+        "NUM_BINS_CHOICES": [
+            3,
+            4
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            8.7,
+            10.2,
+            11.7
+        ]
+    },
+    "NTPC": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 7.3,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.2,
+            1.5,
+            1.8
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.0,
+            5.5,
+            7.0
+        ]
+    },
+    "SAMMAANCAP": {
+        "MIN_TRADES": 5,
+        "MAX_SL_RATIO": 0.25,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 10.0,
+        "NUM_BINS_CHOICES": [
+            3,
+            4
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            6.0,
+            7.5,
+            9.0
+        ]
+    },
+    "BHEL": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.25,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 10.0,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            6.0,
+            7.5,
+            9.0
+        ]
+    },
+    "BAJAJ-AUTO": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 6.7,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.2,
+            1.5,
+            1.8
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.0,
+            5.5,
+            7.0
+        ]
+    },
+    "UNITDSPR": {
+        "MIN_TRADES": 5,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 5.3,
+        "SL_MAE_THRESHOLD": 6.6,
+        "NUM_BINS_CHOICES": [
+            3,
+            4
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.2,
+            1.5,
+            1.8
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.0,
+            5.5,
+            7.0
+        ]
+    },
+    "APLAPOLLO": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.25,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 10.0,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            5.5,
+            7.0,
+            8.5
+        ]
+    },
+    "POLYCAB": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 8.8,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.7,
+            6.2,
+            7.7
+        ]
+    },
+    "NYKAA": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.25,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 10.0,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            5.7,
+            7.2,
+            8.7
+        ]
+    },
+    "NHPC": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 8.6,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.6,
+            6.1,
+            7.6
+        ]
+    },
+    "ASTRAL": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 5.7,
+        "SL_MAE_THRESHOLD": 9.2,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.9,
+            6.4,
+            7.9
+        ]
+    },
+    "DIXON": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.25,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 10.0,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            5.4,
+            6.9,
+            8.4
+        ]
+    },
+    "TATAELXSI": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 8.9,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.7,
+            6.2,
+            7.7
+        ]
+    },
+    "TVSMOTOR": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 8.6,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.6,
+            6.1,
+            7.6
+        ]
+    },
+    "ASIANPAINT": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 5.6,
+        "SL_MAE_THRESHOLD": 6.3,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.2,
+            1.5,
+            1.8
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.0,
+            5.5,
+            7.0
+        ]
+    },
+    "SBILIFE": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 5.5,
+        "SL_MAE_THRESHOLD": 7.2,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.2,
+            1.5,
+            1.8
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.0,
+            5.5,
+            7.0
+        ]
+    },
+    "KALYANKJIL": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.25,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 10.0,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            6.0,
+            7.5,
+            9.0
+        ]
+    },
+    "SAIL": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.25,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 10.0,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            5.9,
+            7.4,
+            8.9
+        ]
+    },
+    "EICHERMOT": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 5.4,
+        "SL_MAE_THRESHOLD": 7.8,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.2,
+            1.5,
+            1.8
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.2,
+            5.7,
+            7.2
+        ]
+    },
+    "INDHOTEL": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 9.4,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            5.0,
+            6.5,
+            8.0
+        ]
+    },
+    "DIVISLAB": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 4.8,
+        "SL_MAE_THRESHOLD": 7.2,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.2,
+            1.5,
+            1.8
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.0,
+            5.5,
+            7.0
+        ]
+    },
+    "SIEMENS": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 8.2,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.2,
+            1.5,
+            1.8
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.4,
+            5.9,
+            7.4
+        ]
+    },
+    "MANAPPURAM": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.25,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 10.0,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            5.6,
+            7.1,
+            8.6
+        ]
+    },
+    "COFORGE": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 9.4,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            5.0,
+            6.5,
+            8.0
+        ]
+    },
+    "ABB": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 8.8,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.7,
+            6.2,
+            7.7
+        ]
+    },
+    "LICHSGFIN": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 9.1,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.9,
+            6.4,
+            7.9
+        ]
+    },
+    "HINDZINC": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 8.9,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.8,
+            6.3,
+            7.8
+        ]
+    },
+    "OBEROIRLTY": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.25,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 10.0,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            5.7,
+            7.2,
+            8.7
+        ]
+    },
+    "KFINTECH": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.25,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 10.0,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            6.1,
+            7.6,
+            9.1
+        ]
+    },
+    "YESBANK": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.25,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 10.0,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            7.3,
+            8.8,
+            10.3
+        ]
+    },
+    "AUROPHARMA": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 8.9,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.8,
+            6.3,
+            7.8
+        ]
+    },
+    "SOLARINDS": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 9.5,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            5.1,
+            6.6,
+            8.1
+        ]
+    },
+    "HDFCLIFE": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 7.1,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.2,
+            1.5,
+            1.8
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.0,
+            5.5,
+            7.0
+        ]
+    },
+    "SBICARD": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 5.4,
+        "SL_MAE_THRESHOLD": 7.7,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.2,
+            1.5,
+            1.8
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.1,
+            5.6,
+            7.1
+        ]
+    },
+    "MOTHERSON": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 8.6,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.6,
+            6.1,
+            7.6
+        ]
+    },
+    "PATANJALI": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 8.6,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.6,
+            6.1,
+            7.6
+        ]
+    },
+    "CIPLA": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 5.2,
+        "SL_MAE_THRESHOLD": 6.7,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.2,
+            1.5,
+            1.8
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.0,
+            5.5,
+            7.0
+        ]
+    },
+    "PIIND": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 8.5,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.5,
+            6.0,
+            7.5
+        ]
+    },
+    "PAYTM": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.25,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 10.0,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            6.7,
+            8.2,
+            9.7
+        ]
+    },
+    "IRFC": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 8.8,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.7,
+            6.2,
+            7.7
+        ]
+    },
+    "PERSISTENT": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 9.6,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            5.1,
+            6.6,
+            8.1
+        ]
+    },
+    "FORTIS": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 8.9,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.8,
+            6.3,
+            7.8
+        ]
+    },
+    "KPITTECH": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.25,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 10.0,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            6.6,
+            8.1,
+            9.6
+        ]
+    },
+    "BANDHANBNK": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.25,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 10.0,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            5.8,
+            7.3,
+            8.8
+        ]
+    },
+    "BAJAJHLDNG": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 8.7,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.6,
+            6.1,
+            7.6
+        ]
+    },
+    "SWIGGY": {
+        "MIN_TRADES": 5,
+        "MAX_SL_RATIO": 0.25,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 10.0,
+        "NUM_BINS_CHOICES": [
+            3,
+            4
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            6.9,
+            8.4,
+            9.9
+        ]
+    },
+    "GODREJCP": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 5.7,
+        "SL_MAE_THRESHOLD": 7.7,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.2,
+            1.5,
+            1.8
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.1,
+            5.6,
+            7.1
+        ]
+    },
+    "ICICIPRULI": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 4.5,
+        "SL_MAE_THRESHOLD": 8.5,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.5,
+            6.0,
+            7.5
+        ]
+    },
+    "HDFCAMC": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 7.9,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.2,
+            1.5,
+            1.8
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.2,
+            5.7,
+            7.2
+        ]
+    },
+    "FORCEMOT": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.25,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 10.0,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            6.4,
+            7.9,
+            9.4
+        ]
+    },
+    "DELHIVERY": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.25,
+        "TARGET_PNL": 5.9,
+        "SL_MAE_THRESHOLD": 10.0,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            5.4,
+            6.9,
+            8.4
+        ]
+    },
+    "CROMPTON": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 5.9,
+        "SL_MAE_THRESHOLD": 9.2,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.9,
+            6.4,
+            7.9
+        ]
+    },
+    "ADANIPOWER": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.25,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 10.0,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            6.7,
+            8.2,
+            9.7
+        ]
+    },
+    "KAYNES": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.25,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 10.0,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            6.7,
+            8.2,
+            9.7
+        ]
+    },
+    "MCX": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.25,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 10.0,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            5.3,
+            6.8,
+            8.3
+        ]
+    },
+    "FEDERALBNK": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 8.7,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.6,
+            6.1,
+            7.6
+        ]
+    },
+    "CHOLAFIN": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.25,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 10.0,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            5.5,
+            7.0,
+            8.5
+        ]
+    },
+    "MFSL": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 9.7,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            5.2,
+            6.7,
+            8.2
+        ]
+    },
+    "NAUKRI": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.25,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 9.9,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            5.3,
+            6.8,
+            8.3
+        ]
+    },
+    "SBIN": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 7.4,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.2,
+            1.5,
+            1.8
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.0,
+            5.5,
+            7.0
+        ]
+    },
+    "AMBUJACEM": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 8.4,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.5,
+            6.0,
+            7.5
+        ]
+    },
+    "MUTHOOTFIN": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 8.6,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.6,
+            6.1,
+            7.6
+        ]
+    },
+    "VBL": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.25,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 9.8,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            5.3,
+            6.8,
+            8.3
+        ]
+    },
+    "ICICIGI": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 5.8,
+        "SL_MAE_THRESHOLD": 8.0,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.2,
+            1.5,
+            1.8
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.3,
+            5.8,
+            7.3
+        ]
+    },
+    "IOC": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 7.6,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.2,
+            1.5,
+            1.8
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.1,
+            5.6,
+            7.1
+        ]
+    },
+    "TRENT": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.25,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 9.9,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            5.3,
+            6.8,
+            8.3
+        ]
+    },
+    "CAMS": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 8.9,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.8,
+            6.3,
+            7.8
+        ]
+    },
+    "KOTAKBANK": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 3.5,
+        "SL_MAE_THRESHOLD": 6.5,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.2,
+            1.5,
+            1.8
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.0,
+            5.5,
+            7.0
+        ]
+    },
+    "TIINDIA": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.25,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 10.0,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            5.8,
+            7.3,
+            8.8
+        ]
+    },
+    "BHARATFORG": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 9.2,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.9,
+            6.4,
+            7.9
+        ]
+    },
+    "SUPREMEIND": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 9.5,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            5.1,
+            6.6,
+            8.1
+        ]
+    },
+    "COCHINSHIP": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.25,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 10.0,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            5.7,
+            7.2,
+            8.7
+        ]
+    },
+    "IEX": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.25,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 10.0,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            5.5,
+            7.0,
+            8.5
+        ]
+    },
+    "ASHOKLEY": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 9.6,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            5.1,
+            6.6,
+            8.1
+        ]
+    },
+    "POWERGRID": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 5.0,
+        "SL_MAE_THRESHOLD": 7.1,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.2,
+            1.5,
+            1.8
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.0,
+            5.5,
+            7.0
+        ]
+    },
+    "OFSS": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 8.3,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.2,
+            1.5,
+            1.8
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.4,
+            5.9,
+            7.4
+        ]
+    },
+    "BSE": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.25,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 10.0,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            5.6,
+            7.1,
+            8.6
+        ]
+    },
+    "GLENMARK": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 9.2,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.9,
+            6.4,
+            7.9
+        ]
+    },
+    "INDUSTOWER": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 9.5,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            5.1,
+            6.6,
+            8.1
+        ]
+    },
+    "MPHASIS": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 9.3,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            5.0,
+            6.5,
+            8.0
+        ]
+    },
+    "MANKIND": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 8.8,
+        "NUM_BINS_CHOICES": [
+            3,
+            4
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.7,
+            6.2,
+            7.7
+        ]
+    },
+    "ALKEM": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 7.5,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.2,
+            1.5,
+            1.8
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.0,
+            5.5,
+            7.0
+        ]
+    },
+    "GODFRYPHLP": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.25,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 10.0,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            6.1,
+            7.6,
+            9.1
+        ]
+    },
+    "KEI": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.25,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 10.0,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            5.7,
+            7.2,
+            8.7
+        ]
+    },
+    "INOXWIND": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.25,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 10.0,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            8.2,
+            9.7,
+            11.2
+        ]
+    },
+    "ETERNAL": {
+        "MIN_TRADES": 5,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 4.9,
+        "SL_MAE_THRESHOLD": 8.9,
+        "NUM_BINS_CHOICES": [
+            3,
+            4
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.8,
+            6.3,
+            7.8
+        ]
+    },
+    "GMRAIRPORT": {
+        "MIN_TRADES": 5,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 7.7,
+        "NUM_BINS_CHOICES": [
+            3,
+            4
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.2,
+            1.5,
+            1.8
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.1,
+            5.6,
+            7.1
+        ]
+    },
+    "SHRIRAMFIN": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 8.5,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.5,
+            6.0,
+            7.5
+        ]
+    },
+    "GESHIP": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.25,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 10.0,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            5.9,
+            7.4,
+            8.9
+        ]
+    },
+    "TECHM": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 4.8,
+        "SL_MAE_THRESHOLD": 7.5,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.2,
+            1.5,
+            1.8
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.0,
+            5.5,
+            7.0
+        ]
+    },
+    "TITAN": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 6.8,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.2,
+            1.5,
+            1.8
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.0,
+            5.5,
+            7.0
+        ]
+    },
+    "SONACOMS": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.25,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 10.0,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            5.4,
+            6.9,
+            8.4
+        ]
+    },
+    "MARICO": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 3.8,
+        "SL_MAE_THRESHOLD": 6.6,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.2,
+            1.5,
+            1.8
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.0,
+            5.5,
+            7.0
+        ]
+    },
+    "SHREECEM": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 4.8,
+        "SL_MAE_THRESHOLD": 7.5,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.2,
+            1.5,
+            1.8
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.0,
+            5.5,
+            7.0
+        ]
+    },
+    "PRESTIGE": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.25,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 10.0,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            6.6,
+            8.1,
+            9.6
+        ]
+    },
+    "ADANIGREEN": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.25,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 10.0,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            7.0,
+            8.5,
+            10.0
+        ]
+    },
+    "ADANIPORTS": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 8.9,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.8,
+            6.3,
+            7.8
+        ]
+    },
+    "BLUESTARCO": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.25,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 10.0,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            5.4,
+            6.9,
+            8.4
+        ]
+    },
+    "HINDALCO": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 9.0,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.8,
+            6.3,
+            7.8
+        ]
+    },
+    "DABUR": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 5.5,
+        "SL_MAE_THRESHOLD": 6.1,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.2,
+            1.5,
+            1.8
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.0,
+            5.5,
+            7.0
+        ]
+    },
+    "OIL": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.25,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 10.0,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            5.5,
+            7.0,
+            8.5
+        ]
+    },
+    "ITC": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 5.8,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.2,
+            1.5,
+            1.8
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.0,
+            5.5,
+            7.0
+        ]
+    },
+    "CUMMINSIND": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 8.7,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.7,
+            6.2,
+            7.7
+        ]
+    },
+    "INDIGO": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 9.1,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.9,
+            6.4,
+            7.9
+        ]
+    },
+    "TCS": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 4.8,
+        "SL_MAE_THRESHOLD": 5.9,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.2,
+            1.5,
+            1.8
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.0,
+            5.5,
+            7.0
+        ]
+    },
+    "PIDILITIND": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 5.2,
+        "SL_MAE_THRESHOLD": 6.4,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.2,
+            1.5,
+            1.8
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.0,
+            5.5,
+            7.0
+        ]
+    },
+    "EXIDEIND": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 8.0,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.2,
+            1.5,
+            1.8
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.3,
+            5.8,
+            7.3
+        ]
+    },
+    "AMBER": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.25,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 10.0,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            6.1,
+            7.6,
+            9.1
+        ]
+    },
+    "NBCC": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.25,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 10.0,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            6.5,
+            8.0,
+            9.5
+        ]
+    },
+    "NUVAMA": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.25,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 10.0,
+        "NUM_BINS_CHOICES": [
+            3,
+            4
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            6.1,
+            7.6,
+            9.1
+        ]
+    },
+    "PGEL": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.25,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 10.0,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            8.3,
+            9.8,
+            11.3
+        ]
+    },
+    "CGPOWER": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.25,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 10.0,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            6.5,
+            8.0,
+            9.5
+        ]
+    },
+    "PHOENIXLTD": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.25,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 10.0,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            6.2,
+            7.7,
+            9.2
+        ]
+    },
+    "IDFCFIRSTB": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 9.4,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            5.1,
+            6.6,
+            8.1
+        ]
+    },
+    "UNOMINDA": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 9.3,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            5.0,
+            6.5,
+            8.0
+        ]
+    },
+    "GRASIM": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 5.6,
+        "SL_MAE_THRESHOLD": 7.6,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.2,
+            1.5,
+            1.8
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.1,
+            5.6,
+            7.1
+        ]
+    },
+    "WAAREEENER": {
+        "MIN_TRADES": 5,
+        "MAX_SL_RATIO": 0.25,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 10.0,
+        "NUM_BINS_CHOICES": [
+            3,
+            4
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            6.5,
+            8.0,
+            9.5
+        ]
+    },
+    "HEROMOTOCO": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 7.6,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.2,
+            1.5,
+            1.8
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.1,
+            5.6,
+            7.1
+        ]
+    },
+    "UNIONBANK": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.25,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 10.0,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            5.7,
+            7.2,
+            8.7
+        ]
+    },
+    "PNB": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 9.7,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            5.2,
+            6.7,
+            8.2
+        ]
+    },
+    "NESTLEIND": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 3.3,
+        "SL_MAE_THRESHOLD": 5.8,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.2,
+            1.5,
+            1.8
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.0,
+            5.5,
+            7.0
+        ]
+    },
+    "NMDC": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 9.6,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            5.2,
+            6.7,
+            8.2
+        ]
+    },
+    "BBL": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.25,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 10.0,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            6.1,
+            7.6,
+            9.1
+        ]
+    },
+    "LT": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 6.6,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.2,
+            1.5,
+            1.8
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.0,
+            5.5,
+            7.0
+        ]
+    },
+    "UPL": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 5.1,
+        "SL_MAE_THRESHOLD": 8.3,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.2,
+            1.5,
+            1.8
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.5,
+            6.0,
+            7.5
+        ]
+    },
+    "360ONE": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.25,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 10.0,
+        "NUM_BINS_CHOICES": [
+            3,
+            4
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            5.6,
+            7.1,
+            8.6
+        ]
+    },
+    "LICI": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 6.8,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.2,
+            1.5,
+            1.8
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.0,
+            5.5,
+            7.0
+        ]
+    },
+    "WIPRO": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.2,
+        "TARGET_PNL": 5.3,
+        "SL_MAE_THRESHOLD": 6.8,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.2,
+            1.5,
+            1.8
+        ],
+        "DD_LIMIT_CHOICES": [
+            4.0,
+            5.5,
+            7.0
+        ]
+    },
+    "PNBHOUSING": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.25,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 10.0,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            6.4,
+            7.9,
+            9.4
+        ]
+    },
+    "IDEA": {
+        "MIN_TRADES": 8,
+        "MAX_SL_RATIO": 0.25,
+        "TARGET_PNL": 6.0,
+        "SL_MAE_THRESHOLD": 10.0,
+        "NUM_BINS_CHOICES": [
+            3,
+            4,
+            5
+        ],
+        "SUCCESS_MULT_CHOICES": [
+            1.5,
+            1.8,
+            2.2
+        ],
+        "DD_LIMIT_CHOICES": [
+            9.5,
+            11.0,
+            12.0
+        ]
+    }
+}

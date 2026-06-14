@@ -11,7 +11,9 @@ from pathlib import Path
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
 # Add root folder to sys.path
-sys.path.insert(0, "/home/vn/python-projects/liquidity-flow-monitor")
+root_dir = str(Path(__file__).resolve().parent.parent)
+if root_dir not in sys.path:
+    sys.path.insert(0, root_dir)
 
 from src.divergence_engine.engine import DivergenceEngine
 from src.trading.signals import SignalFactory, Trade
@@ -27,6 +29,7 @@ from src.trading.signals.savgol_cts.bwo_settings import (
     TRADE_REWARD_COEFF,
     SL_MAE_THRESHOLD,
     BWO_START_DATE,
+    get_bwo_settings_for_symbol,
 )
 from scripts.walk_forward import simulate_trades, get_watchlist_symbols
 
@@ -55,6 +58,14 @@ FEATURES = [
     "fas_max_10",
     "fas_slope_change_3",
 ]
+
+# Custom expert bin boundaries for critical risk features
+EXPERT_BINS = {
+    "fas_slope_sum_5": [-float('inf'), -4.5, -1.5, float('inf')],
+    "pdd_30": [-float('inf'), -5.5, -2.0, float('inf')],
+    "base_tightness": [-float('inf'), 0.35, 0.40, 0.46, float('inf')],
+}
+
 
 def simulate_single_trade(sym, ledger, start_idx, signal, exit_cfg):
     records = ledger.to_dict("records")
@@ -131,12 +142,15 @@ def simulate_single_trade(sym, ledger, start_idx, signal, exit_cfg):
     pnl_pct = (last_close / entry_price - 1.0) * 100.0
     return pnl_pct, mae_val
 
-def label_candidate_bars_sim(sym, ledger, signal, exit_cfg, success_mult=1.2, dd_limit=None):
+def label_candidate_bars_sim(sym, ledger, signal, exit_cfg, success_mult=1.2, dd_limit=None, sl_mae_threshold=None):
     n = len(ledger)
     records = ledger.to_dict("records")
     candidates = []
     labels = {}
     
+    if sl_mae_threshold is None:
+        sl_mae_threshold = SL_MAE_THRESHOLD
+        
     close_vals = ledger["close"].values
     atr_vals = ledger["atr_20"].values
     valid_atr_pct = [atr / close * 100.0 for close, atr in zip(close_vals, atr_vals) if not np.isnan(close) and not np.isnan(atr) and close > 0]
@@ -162,7 +176,10 @@ def label_candidate_bars_sim(sym, ledger, signal, exit_cfg, success_mult=1.2, dd
         candidates.append(i)
         pnl_pct, mae_pct = simulate_single_trade(sym, ledger, i, signal, exit_cfg)
         
-        if pnl_pct >= success_threshold and mae_pct < drawdown_limit:
+        # Check for catastrophic hard stop failures first to penalize them heavily
+        if pnl_pct <= -sl_mae_threshold or mae_pct >= sl_mae_threshold:
+            outcome = -1
+        elif pnl_pct >= success_threshold and mae_pct < drawdown_limit:
             outcome = 1
         elif pnl_pct <= 0.0 or mae_pct >= drawdown_limit:
             outcome = 0
@@ -188,11 +205,16 @@ def train_bayesian_model(ledger, candidates, labels, num_bins=3):
 
     y_train = np.array([labels[idx] for idx in train_idx])
     n_success = int((y_train == 1).sum())
-    n_failure = int((y_train == 0).sum())
+    n_failure_normal = int((y_train == 0).sum())
+    n_failure_hard = int((y_train == -1).sum())
+    
+    # Weight hard-stop failures by a factor of 5 to penalize those bins heavily
+    HARD_STOP_MULT = 5.0
+    n_failure = n_failure_normal + HARD_STOP_MULT * n_failure_hard
     
     # Avoid division by zero
     n_success = max(1, n_success)
-    n_failure = max(1, n_failure)
+    n_failure = max(1.0, n_failure)
     
     for feat in FEATURES:
         feat_vals = []
@@ -203,13 +225,17 @@ def train_bayesian_model(ledger, candidates, labels, num_bins=3):
             feat_vals.append(val)
         feat_vals = np.array(feat_vals)
         
-        if len(feat_vals) >= num_bins:
-            percentiles = list(np.linspace(100.0/num_bins, 100.0 - 100.0/num_bins, num_bins - 1))
-            q = np.percentile(feat_vals, percentiles)
-            q = np.unique(q)
-            bins = [-float('inf')] + list(q) + [float('inf')]
+        # Apply custom expert bin boundaries if defined for this feature
+        if feat in EXPERT_BINS:
+            bins = EXPERT_BINS[feat]
         else:
-            bins = [-float('inf'), 0.0, float('inf')]
+            if len(feat_vals) >= num_bins:
+                percentiles = list(np.linspace(100.0/num_bins, 100.0 - 100.0/num_bins, num_bins - 1))
+                q = np.percentile(feat_vals, percentiles)
+                q = np.unique(q)
+                bins = [-float('inf')] + list(q) + [float('inf')]
+            else:
+                bins = [-float('inf'), 0.0, float('inf')]
             
         feature_bins[feat] = bins
         
@@ -222,19 +248,35 @@ def train_bayesian_model(ledger, candidates, labels, num_bins=3):
             bin_labels = y_train[bin_mask]
             
             s_b = int((bin_labels == 1).sum())
-            f_b = int((bin_labels == 0).sum())
+            f_b_normal = int((bin_labels == 0).sum())
+            f_b_hard = int((bin_labels == -1).sum())
+            f_b = f_b_normal + HARD_STOP_MULT * f_b_hard
             
             p_success = (s_b + 1.0) / (n_success + float(len(bins) - 1))
             p_failure = (f_b + 1.0) / (n_failure + float(len(bins) - 1))
             
             w = math.log(p_success / p_failure)
+            
+            # Catastrophic risk override for expert bins
+            if feat in EXPERT_BINS and s_b == 0 and f_b_hard >= 1:
+                w = -15.0
+                
+            # Universal risk bin penalties (soft gates)
+            if feat == "fas_slope_sum_5" and left == -float('inf') and right == -4.5:
+                w = min(w, -10.0)
+            elif feat == "pdd_30" and left == -float('inf') and right == -5.5:
+                w = min(w, -10.0)
+            elif feat == "base_tightness" and left == 0.46 and right == float('inf'):
+                w = min(w, -3.0)
+                
             weights_list.append((float(left), float(right), float(w)))
             
         feature_weights[feat] = weights_list
         
     return feature_bins, feature_weights
 
-def evaluate_config_partitioned(sym, ledger, fb_accum, fw_accum, fb_mom, fw_mom, fb_uni, fw_uni, signal, exit_cfg):
+
+def evaluate_config_partitioned(sym, ledger, fb_accum, fw_accum, fb_mom, fw_mom, fb_uni, fw_uni, signal, exit_cfg, bwo_set=None):
     custom_bayesian_cfg = SavgolCTSEntryConfig()
     custom_bayesian_cfg.cooldown_enabled = False
     custom_bayesian_cfg.cdvl_cts.enabled = False
@@ -258,8 +300,22 @@ def evaluate_config_partitioned(sym, ledger, fb_accum, fw_accum, fb_mom, fw_mom,
     custom_bayesian_cfg.custom_bayesian.feature_bins = fb_uni
     custom_bayesian_cfg.custom_bayesian.feature_weights = fw_uni
     
-    thresholds = np.arange(0.0, 8.01, 0.1)
-    target_pnl = 0.0 if sym in ZERO_TARGET_PNL_SYMBOLS else TARGET_PNL_DEFAULT
+    thresholds = np.arange(1.2, 8.01, 0.1)
+    
+    if bwo_set is None:
+        bwo_set = get_bwo_settings_for_symbol(sym)
+        
+    sl_hit_penalty = bwo_set["SL_HIT_PENALTY"]
+    min_trades = bwo_set["MIN_TRADES"]
+    max_sl_ratio = bwo_set["MAX_SL_RATIO"]
+    target_pnl = bwo_set["TARGET_PNL"]
+    trade_cap_score = bwo_set["TRADE_CAP_SCORE"]
+    trade_reward_coeff = bwo_set["TRADE_REWARD_COEFF"]
+    sl_mae_threshold = bwo_set["SL_MAE_THRESHOLD"]
+    bwo_start_date = bwo_set["BWO_START_DATE"]
+    
+    # Use min(target_pnl, 2.0) as the threshold selection hurdle.
+    hurdle_pnl = min(target_pnl, 2.0)
     
     # A. Optimize Accumulation Model Threshold (Disable momentum signals via high threshold)
     best_th_accum = 0.0
@@ -268,22 +324,19 @@ def evaluate_config_partitioned(sym, ledger, fb_accum, fw_accum, fb_mom, fw_mom,
     
     custom_bayesian_cfg.custom_bayesian.momentum.score_threshold = 99.9
     for th in thresholds:
-        test_cfg = copy.deepcopy(custom_bayesian_cfg)
-        test_cfg.custom_bayesian.accumulation.score_threshold = float(th)
-        
-        trades = simulate_trades(sym, ledger, test_cfg, exit_cfg, signal)
-        trades_bwo = [t for t in trades if t.entry_date >= BWO_START_DATE]
+        custom_bayesian_cfg.custom_bayesian.accumulation.score_threshold = float(th)
+        trades = simulate_trades(sym, ledger, custom_bayesian_cfg, exit_cfg, signal)
+        trades_bwo = [t for t in trades if t.entry_date >= bwo_start_date]
         
         if trades_bwo:
             pnls = [t.pnl_pct for t in trades_bwo]
             avg_pnl = np.mean(pnls)
-            sl_hits = sum(1 for t in trades_bwo if t.mae_pct >= SL_MAE_THRESHOLD)
+            sl_hits = sum(1 for t in trades_bwo if t.mae_pct >= sl_mae_threshold)
             sl_ratio = sl_hits / len(trades_bwo)
             
-            # Optimized score function: SL_HIT_PENALTY SL ratio penalty instead of -1000.0
-            score = SL_HIT_PENALTY * sl_ratio + TRADE_REWARD_COEFF * min(len(trades_bwo), TRADE_CAP_SCORE) + avg_pnl
+            score = sl_hit_penalty * sl_ratio + trade_reward_coeff * min(len(trades_bwo), trade_cap_score) + avg_pnl
             
-            if avg_pnl > target_pnl:
+            if avg_pnl > hurdle_pnl:
                 passing_accum.append({"threshold": th, "score": score, "trades": len(trades_bwo), "avg_pnl": avg_pnl, "sl_hits": sl_hits})
             fallback_accum.append({"threshold": th, "avg_pnl": avg_pnl, "trades": len(trades_bwo), "sl_hits": sl_hits})
             
@@ -302,21 +355,19 @@ def evaluate_config_partitioned(sym, ledger, fb_accum, fw_accum, fb_mom, fw_mom,
     custom_bayesian_cfg_mom = copy.deepcopy(custom_bayesian_cfg)
     custom_bayesian_cfg_mom.custom_bayesian.accumulation.score_threshold = 99.9
     for th in thresholds:
-        test_cfg = copy.deepcopy(custom_bayesian_cfg_mom)
-        test_cfg.custom_bayesian.momentum.score_threshold = float(th)
-        
-        trades = simulate_trades(sym, ledger, test_cfg, exit_cfg, signal)
-        trades_bwo = [t for t in trades if t.entry_date >= BWO_START_DATE]
+        custom_bayesian_cfg_mom.custom_bayesian.momentum.score_threshold = float(th)
+        trades = simulate_trades(sym, ledger, custom_bayesian_cfg_mom, exit_cfg, signal)
+        trades_bwo = [t for t in trades if t.entry_date >= bwo_start_date]
         
         if trades_bwo:
             pnls = [t.pnl_pct for t in trades_bwo]
             avg_pnl = np.mean(pnls)
-            sl_hits = sum(1 for t in trades_bwo if t.mae_pct >= SL_MAE_THRESHOLD)
+            sl_hits = sum(1 for t in trades_bwo if t.mae_pct >= sl_mae_threshold)
             sl_ratio = sl_hits / len(trades_bwo)
             
-            score = SL_HIT_PENALTY * sl_ratio + TRADE_REWARD_COEFF * min(len(trades_bwo), TRADE_CAP_SCORE) + avg_pnl
+            score = sl_hit_penalty * sl_ratio + trade_reward_coeff * min(len(trades_bwo), trade_cap_score) + avg_pnl
             
-            if avg_pnl > target_pnl:
+            if avg_pnl > hurdle_pnl:
                 passing_mom.append({"threshold": th, "score": score, "trades": len(trades_bwo), "avg_pnl": avg_pnl, "sl_hits": sl_hits})
             fallback_mom.append({"threshold": th, "avg_pnl": avg_pnl, "trades": len(trades_bwo), "sl_hits": sl_hits})
             
@@ -326,7 +377,7 @@ def evaluate_config_partitioned(sym, ledger, fb_accum, fw_accum, fb_mom, fw_mom,
     elif fallback_mom:
         fallback_mom.sort(key=lambda x: x["avg_pnl"], reverse=True)
         best_th_mom = fallback_mom[0]["threshold"]
-
+ 
     # C. Optimize fallback Unified Model Threshold
     best_th_uni = 0.0
     passing_uni = []
@@ -337,21 +388,19 @@ def evaluate_config_partitioned(sym, ledger, fb_accum, fw_accum, fb_mom, fw_mom,
     custom_bayesian_cfg_uni.custom_bayesian.momentum.feature_weights = {}
     
     for th in thresholds:
-        test_cfg = copy.deepcopy(custom_bayesian_cfg_uni)
-        test_cfg.custom_bayesian.score_threshold = float(th)
-        
-        trades = simulate_trades(sym, ledger, test_cfg, exit_cfg, signal)
-        trades_bwo = [t for t in trades if t.entry_date >= BWO_START_DATE]
+        custom_bayesian_cfg_uni.custom_bayesian.score_threshold = float(th)
+        trades = simulate_trades(sym, ledger, custom_bayesian_cfg_uni, exit_cfg, signal)
+        trades_bwo = [t for t in trades if t.entry_date >= bwo_start_date]
         
         if trades_bwo:
             pnls = [t.pnl_pct for t in trades_bwo]
             avg_pnl = np.mean(pnls)
-            sl_hits = sum(1 for t in trades_bwo if t.mae_pct >= SL_MAE_THRESHOLD)
+            sl_hits = sum(1 for t in trades_bwo if t.mae_pct >= sl_mae_threshold)
             sl_ratio = sl_hits / len(trades_bwo)
             
-            score = SL_HIT_PENALTY * sl_ratio + TRADE_REWARD_COEFF * min(len(trades_bwo), TRADE_CAP_SCORE) + avg_pnl
+            score = sl_hit_penalty * sl_ratio + trade_reward_coeff * min(len(trades_bwo), trade_cap_score) + avg_pnl
             
-            if avg_pnl > target_pnl:
+            if avg_pnl > hurdle_pnl:
                 passing_uni.append({"threshold": th, "score": score, "trades": len(trades_bwo), "avg_pnl": avg_pnl, "sl_hits": sl_hits})
             fallback_uni.append({"threshold": th, "avg_pnl": avg_pnl, "trades": len(trades_bwo), "sl_hits": sl_hits})
             
@@ -361,7 +410,7 @@ def evaluate_config_partitioned(sym, ledger, fb_accum, fw_accum, fb_mom, fw_mom,
     elif fallback_uni:
         fallback_uni.sort(key=lambda x: x["avg_pnl"], reverse=True)
         best_th_uni = fallback_uni[0]["threshold"]
-
+ 
     # D. Joint Backtest using both Accumulation and Momentum optimized thresholds
     final_cfg = copy.deepcopy(custom_bayesian_cfg)
     final_cfg.custom_bayesian.accumulation.score_threshold = float(best_th_accum)
@@ -369,13 +418,13 @@ def evaluate_config_partitioned(sym, ledger, fb_accum, fw_accum, fb_mom, fw_mom,
     final_cfg.custom_bayesian.score_threshold = float(best_th_uni)
     
     trades = simulate_trades(sym, ledger, final_cfg, exit_cfg, signal)
-    trades_bwo = [t for t in trades if t.entry_date >= BWO_START_DATE]
+    trades_bwo = [t for t in trades if t.entry_date >= bwo_start_date]
     
     total_trades = len(trades_bwo)
     if total_trades > 0:
         pnls = [t.pnl_pct for t in trades_bwo]
         avg_pnl = np.mean(pnls)
-        sl_hits = sum(1 for t in trades_bwo if t.mae_pct >= SL_MAE_THRESHOLD)
+        sl_hits = sum(1 for t in trades_bwo if t.mae_pct >= sl_mae_threshold)
         sl_ratio = sl_hits / total_trades
     else:
         avg_pnl = 0.0
@@ -383,25 +432,22 @@ def evaluate_config_partitioned(sym, ledger, fb_accum, fw_accum, fb_mom, fw_mom,
         sl_ratio = 0.0
         
     passed = False
-    if total_trades >= MIN_TRADES and avg_pnl >= target_pnl and sl_ratio <= MAX_SL_RATIO:
+    if total_trades >= min_trades and avg_pnl >= target_pnl and sl_ratio <= max_sl_ratio:
         passed = True
         
     return passed, best_th_accum, best_th_mom, best_th_uni, total_trades, avg_pnl, sl_hits
 
-def optimize_single_symbol(sym):
-    try:
-        engine = DivergenceEngine(sym, start_date=None, end_date=None)
-        res = engine.run()
-        ledger = res.ledger
-    except Exception as e:
-        return {"symbol": sym, "success": False, "error": str(e)}
 
-    signal = SignalFactory.get_signal("savgol_cts")
-    exit_cfg = SavgolCTSExitConfig()
-
-    records = ledger.to_dict("records")
+def evaluate_candidate_configuration(sym, ledger, bins, success_mult, dd, signal, exit_cfg, bwo_set):
+    candidates, labels = label_candidate_bars_sim(sym, ledger, signal, exit_cfg, success_mult, dd, bwo_set["SL_MAE_THRESHOLD"])
     
-    # Helper to partition candidates by market regime
+    # Check for degenerate labels in either subset
+    n_succ = sum(1 for v in labels.values() if v == 1)
+    n_fail = sum(1 for v in labels.values() if v in [0, -1])
+    if n_succ == 0 or n_fail == 0:
+        return None
+        
+    records = ledger.to_dict("records")
     def get_regime_subsets(cand_idxs):
         accum_idxs = []
         mom_idxs = []
@@ -412,131 +458,267 @@ def optimize_single_symbol(sym):
             else:
                 mom_idxs.append(idx)
         return accum_idxs, mom_idxs
-
-    # Step 1: Default Parameters (num_bins=3)
-    candidates, labels = label_candidate_bars_sim(sym, ledger, signal, exit_cfg)
+        
     accum_candidates, mom_candidates = get_regime_subsets(candidates)
     
-    # Train sub-models
-    fb_uni, fw_uni = train_bayesian_model(ledger, candidates, labels, num_bins=3)
-    fb_accum, fw_accum = train_bayesian_model(ledger, accum_candidates, labels, num_bins=3)
-    fb_mom, fw_mom = train_bayesian_model(ledger, mom_candidates, labels, num_bins=3)
+    fb_uni, fw_uni = train_bayesian_model(ledger, candidates, labels, num_bins=bins)
+    fb_accum, fw_accum = train_bayesian_model(ledger, accum_candidates, labels, num_bins=bins)
+    fb_mom, fw_mom = train_bayesian_model(ledger, mom_candidates, labels, num_bins=bins)
+    
+    # Precalculate triggers and scores for all three sub-models on a copied ledger DataFrame
+    ledger_copy = ledger.copy()
+    records_copy = ledger_copy.to_dict("records")
+    
+    precalc_triggers = [False] * len(records_copy)
+    for idx in range(1, len(records_copy)):
+        row = records_copy[idx]
+        prev_row = records_copy[idx - 1]
+        precalc_triggers[idx] = check_bayesian_triggers(row, prev_row, records_copy, idx)
+        
+    def get_model_score(row, feature_weights):
+        feat_vals = {
+            "cwc": row.get("cwc", 0.0),
+            "psz_v": row.get("psz_v", 0.0),
+            "fas": row.get("fas", 0.0),
+            "cts_accel": row.get("cts_accel", 0.0),
+            "pdd_30": row.get("pdd_30", 0.0),
+            "pdd_120": row.get("pdd_120", 0.0),
+            "range_pos_10": row.get("range_pos_10", 0.0),
+            "range_pos_63": row.get("range_pos_63", 0.0),
+            "range_pos_252": row.get("range_pos_252", 0.0),
+            "dv_shock": row.get("dv_shock", 0.0),
+            "esr": row.get("esr", 0.0),
+            "base_tightness": row.get("base_tightness", 1.0),
+            "cts": row.get("cts", 0.0),
+            "cwc_slope": row.get("cwc_slope", 0.0),
+            "price_slope_z": row.get("price_slope_z", 0.0),
+            "rdv_slope_z": row.get("rdv_slope_z", 0.0),
+            "psz_decel_3b": row.get("psz_decel_3b", 0.0),
+            "fas_slope": row.get("fas_slope", 0.0),
+            "fas_slope_sum_5": row.get("fas_slope_sum_5", 0.0),
+            "fas_min_10": row.get("fas_min_10", 0.0),
+            "fas_max_10": row.get("fas_max_10", 0.0),
+            "fas_slope_change_3": row.get("fas_slope_change_3", 0.0),
+        }
+        score = 0.0
+        for feat, val in feat_vals.items():
+            if val is None or (isinstance(val, float) and math.isnan(val)):
+                val = 0.0
+            weights = feature_weights.get(feat, [])
+            for left, right, w in weights:
+                if left < val <= right:
+                    score += w
+                    break
+        return score
+
+    precalc_accum = []
+    precalc_mom = []
+    precalc_uni = []
+    
+    for row in records_copy:
+        precalc_accum.append(get_model_score(row, fw_accum))
+        precalc_mom.append(get_model_score(row, fw_mom))
+        precalc_uni.append(get_model_score(row, fw_uni))
+        
+    ledger_copy["precalc_bayesian_trigger"] = precalc_triggers
+    ledger_copy["precalc_bayesian_score_accum"] = precalc_accum
+    ledger_copy["precalc_bayesian_score_mom"] = precalc_mom
+    ledger_copy["precalc_bayesian_score_uni"] = precalc_uni
+    
+    records_precalc = ledger_copy.to_dict("records")
     
     passed, th_accum, th_mom, th_uni, trades, avg_pnl, sl_hits = evaluate_config_partitioned(
-        sym, ledger, fb_accum, fw_accum, fb_mom, fw_mom, fb_uni, fw_uni, signal, exit_cfg
+        sym, records_precalc, fb_accum, fw_accum, fb_mom, fw_mom, fb_uni, fw_uni, signal, exit_cfg, bwo_set
     )
     
-    if passed:
-        return {
-            "symbol": sym,
-            "success": True,
-            "score_threshold": float(th_uni),
-            "feature_bins": fb_uni,
-            "feature_weights": fw_uni,
-            "accumulation": {
-                "score_threshold": float(th_accum),
-                "feature_bins": fb_accum,
-                "feature_weights": fw_accum
-            },
-            "momentum": {
-                "score_threshold": float(th_mom),
-                "feature_bins": fb_mom,
-                "feature_weights": fw_mom
-            },
-            "trades": trades,
-            "avg_pnl": avg_pnl,
-            "sl_hits": sl_hits,
-            "hyper_params": "default (3 bins, 1.2x success)"
-        }
-
-    # Step 2: Adaptive hyperparameter sweep
-    num_bins_choices = [3, 4]
-    success_mult_choices = [1.2, 1.5, 1.8]
-    dd_limit_choices = [5.0, 6.0, 7.0]
-    
-    best_avg_pnl = -99.0
-    best_config = None
-    
-    for bins in num_bins_choices:
-        for success_mult in success_mult_choices:
-            for dd in dd_limit_choices:
-                cand, lab = label_candidate_bars_sim(sym, ledger, signal, exit_cfg, success_mult, dd)
-                
-                # Check for degenerate labels in either subset
-                n_succ = sum(1 for v in lab.values() if v == 1)
-                n_fail = sum(1 for v in lab.values() if v == 0)
-                if n_succ == 0 or n_fail == 0:
-                    continue
-                    
-                ac_cand, mo_cand = get_regime_subsets(cand)
-                
-                fb_u, fw_u = train_bayesian_model(ledger, cand, lab, num_bins=bins)
-                fb_a, fw_a = train_bayesian_model(ledger, ac_cand, lab, num_bins=bins)
-                fb_m, fw_m = train_bayesian_model(ledger, mo_cand, lab, num_bins=bins)
-                
-                ok, t_ac, t_mo, t_u, tr, pnl, sl = evaluate_config_partitioned(
-                    sym, ledger, fb_a, fw_a, fb_m, fw_m, fb_u, fw_u, signal, exit_cfg
-                )
-                
-                if ok and pnl > best_avg_pnl:
-                    best_avg_pnl = pnl
-                    best_config = {
-                        "th_uni": t_u,
-                        "accumulation": {
-                            "score_threshold": t_ac,
-                            "feature_bins": fb_a,
-                            "feature_weights": fw_a
-                        },
-                        "momentum": {
-                            "score_threshold": t_mo,
-                            "feature_bins": fb_m,
-                            "feature_weights": fw_m
-                        },
-                        "feature_bins": fb_u,
-                        "feature_weights": fw_u,
-                        "trades": tr,
-                        "avg_pnl": pnl,
-                        "sl_hits": sl,
-                        "hyper_params": f"adaptive ({bins} bins, {success_mult}x success, {dd}% dd limit)"
-                    }
-                    
-    if best_config:
-        return {
-            "symbol": sym,
-            "success": True,
-            "score_threshold": float(best_config["th_uni"]),
-            "feature_bins": best_config["feature_bins"],
-            "feature_weights": best_config["feature_weights"],
-            "accumulation": best_config["accumulation"],
-            "momentum": best_config["momentum"],
-            "trades": best_config["trades"],
-            "avg_pnl": best_config["avg_pnl"],
-            "sl_hits": best_config["sl_hits"],
-            "hyper_params": best_config["hyper_params"]
-        }
-        
-    # Step 3: Extreme fallback
     return {
-        "symbol": sym,
-        "success": True,
-        "score_threshold": float(th_uni),
-        "feature_bins": fb_uni,
-        "feature_weights": fw_uni,
-        "accumulation": {
-            "score_threshold": float(th_accum),
-            "feature_bins": fb_accum,
-            "feature_weights": fw_accum
-        },
-        "momentum": {
-            "score_threshold": float(th_mom),
-            "feature_bins": fb_mom,
-            "feature_weights": fw_mom
-        },
+        "passed": passed,
+        "th_accum": th_accum,
+        "th_mom": th_mom,
+        "th_uni": th_uni,
         "trades": trades,
         "avg_pnl": avg_pnl,
         "sl_hits": sl_hits,
-        "hyper_params": "fallback (default params)"
+        "fb_uni": fb_uni,
+        "fw_uni": fw_uni,
+        "fb_accum": fb_accum,
+        "fw_accum": fw_accum,
+        "fb_mom": fb_mom,
+        "fw_mom": fw_mom
     }
+
+
+def optimize_single_symbol(sym):
+    try:
+        engine = DivergenceEngine(sym, start_date=None, end_date=None)
+        res = engine.run()
+        ledger = res.ledger
+    except Exception as e:
+        return {"symbol": sym, "success": False, "error": str(e)}
+
+    bwo_set = get_bwo_settings_for_symbol(sym)
+    signal = SignalFactory.get_signal("savgol_cts")
+    exit_cfg = SavgolCTSExitConfig()
+
+    configs_to_run = []
+    
+    # 1. Default config (dd=None uses dynamic ATR-based drawdown limit)
+    configs_to_run.append({
+        "bins": 3,
+        "success_mult": 1.2,
+        "dd": None,
+        "label": "default (3 bins, 1.2x success)"
+    })
+    
+    # 2. Sweep configs
+    for bins in bwo_set["NUM_BINS_CHOICES"]:
+        for success_mult in bwo_set["SUCCESS_MULT_CHOICES"]:
+            for dd in bwo_set["DD_LIMIT_CHOICES"]:
+                configs_to_run.append({
+                    "bins": bins,
+                    "success_mult": success_mult,
+                    "dd": dd,
+                    "label": f"adaptive ({bins} bins, {success_mult}x success, {dd}% dd limit)"
+                })
+                
+    evaluated_results = []
+    
+    import multiprocessing
+    current_proc = multiprocessing.current_process()
+    
+    if current_proc.name != "MainProcess":
+        # Sequential execution fallback for child processes to avoid nested daemonic process errors
+        for cfg in configs_to_run:
+            try:
+                res = evaluate_candidate_configuration(
+                    sym, ledger, cfg["bins"], cfg["success_mult"], cfg["dd"], signal, exit_cfg, bwo_set
+                )
+                if res is not None:
+                    res["label"] = cfg["label"]
+                    evaluated_results.append(res)
+            except Exception:
+                pass
+    else:
+        # Parallel execution for main process run
+        total = len(configs_to_run)
+        
+        # Check if tqdm is available
+        try:
+            from tqdm import tqdm
+            use_tqdm = True
+        except ImportError:
+            use_tqdm = False
+            
+        with ProcessPoolExecutor() as executor:
+            futures = {}
+            for cfg in configs_to_run:
+                fut = executor.submit(
+                    evaluate_candidate_configuration,
+                    sym, ledger, cfg["bins"], cfg["success_mult"], cfg["dd"], signal, exit_cfg, bwo_set
+                )
+                futures[fut] = cfg
+                
+            if use_tqdm:
+                from concurrent.futures import as_completed
+                # Display progress bar for MainProcess run
+                for fut in tqdm(as_completed(futures), total=total, desc=f"Optimizing {sym}", unit="config"):
+                    try:
+                        res = fut.result()
+                        if res is not None:
+                            res["label"] = futures[fut]["label"]
+                            evaluated_results.append(res)
+                    except Exception:
+                        pass
+            else:
+                for fut in futures:
+                    try:
+                        res = fut.result()
+                        if res is not None:
+                            res["label"] = futures[fut]["label"]
+                            evaluated_results.append(res)
+                    except Exception as e:
+                        # Silently ignore errors on specific configurations during sweep
+                        pass
+            
+    # Filter by basic trade count & safety constraints
+    min_trades = bwo_set["MIN_TRADES"]
+    max_sl_ratio = bwo_set["MAX_SL_RATIO"]
+    
+    valid_results = []
+    for r in evaluated_results:
+        sl_ratio = r["sl_hits"] / r["trades"] if r["trades"] > 0 else 0.0
+        if r["trades"] >= min_trades and sl_ratio <= max_sl_ratio:
+            valid_results.append(r)
+            
+    if not valid_results:
+        if evaluated_results:
+            best_res = evaluated_results[0]
+        else:
+            return {"symbol": sym, "success": False, "error": "No configurations could be evaluated (degenerate labels)"}
+        dynamic_target_pnl = bwo_set["TARGET_PNL"]
+    else:
+        # Find best achieved P&L
+        best_achieved_pnl = max(r["avg_pnl"] for r in valid_results)
+        
+        # Check if there is an explicit TARGET_PNL override in bwo_symbol_params.json
+        import json
+        from src.trading.signals.savgol_cts.bwo_settings import BWO_SYMBOL_PARAMS_PATH
+        has_target_override = False
+        if os.path.exists(BWO_SYMBOL_PARAMS_PATH):
+            try:
+                with open(BWO_SYMBOL_PARAMS_PATH, "r") as f:
+                    overrides = json.load(f)
+                if sym in overrides and "TARGET_PNL" in overrides[sym]:
+                    has_target_override = True
+            except Exception:
+                pass
+                
+        if has_target_override:
+            dynamic_target_pnl = bwo_set["TARGET_PNL"]
+        else:
+            if best_achieved_pnl >= 5.0:
+                dynamic_target_pnl = 5.0
+            elif best_achieved_pnl > 0.0:
+                dynamic_target_pnl = max(2.0, best_achieved_pnl - 0.5)
+            else:
+                dynamic_target_pnl = 0.0
+                
+        # Filter to only keep configurations meeting the dynamic target P&L
+        passing_results = [r for r in valid_results if r["avg_pnl"] >= dynamic_target_pnl]
+        if not passing_results:
+            passing_results = valid_results
+            
+        # Select highest BWO score winner
+        def get_score(r):
+            sl_ratio = r["sl_hits"] / r["trades"] if r["trades"] > 0 else 0.0
+            return bwo_set["SL_HIT_PENALTY"] * sl_ratio + bwo_set["TRADE_REWARD_COEFF"] * min(r["trades"], bwo_set["TRADE_CAP_SCORE"]) + r["avg_pnl"]
+            
+        passing_results.sort(key=get_score, reverse=True)
+        best_res = passing_results[0]
+        
+    return {
+        "symbol": sym,
+        "success": True,
+        "score_threshold": float(best_res["th_uni"]),
+        "feature_bins": best_res["fb_uni"],
+        "feature_weights": best_res["fw_uni"],
+        "accumulation": {
+            "score_threshold": float(best_res["th_accum"]),
+            "feature_bins": best_res["fb_accum"],
+            "feature_weights": best_res["fw_accum"]
+        },
+        "momentum": {
+            "score_threshold": float(best_res["th_mom"]),
+            "feature_bins": best_res["fb_mom"],
+            "feature_weights": best_res["fw_mom"]
+        },
+        "trades": best_res["trades"],
+        "avg_pnl": best_res["avg_pnl"],
+        "sl_hits": best_res["sl_hits"],
+        "hyper_params": best_res["label"],
+        "target_pnl": dynamic_target_pnl
+    }
+
 
 def main():
     from src.database import BW_CONFIGS_DIR
