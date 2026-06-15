@@ -150,7 +150,28 @@ class Scanner:
 
             entry_price = pos["entry_price"]
             peak_close = max(pos.get("peak_close", close) or close, close)
-            bars_held = (pos.get("bars_held", 0) or 0) + 1
+            entry_date = pos.get("entry_date")
+            bars_held = 0
+            if entry_date:
+                entry_idx = None
+                for idx, r in enumerate(records):
+                    r_date = str(r.get("date", ""))[:10]
+                    if r_date == entry_date:
+                        entry_idx = idx
+                        break
+                if entry_idx is None:
+                    # Fallback to first record date >= entry_date
+                    for idx, r in enumerate(records):
+                        r_date = str(r.get("date", ""))[:10]
+                        if r_date >= entry_date:
+                            entry_idx = idx
+                            break
+                if entry_idx is not None:
+                    bars_held = len(records) - 1 - entry_idx
+                else:
+                    bars_held = (pos.get("bars_held", 0) or 0) + 1
+            else:
+                bars_held = (pos.get("bars_held", 0) or 0) + 1
             delivery_bad_count = pos.get("delivery_bad_count", 0) or 0
 
             # Build Trade object from position state

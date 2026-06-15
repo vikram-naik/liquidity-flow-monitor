@@ -594,7 +594,10 @@ class TradingRepository:
 
     def get_summary(self) -> dict:
         conn = get_db_connection()
+        conn.row_factory = sqlite3.Row
         try:
+            total_capital = self.get_total_capital()
+
             open_count = conn.execute(
                 "SELECT COUNT(*) FROM trading_positions WHERE status = 'open'"
             ).fetchone()[0]
@@ -614,23 +617,63 @@ class TradingRepository:
             closed = conn.execute(
                 "SELECT COUNT(*) as total, "
                 "SUM(CASE WHEN final_pnl_pct > 0 THEN 1 ELSE 0 END) as wins, "
-                "AVG(final_pnl_pct) as avg_pnl, "
-                "SUM(final_pnl_pct) as total_pnl, "
-                "AVG(net_pnl_pct) as avg_net_pnl, "
-                "SUM(net_pnl_abs) as total_net_pnl, "
+                "SUM(net_pnl_abs) as total_net_pnl_abs, "
+                "SUM(net_pnl_abs + total_charges) as total_gross_pnl_abs, "
                 "SUM(total_charges) as total_charges "
                 "FROM trading_positions WHERE status = 'closed'"
             ).fetchone()
 
             total_closed = closed[0] or 0
             wins = closed[1] or 0
-            avg_pnl = round(closed[2] or 0, 2)
-            total_pnl = round(closed[3] or 0, 2)
             win_rate = round(wins / total_closed * 100, 1) if total_closed > 0 else 0
 
-            unrealized = conn.execute(
-                "SELECT AVG(current_pnl_pct) FROM trading_positions WHERE status IN ('open', 'pending_exit')"
-            ).fetchone()[0]
+            total_net_pnl_abs = closed[2] or 0.0
+            total_gross_pnl_abs = closed[3] or 0.0
+            total_charges = closed[4] or 0.0
+
+            total_net_pnl_pct = (total_net_pnl_abs / total_capital * 100) if total_capital > 0 else 0.0
+            total_gross_pnl_pct = (total_gross_pnl_abs / total_capital * 100) if total_capital > 0 else 0.0
+
+            open_positions = conn.execute(
+                "SELECT capital_deployed, current_pnl_pct "
+                "FROM trading_positions WHERE status IN ('open', 'pending_exit')"
+            ).fetchall()
+
+            unrealized_pnl_abs = 0.0
+            for p in open_positions:
+                deployed = p["capital_deployed"] or 0.0
+                pnl_pct = p["current_pnl_pct"] or 0.0
+                unrealized_pnl_abs += deployed * (pnl_pct / 100.0)
+
+            unrealized_pnl_pct = (unrealized_pnl_abs / total_capital * 100) if total_capital > 0 else 0.0
+
+            # CAGR calculation
+            first_event_date = conn.execute("SELECT MIN(date) FROM trading_capital_events").fetchone()[0]
+            first_trade_date = conn.execute("SELECT MIN(entry_date) FROM trading_positions WHERE status = 'closed'").fetchone()[0]
+            
+            start_date_str = None
+            if first_event_date and first_trade_date:
+                start_date_str = min(first_event_date, first_trade_date)
+            elif first_event_date:
+                start_date_str = first_event_date
+            elif first_trade_date:
+                start_date_str = first_trade_date
+                
+            cagr_pct = 0.0
+            if start_date_str:
+                try:
+                    start_dt = datetime.strptime(start_date_str[:10], "%Y-%m-%d")
+                    end_dt = datetime.strptime(datetime.now().strftime("%Y-%m-%d"), "%Y-%m-%d")
+                    days = (end_dt - start_dt).days
+                    if days > 0 and total_capital > 0:
+                        ending_val = total_capital + total_net_pnl_abs
+                        if ending_val > 0:
+                            cagr = (ending_val / total_capital) ** (365.25 / days) - 1.0
+                            cagr_pct = cagr * 100.0
+                        else:
+                            cagr_pct = -100.0
+                except Exception:
+                    pass
 
             return {
                 "open_positions": open_count,
@@ -640,12 +683,14 @@ class TradingRepository:
                 "total_closed": total_closed,
                 "wins": wins,
                 "win_rate": win_rate,
-                "avg_pnl": avg_pnl,
-                "total_pnl": total_pnl,
-                "avg_net_pnl": round(closed[4] or 0, 2),
-                "total_net_pnl": round(closed[5] or 0, 2),
-                "total_charges": round(closed[6] or 0, 2),
-                "unrealized_pnl": round(unrealized or 0, 2),
+                "total_gross_pnl_abs": round(total_gross_pnl_abs, 2),
+                "total_gross_pnl_pct": round(total_gross_pnl_pct, 2),
+                "total_net_pnl_abs": round(total_net_pnl_abs, 2),
+                "total_net_pnl_pct": round(total_net_pnl_pct, 2),
+                "total_charges": round(total_charges, 2),
+                "unrealized_pnl_abs": round(unrealized_pnl_abs, 2),
+                "unrealized_pnl_pct": round(unrealized_pnl_pct, 2),
+                "cagr_pct": round(cagr_pct, 2),
             }
         finally:
             conn.close()

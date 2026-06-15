@@ -22,15 +22,21 @@ const INR = v => '₹' + Number(v).toLocaleString('en-IN', { maximumFractionDigi
 const pnlClass = v => v >= 0 ? 'positive' : 'negative';
 const pnlSign = v => v >= 0 ? '+' : '';
 
+const formatPnL = (abs, pct) => {
+  const sign = pct > 0 ? '+' : '';
+  return `${sign}${pct.toFixed(2)}%`;
+};
+
 // ── Dashboard: Summary Cards ───────────────────────────────────────────────
 
 async function loadSummary() {
   try {
     const data = await fetch(API + '/summary').then(r => r.json());
     const cards = document.getElementById('summary-cards');
-    const unrealClass = pnlClass(data.unrealized_pnl);
-    const totalClass = pnlClass(data.total_pnl);
-    const netClass = pnlClass(data.total_net_pnl);
+    const unrealClass = pnlClass(data.unrealized_pnl_abs);
+    const grossClass = pnlClass(data.total_gross_pnl_abs);
+    const netClass = pnlClass(data.total_net_pnl_abs);
+    const cagrClass = pnlClass(data.cagr_pct);
     const proposedHtml = data.proposed > 0
       ? `<div class="card" style="border-color:#bc8cff">
           <div class="label">Proposed (Review)</div>
@@ -43,33 +49,29 @@ async function loadSummary() {
         <div class="value">${data.open_positions}</div>
       </div>
       <div class="card">
-        <div class="label">Pending Entries</div>
-        <div class="value">${data.pending_entries}</div>
-      </div>
-      <div class="card">
-        <div class="label">Pending Exits</div>
-        <div class="value">${data.pending_exits}</div>
+        <div class="label">Pending (Entry/Exit)</div>
+        <div class="value">${data.pending_entries} / ${data.pending_exits}</div>
       </div>
       ${proposedHtml}
       <div class="card">
         <div class="label">Unrealized P&L</div>
-        <div class="value ${unrealClass}">${pnlSign(data.unrealized_pnl)}${data.unrealized_pnl}%</div>
+        <div class="value ${unrealClass}">${formatPnL(data.unrealized_pnl_abs, data.unrealized_pnl_pct)}</div>
       </div>
       <div class="card">
         <div class="label">Win Rate</div>
         <div class="value">${data.win_rate}%</div>
       </div>
       <div class="card">
-        <div class="label">Total Closed</div>
-        <div class="value">${data.total_closed}</div>
-      </div>
-      <div class="card">
         <div class="label">Gross P&L</div>
-        <div class="value ${totalClass}">${pnlSign(data.total_pnl)}${data.total_pnl}%</div>
+        <div class="value ${grossClass}">${formatPnL(data.total_gross_pnl_abs, data.total_gross_pnl_pct)}</div>
       </div>
       <div class="card">
         <div class="label">Net P&L</div>
-        <div class="value ${netClass}">${pnlSign(data.total_net_pnl)}${INR(data.total_net_pnl)}</div>
+        <div class="value ${netClass}">${formatPnL(data.total_net_pnl_abs, data.total_net_pnl_pct)}</div>
+      </div>
+      <div class="card">
+        <div class="label">CAGR</div>
+        <div class="value ${cagrClass}">${data.cagr_pct >= 0 ? '+' : ''}${data.cagr_pct.toFixed(2)}%</div>
       </div>
       <div class="card">
         <div class="label">Total Charges</div>
