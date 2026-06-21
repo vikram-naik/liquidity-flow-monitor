@@ -69,7 +69,9 @@ class CausalSavgolStrategy(CTSStrategy):
             jerk = lfilter(self.coeffs_d3, [1.0], cwvap_vals)
         else:
             # Fallback for polyorder < 3
-            jerk = np.gradient(acceleration)
+            # Use causal backward difference to prevent lookahead bias
+            jerk = np.zeros_like(acceleration)
+            jerk[1:] = acceleration[1:] - acceleration[:-1]
 
         # Normalization (scaled consistent with centered version)
         scale_factor = 5.0 
