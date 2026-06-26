@@ -619,7 +619,8 @@ class TradingRepository:
                 "SUM(CASE WHEN final_pnl_pct > 0 THEN 1 ELSE 0 END) as wins, "
                 "SUM(net_pnl_abs) as total_net_pnl_abs, "
                 "SUM(net_pnl_abs + total_charges) as total_gross_pnl_abs, "
-                "SUM(total_charges) as total_charges "
+                "SUM(total_charges) as total_charges, "
+                "AVG(bars_held) as avg_duration_bars "
                 "FROM trading_positions WHERE status = 'closed'"
             ).fetchone()
 
@@ -630,6 +631,7 @@ class TradingRepository:
             total_net_pnl_abs = closed[2] or 0.0
             total_gross_pnl_abs = closed[3] or 0.0
             total_charges = closed[4] or 0.0
+            avg_duration_bars = closed[5] or 0.0
 
             total_net_pnl_pct = (total_net_pnl_abs / total_capital * 100) if total_capital > 0 else 0.0
             total_gross_pnl_pct = (total_gross_pnl_abs / total_capital * 100) if total_capital > 0 else 0.0
@@ -660,6 +662,8 @@ class TradingRepository:
                 start_date_str = first_trade_date
                 
             cagr_pct = 0.0
+            nifty_cagr_pct = None  # None means data not available
+            nifty_start_date = None
             if start_date_str:
                 try:
                     start_dt = datetime.strptime(start_date_str[:10], "%Y-%m-%d")
@@ -672,6 +676,32 @@ class TradingRepository:
                             cagr_pct = cagr * 100.0
                         else:
                             cagr_pct = -100.0
+
+                    # ── Nifty 50 benchmark CAGR over the same period ──────────
+                    # Find the closest Nifty 50 trading day on or after start_date
+                    nifty_start_row = conn.execute(
+                        "SELECT record_date, price_close FROM nse_delivery_log "
+                        "WHERE symbol = 'NIFTY 50' AND record_date >= ? AND price_close IS NOT NULL "
+                        "ORDER BY record_date ASC LIMIT 1",
+                        (start_date_str[:10],)
+                    ).fetchone()
+                    # Most recent available Nifty 50 close
+                    nifty_end_row = conn.execute(
+                        "SELECT record_date, price_close FROM nse_delivery_log "
+                        "WHERE symbol = 'NIFTY 50' AND price_close IS NOT NULL "
+                        "ORDER BY record_date DESC LIMIT 1"
+                    ).fetchone()
+
+                    if nifty_start_row and nifty_end_row:
+                        n_start_price = nifty_start_row[1]
+                        n_end_price = nifty_end_row[1]
+                        nifty_start_date = nifty_start_row[0]
+                        n_start_dt = datetime.strptime(nifty_start_row[0][:10], "%Y-%m-%d")
+                        n_end_dt = datetime.strptime(nifty_end_row[0][:10], "%Y-%m-%d")
+                        n_days = (n_end_dt - n_start_dt).days
+                        if n_days > 0 and n_start_price and n_start_price > 0 and n_end_price and n_end_price > 0:
+                            n_cagr = (n_end_price / n_start_price) ** (365.25 / n_days) - 1.0
+                            nifty_cagr_pct = round(n_cagr * 100.0, 2)
                 except Exception:
                     pass
 
@@ -688,9 +718,12 @@ class TradingRepository:
                 "total_net_pnl_abs": round(total_net_pnl_abs, 2),
                 "total_net_pnl_pct": round(total_net_pnl_pct, 2),
                 "total_charges": round(total_charges, 2),
+                "avg_duration_bars": round(avg_duration_bars, 1),
                 "unrealized_pnl_abs": round(unrealized_pnl_abs, 2),
                 "unrealized_pnl_pct": round(unrealized_pnl_pct, 2),
                 "cagr_pct": round(cagr_pct, 2),
+                "nifty_cagr_pct": nifty_cagr_pct,
+                "nifty_start_date": nifty_start_date,
             }
         finally:
             conn.close()

@@ -69,13 +69,27 @@ async function loadSummary() {
         <div class="label">Net P&L</div>
         <div class="value ${netClass}">${formatPnL(data.total_net_pnl_abs, data.total_net_pnl_pct)}</div>
       </div>
-      <div class="card">
-        <div class="label">CAGR</div>
+      <div class="card card-cagr">
+        <div class="label">CAGR — Strategy vs Nifty 50</div>
         <div class="value ${cagrClass}">${data.cagr_pct >= 0 ? '+' : ''}${data.cagr_pct.toFixed(2)}%</div>
+        ${(() => {
+          if (data.nifty_cagr_pct == null) {
+            return `<div class="cagr-benchmark cagr-na">Nifty 50: N/A</div>`;
+          }
+          const nc = data.nifty_cagr_pct;
+          const alpha = data.cagr_pct - nc;
+          const alphaSign = alpha >= 0 ? '+' : '';
+          const alphaCls = alpha > 0.5 ? 'alpha-pos' : alpha < -0.5 ? 'alpha-neg' : 'alpha-neutral';
+          const ncCls = nc >= 0 ? 'positive' : 'negative';
+          return `<div class="cagr-benchmark">
+            <span class="${ncCls}">${nc >= 0 ? '+' : ''}${nc.toFixed(2)}%</span>
+            <span class="cagr-alpha ${alphaCls}">${alphaSign}${alpha.toFixed(2)}% α</span>
+          </div>`;
+        })()}
       </div>
       <div class="card">
-        <div class="label">Total Charges</div>
-        <div class="value" style="color:#d29922">${INR(data.total_charges)}</div>
+        <div class="label">Avg Duration</div>
+        <div class="value" style="color:#3fb950">${data.avg_duration_bars !== undefined ? data.avg_duration_bars : 0} bars</div>
       </div>
     `;
   } catch (e) {

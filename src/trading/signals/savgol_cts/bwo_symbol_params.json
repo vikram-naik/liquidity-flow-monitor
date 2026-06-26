@@ -44,7 +44,7 @@
     "JIOFIN": {
         "MIN_TRADES": 8,
         "MAX_SL_RATIO": 0.2,
-        "TARGET_PNL": 3.4,
+        "TARGET_PNL": 3.7,
         "SL_MAE_THRESHOLD": 8.0,
         "NUM_BINS_CHOICES": [
             3,
@@ -390,15 +390,15 @@
             2.2
         ],
         "DD_LIMIT_CHOICES": [
-            6.7,
-            8.2,
-            9.7
+            6.6,
+            8.1,
+            9.6
         ]
     },
     "VOLTAS": {
         "MIN_TRADES": 8,
         "MAX_SL_RATIO": 0.2,
-        "TARGET_PNL": 5.4,
+        "TARGET_PNL": 5.0,
         "SL_MAE_THRESHOLD": 8.2,
         "NUM_BINS_CHOICES": [
             3,
@@ -461,7 +461,7 @@
     "ICICIBANK": {
         "MIN_TRADES": 8,
         "MAX_SL_RATIO": 0.2,
-        "TARGET_PNL": 5.3,
+        "TARGET_PNL": 5.5,
         "SL_MAE_THRESHOLD": 6.6,
         "NUM_BINS_CHOICES": [
             3,
@@ -536,9 +536,9 @@
             1.8
         ],
         "DD_LIMIT_CHOICES": [
-            4.2,
-            5.7,
-            7.2
+            4.3,
+            5.8,
+            7.3
         ]
     },
     "JSWSTEEL": {
@@ -587,7 +587,7 @@
         "MIN_TRADES": 8,
         "MAX_SL_RATIO": 0.2,
         "TARGET_PNL": 6.0,
-        "SL_MAE_THRESHOLD": 9.6,
+        "SL_MAE_THRESHOLD": 9.5,
         "NUM_BINS_CHOICES": [
             3,
             4,
@@ -796,7 +796,7 @@
         "MIN_TRADES": 8,
         "MAX_SL_RATIO": 0.2,
         "TARGET_PNL": 6.0,
-        "SL_MAE_THRESHOLD": 9.2,
+        "SL_MAE_THRESHOLD": 9.1,
         "NUM_BINS_CHOICES": [
             3,
             4,
@@ -837,7 +837,7 @@
     "DMART": {
         "MIN_TRADES": 8,
         "MAX_SL_RATIO": 0.2,
-        "TARGET_PNL": 4.6,
+        "TARGET_PNL": 4.8,
         "SL_MAE_THRESHOLD": 7.9,
         "NUM_BINS_CHOICES": [
             3,
@@ -934,9 +934,9 @@
             2.2
         ],
         "DD_LIMIT_CHOICES": [
-            6.3,
-            7.8,
-            9.3
+            6.2,
+            7.7,
+            9.2
         ]
     },
     "APOLLOHOSP": {
@@ -964,7 +964,7 @@
         "MIN_TRADES": 8,
         "MAX_SL_RATIO": 0.2,
         "TARGET_PNL": 6.0,
-        "SL_MAE_THRESHOLD": 9.8,
+        "SL_MAE_THRESHOLD": 9.7,
         "NUM_BINS_CHOICES": [
             3,
             4,
@@ -1047,7 +1047,7 @@
     "HDFCBANK": {
         "MIN_TRADES": 8,
         "MAX_SL_RATIO": 0.2,
-        "TARGET_PNL": 3.2,
+        "TARGET_PNL": 3.3,
         "SL_MAE_THRESHOLD": 5.7,
         "NUM_BINS_CHOICES": [
             3,
@@ -1111,7 +1111,7 @@
         "MIN_TRADES": 3,
         "MAX_SL_RATIO": 0.25,
         "TARGET_PNL": 2.0,
-        "SL_MAE_THRESHOLD": 9.9,
+        "SL_MAE_THRESHOLD": 9.8,
         "NUM_BINS_CHOICES": [
             3,
             4
@@ -1289,9 +1289,9 @@
             2.2
         ],
         "DD_LIMIT_CHOICES": [
-            5.0,
-            6.5,
-            8.0
+            4.9,
+            6.4,
+            7.9
         ]
     },
     "POLICYBZR": {
@@ -1860,7 +1860,7 @@
     "UNITDSPR": {
         "MIN_TRADES": 5,
         "MAX_SL_RATIO": 0.2,
-        "TARGET_PNL": 5.0,
+        "TARGET_PNL": 5.3,
         "SL_MAE_THRESHOLD": 6.6,
         "NUM_BINS_CHOICES": [
             3,
@@ -2007,7 +2007,7 @@
         "MIN_TRADES": 8,
         "MAX_SL_RATIO": 0.2,
         "TARGET_PNL": 6.0,
-        "SL_MAE_THRESHOLD": 8.9,
+        "SL_MAE_THRESHOLD": 8.8,
         "NUM_BINS_CHOICES": [
             3,
             4,
@@ -2069,7 +2069,7 @@
     "SBILIFE": {
         "MIN_TRADES": 8,
         "MAX_SL_RATIO": 0.2,
-        "TARGET_PNL": 5.4,
+        "TARGET_PNL": 5.5,
         "SL_MAE_THRESHOLD": 7.2,
         "NUM_BINS_CHOICES": [
             3,
@@ -2292,9 +2292,9 @@
             2.2
         ],
         "DD_LIMIT_CHOICES": [
-            4.9,
-            6.4,
-            7.9
+            4.8,
+            6.3,
+            7.8
         ]
     },
     "HINDZINC": {
@@ -2342,7 +2342,7 @@
     "KFINTECH": {
         "MIN_TRADES": 8,
         "MAX_SL_RATIO": 0.25,
-        "TARGET_PNL": 5.5,
+        "TARGET_PNL": 6.0,
         "SL_MAE_THRESHOLD": 10.0,
         "NUM_BINS_CHOICES": [
             3,
@@ -2376,9 +2376,9 @@
             2.2
         ],
         "DD_LIMIT_CHOICES": [
-            7.3,
-            8.8,
-            10.3
+            7.2,
+            8.7,
+            10.2
         ]
     },
     "AUROPHARMA": {
@@ -2447,7 +2447,7 @@
     "SBICARD": {
         "MIN_TRADES": 8,
         "MAX_SL_RATIO": 0.2,
-        "TARGET_PNL": 5.8,
+        "TARGET_PNL": 5.6,
         "SL_MAE_THRESHOLD": 7.7,
         "NUM_BINS_CHOICES": [
             3,
@@ -2719,7 +2719,7 @@
     "GODREJCP": {
         "MIN_TRADES": 8,
         "MAX_SL_RATIO": 0.2,
-        "TARGET_PNL": 5.8,
+        "TARGET_PNL": 5.7,
         "SL_MAE_THRESHOLD": 7.7,
         "NUM_BINS_CHOICES": [
             3,
@@ -3076,7 +3076,7 @@
     "ICICIGI": {
         "MIN_TRADES": 8,
         "MAX_SL_RATIO": 0.2,
-        "TARGET_PNL": 5.8,
+        "TARGET_PNL": 5.6,
         "SL_MAE_THRESHOLD": 8.0,
         "NUM_BINS_CHOICES": [
             3,
@@ -3307,7 +3307,7 @@
     "POWERGRID": {
         "MIN_TRADES": 8,
         "MAX_SL_RATIO": 0.2,
-        "TARGET_PNL": 4.9,
+        "TARGET_PNL": 5.0,
         "SL_MAE_THRESHOLD": 7.1,
         "NUM_BINS_CHOICES": [
             3,
@@ -3956,7 +3956,7 @@
     "PIDILITIND": {
         "MIN_TRADES": 8,
         "MAX_SL_RATIO": 0.2,
-        "TARGET_PNL": 5.3,
+        "TARGET_PNL": 5.5,
         "SL_MAE_THRESHOLD": 6.4,
         "NUM_BINS_CHOICES": [
             3,
@@ -4136,9 +4136,9 @@
             2.2
         ],
         "DD_LIMIT_CHOICES": [
-            5.1,
-            6.6,
-            8.1
+            5.0,
+            6.5,
+            8.0
         ]
     },
     "UNOMINDA": {
@@ -4366,9 +4366,9 @@
             1.8
         ],
         "DD_LIMIT_CHOICES": [
-            4.5,
-            6.0,
-            7.5
+            4.4,
+            5.9,
+            7.4
         ]
     },
     "360ONE": {
@@ -4470,8 +4470,8 @@
             2.2
         ],
         "DD_LIMIT_CHOICES": [
-            9.5,
-            11.0,
+            9.4,
+            10.9,
             12.0
         ]
     }

@@ -96,15 +96,15 @@ class TestRepositorySummary(unittest.TestCase):
         cursor.execute("INSERT INTO trading_config (key, value) VALUES ('capital', '1000000')")
         
         # Populate closed trades
-        # Trade 1: deployed = 10,000, final_pnl_pct = 50.0 (gross +50%), net_pnl_abs = 4,500, total_charges = 500
+        # Trade 1: deployed = 10,000, final_pnl_pct = 50.0 (gross +50%), net_pnl_abs = 4,500, total_charges = 500, bars_held = 5
         cursor.execute("""
-        INSERT INTO trading_positions (symbol, mode, status, signal_date, entry_date, entry_price, quantity, capital_deployed, final_pnl_pct, net_pnl_abs, total_charges)
-        VALUES ('AAPL', 'paper', 'closed', '2026-05-01', '2026-05-02', 100.0, 100, 10000.0, 50.0, 4500.0, 500.0)
+        INSERT INTO trading_positions (symbol, mode, status, signal_date, entry_date, entry_price, quantity, capital_deployed, final_pnl_pct, net_pnl_abs, total_charges, bars_held)
+        VALUES ('AAPL', 'paper', 'closed', '2026-05-01', '2026-05-02', 100.0, 100, 10000.0, 50.0, 4500.0, 500.0, 5)
         """)
-        # Trade 2: deployed = 100,000, final_pnl_pct = -40.0 (gross -40%), net_pnl_abs = -41,000, total_charges = 1000
+        # Trade 2: deployed = 100,000, final_pnl_pct = -40.0 (gross -40%), net_pnl_abs = -41,000, total_charges = 1000, bars_held = 15
         cursor.execute("""
-        INSERT INTO trading_positions (symbol, mode, status, signal_date, entry_date, entry_price, quantity, capital_deployed, final_pnl_pct, net_pnl_abs, total_charges)
-        VALUES ('TSLA', 'paper', 'closed', '2026-05-10', '2026-05-11', 200.0, 500, 100000.0, -40.0, -41000.0, 1000.0)
+        INSERT INTO trading_positions (symbol, mode, status, signal_date, entry_date, entry_price, quantity, capital_deployed, final_pnl_pct, net_pnl_abs, total_charges, bars_held)
+        VALUES ('TSLA', 'paper', 'closed', '2026-05-10', '2026-05-11', 200.0, 500, 100000.0, -40.0, -41000.0, 1000.0, 15)
         """)
         
         # Populate open positions
@@ -155,6 +155,7 @@ class TestRepositorySummary(unittest.TestCase):
         self.assertEqual(summary["wins"], 1)
         self.assertEqual(summary["win_rate"], 50.0)
         self.assertEqual(summary["total_charges"], 1500.0)
+        self.assertEqual(summary["avg_duration_bars"], 10.0)
         
         self.assertEqual(summary["total_net_pnl_abs"], -36500.0)
         self.assertEqual(summary["total_net_pnl_pct"], -3.65)
