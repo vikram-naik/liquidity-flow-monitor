@@ -396,3 +396,102 @@ def test_climax_trail_released_when_full_bar_below_va_high_and_cts_fading():
         f"Climax trail SHOULD be released when full bar is below va_high and "
         f"cts ({row['cts']}) < 1.0. Got {reason}"
     )
+
+
+def test_parabolic_low_break_coherence_suppression():
+    """Verify that parabolic low break exit is suppressed when coherence is high."""
+    cfg = SavgolCTSExitConfig()
+    cfg.cwvap_guard.expert_exits_enabled = True
+    cfg.cwvap_guard.cwc_slope_early_release_enabled = False
+    cfg.cwvap_guard.peak_pnl_trigger = 10.0
+    cfg.cwvap_guard.parabolic_cwc_min = 0.35
+    cfg.cwvap_guard.overextended_rp_threshold = 0.90
+    cfg.cwvap_guard.uptrend_low_break_buffer_atr = 0.30
+
+    trade = Trade(
+        symbol="TEST", entry_date="2024-01-01", entry_price=100.0,
+        entry_idx=0, atr_at_entry=2.0
+    )
+
+    st = SavgolCTSExitState()
+    st.exit_suppressed = True  # suppressed by CWVAP
+
+    # 1. overextended in the last 4 bars (RP10=0.95)
+    # 2. is_uptrend (regime='uptrend')
+    # 3. low break (close < prev_low - buffer)
+    #    close=108.0, prev_low=110.0, atr=2.0, buffer=0.3*2.0=0.6, trigger=109.4. 108.0 < 109.4
+    # 4. BUT high coherence (cwc=0.40 >= 0.35) -> Should suppress exit
+    row = {
+        "close": 108.0,
+        "low": 108.0,
+        "cwvap": 105.0,
+        "va_high": 102.0,
+        "regime": "uptrend",
+        "range_pos_10": 0.95,
+        "atr_20": 2.0,
+        "cwc": 0.40,
+        "cwc_slope": -0.05,
+        "cts": 0.5,
+        "price_slope_z": 0.5
+    }
+
+    records = [
+        {"close": 112.0, "low": 110.0, "range_pos_10": 0.95},  # prev bar with high close to trigger peak_pnl
+        row                                    # current bar
+    ]
+
+    reason, next_state = apply_cwvap_guard(row, trade, None, st.to_int(), cfg, records, 1)
+
+    assert reason is None
+    next_st = SavgolCTSExitState.from_int(next_state)
+    assert next_st.exit_suppressed is True
+
+
+def test_parabolic_low_break_coherence_no_suppression():
+    """Verify that parabolic low break exit triggers when coherence is low."""
+    cfg = SavgolCTSExitConfig()
+    cfg.cwvap_guard.expert_exits_enabled = True
+    cfg.cwvap_guard.cwc_slope_early_release_enabled = False
+    cfg.cwvap_guard.peak_pnl_trigger = 10.0
+    cfg.cwvap_guard.parabolic_cwc_min = 0.35
+    cfg.cwvap_guard.parabolic_cwc_slope_min = -0.02
+    cfg.cwvap_guard.overextended_rp_threshold = 0.90
+    cfg.cwvap_guard.uptrend_low_break_buffer_atr = 0.30
+
+    trade = Trade(
+        symbol="TEST", entry_date="2024-01-01", entry_price=100.0,
+        entry_idx=0, atr_at_entry=2.0
+    )
+
+    st = SavgolCTSExitState()
+    st.exit_suppressed = True
+
+    # 1. overextended in the last 4 bars (RP10=0.95)
+    # 2. is_uptrend (regime='uptrend')
+    # 3. low break (close=108.0 < 109.4)
+    # 4. AND low coherence (cwc=0.30 < 0.35, cwc_slope=-0.05 < -0.02) -> Should exit
+    row = {
+        "close": 108.0,
+        "low": 108.0,
+        "cwvap": 105.0,
+        "va_high": 102.0,
+        "regime": "uptrend",
+        "range_pos_10": 0.95,
+        "atr_20": 2.0,
+        "cwc": 0.30,
+        "cwc_slope": -0.05,
+        "cts": 0.5,
+        "price_slope_z": 0.5
+    }
+
+    records = [
+        {"close": 112.0, "low": 110.0, "range_pos_10": 0.95},  # prev bar with high close to trigger peak_pnl
+        row                                    # current bar
+    ]
+
+    reason, next_state = apply_cwvap_guard(row, trade, None, st.to_int(), cfg, records, 1)
+
+    assert reason == ExitReason.EXPERT5_UPTREND_PARABOLIC_LOW_BREAK
+    next_st = SavgolCTSExitState.from_int(next_state)
+    assert next_st.exit_suppressed is False
+

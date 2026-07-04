@@ -412,7 +412,7 @@ def update_changes_for_date(current_date):
     current_date_str = current_date.strftime('%Y-%m-%d')
     
     res = cursor.execute("""
-        SELECT MAX(record_date) FROM nse_delivery_log WHERE record_date < ?
+        SELECT MAX(record_date) FROM nse_delivery_log WHERE record_date < ? AND instrument_type = 'STOCK'
     """, (current_date_str,)).fetchone()
     
     prev_date_str = res[0]
@@ -476,7 +476,7 @@ def backfill_data(days=0, start_date=None, force=False):
     existing_dates = set()
     if not force:
         conn = get_db_connection()
-        res = conn.execute("SELECT DISTINCT record_date FROM nse_delivery_log").fetchall()
+        res = conn.execute("SELECT DISTINCT record_date FROM nse_delivery_log WHERE instrument_type = 'STOCK'").fetchall()
         existing_dates = {row[0] for row in res}
         conn.close()
         print(f"[NSE] Found {len(existing_dates)} existing dates in DB.")
@@ -514,7 +514,7 @@ def smart_sync():
     Used by cron/daily sync to avoid re-downloading existing data.
     """
     conn = get_db_connection()
-    res = conn.execute("SELECT MAX(record_date) FROM nse_delivery_log").fetchone()
+    res = conn.execute("SELECT MAX(record_date) FROM nse_delivery_log WHERE instrument_type = 'STOCK'").fetchone()
     conn.close()
     
     today = datetime.now().date()
@@ -561,22 +561,38 @@ def show_db_status():
     conn = get_db_connection()
     cursor = conn.cursor()
     
-    res = cursor.execute("""
+    res_stock = cursor.execute("""
         SELECT MIN(record_date), MAX(record_date), COUNT(DISTINCT record_date), COUNT(*) 
-        FROM nse_delivery_log
+        FROM nse_delivery_log WHERE instrument_type = 'STOCK'
+    """).fetchone()
+    
+    res_index = cursor.execute("""
+        SELECT MIN(record_date), MAX(record_date), COUNT(DISTINCT record_date), COUNT(*) 
+        FROM nse_delivery_log WHERE instrument_type = 'INDEX'
     """).fetchone()
     
     conn.close()
     
-    if res and res[0]:
-        min_date, max_date, distinct_dates, total_records = res
-        print("\n=== NSE Delivery Database Status ===")
-        print(f"Date Range     : {min_date} to {max_date}")
-        print(f"Trading Days   : {distinct_dates}")
-        print(f"Total Records  : {total_records:,}")
-        print("===================================\n")
+    print("\n=== NSE Delivery Database Status ===")
+    if res_stock and res_stock[0]:
+        min_date, max_date, distinct_dates, total_records = res_stock
+        print("Stocks Status:")
+        print(f"  Date Range     : {min_date} to {max_date}")
+        print(f"  Trading Days   : {distinct_dates}")
+        print(f"  Total Records  : {total_records:,}")
     else:
-        print("[NSE] Database is empty.")
+        print("Stocks Status    : Empty")
+        
+    print("-" * 36)
+    if res_index and res_index[0]:
+        min_date, max_date, distinct_dates, total_records = res_index
+        print("Indices Status:")
+        print(f"  Date Range     : {min_date} to {max_date}")
+        print(f"  Trading Days   : {distinct_dates}")
+        print(f"  Total Records  : {total_records:,}")
+    else:
+        print("Indices Status   : Empty")
+    print("===================================\n")
 
 if __name__ == "__main__":
     import argparse

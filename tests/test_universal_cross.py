@@ -974,6 +974,37 @@ def test_universal_cross_exit_cipla_regression():
     assert SavgolCTSExitState.from_int(state4).cts_reached_st is True
 
 
+def test_universal_cross_exit_cts_near_miss_immediate_rollover():
+    """Verify that under Option D, the near-miss exit triggers immediately on rollover."""
+    cfg = SavgolCTSExitConfig().universal_cross
+    cfg.enabled = True
+    cfg.cts_near_miss_exit_enabled = True
+    cfg.cts_near_miss_gap = 0.10
+    cfg.cts_near_miss_rollover_level = 1.10  # default under Option D
+
+    trade = Trade(
+        symbol="TECHM",
+        entry_date="2026-03-09",
+        entry_price=100.0,
+        entry_idx=0,
+        atr_at_entry=2.0
+    )
+
+    # 1. Activate near-miss range
+    row_near = {"close": 110.0, "cts": 0.92, "cts_sell_threshold": 1.00}
+    prev_near = {"close": 108.0, "cts": 0.85, "cts_sell_threshold": 1.00}
+    reason, state_val = exit_universal_cross(row_near, prev_near, trade, 110.0, 1, 0, cfg)
+    assert reason is None
+    st = SavgolCTSExitState.from_int(state_val)
+    assert st.cts_near_miss is True
+
+    # 2. Drops slightly (from 0.92 to 0.88) -> Should trigger immediately under Option D
+    row_roll = {"close": 109.0, "cts": 0.88, "cts_sell_threshold": 1.00}
+    reason_roll, _ = exit_universal_cross(row_roll, row_near, trade, 110.0, 2, state_val, cfg)
+    assert reason_roll == ExitReason.CTS_NEAR_MISS_ROLLOVER
+
+
+
 def get_base_records_10(price_trend="flat"):
     """Returns a mocked list of 10 records for testing the 5th trigger."""
     records = []

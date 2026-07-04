@@ -425,30 +425,30 @@ def main():
             w(f"  {key:<22} {t:>9{fmt}}{suffix} {s:>9{fmt}}{suffix} {delta:>+9{fmt}}{suffix}")
 
     # --- Config dump for reproducibility ---
-    w(f"\n{SEP}")
-    w("  CONFIG SNAPSHOT")
-    w(SEP)
-    w()
-    w(f"  Entry: {entry_cfg.__class__.__name__}")
-    for field_name in sorted(vars(entry_cfg)):
-        val = getattr(entry_cfg, field_name)
-        if hasattr(val, '__dataclass_fields__'):
-            w(f"    {field_name}:")
-            for sub in sorted(vars(val)):
-                w(f"      {sub}: {getattr(val, sub)}")
-        else:
-            w(f"    {field_name}: {val}")
-    w(f"  Exit: {exit_cfg.__class__.__name__}")
-    for field_name in sorted(vars(exit_cfg)):
-        val = getattr(exit_cfg, field_name)
-        if hasattr(val, '__dataclass_fields__'):
-            w(f"    {field_name}:")
-            for sub in sorted(vars(val)):
-                w(f"      {sub}: {getattr(val, sub)}")
-        else:
-            w(f"    {field_name}: {val}")
-
-    w(f"\n{SEP}")
+    # w(f"\n{SEP}")
+    # w("  CONFIG SNAPSHOT")
+    # w(SEP)
+    # w()
+    # f"  Entry: {entry_cfg.__class__.__name__}"
+    # for field_name in sorted(vars(entry_cfg)):
+    #     val = getattr(entry_cfg, field_name)
+    #     if hasattr(val, '__dataclass_fields__'):
+    #         w(f"    {field_name}:")
+    #         for sub in sorted(vars(val)):
+    #             w(f"      {sub}: {getattr(val, sub)}")
+    #     else:
+    #         w(f"    {field_name}: {val}")
+    # w(f"  Exit: {exit_cfg.__class__.__name__}")
+    # for field_name in sorted(vars(exit_cfg)):
+    #     val = getattr(exit_cfg, field_name)
+    #     if hasattr(val, '__dataclass_fields__'):
+    #         w(f"    {field_name}:")
+    #         for sub in sorted(vars(val)):
+    #             w(f"      {sub}: {getattr(val, sub)}")
+    #     else:
+    #         w(f"    {field_name}: {val}")
+    #
+    # w(f"\n{SEP}")
 
     # --- Output ---
     report = out.getvalue()

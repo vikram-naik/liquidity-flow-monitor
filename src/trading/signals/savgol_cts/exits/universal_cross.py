@@ -143,9 +143,9 @@ def exit_universal_cross(
             if not is_panic_bar:
                 exit_reason = ExitReason.CWVAP_EXHAUSTION
 
-    # 6. CTS Near-Miss Rollover Check
+    # 6. CTS Near-Miss Rollover Check (Option D: exit immediately on rollover by default via rollover_level >= 1.0)
     if not exit_reason and getattr(cfg, "cts_near_miss_exit_enabled", True) and st.cts_near_miss:
-        rollover_level = getattr(cfg, "cts_near_miss_rollover_level", 0.50)
+        rollover_level = getattr(cfg, "cts_near_miss_rollover_level", 1.10)
         prev_cts = prev_row.get("cts", np.nan) if prev_row else np.nan
         if not any(np.isnan(x) for x in [cts, prev_cts]) and cts < prev_cts and cts < rollover_level:
             if not is_panic_bar:

@@ -378,7 +378,7 @@ class UniversalCrossExitConfig:
     # CTS Near-Miss Rollover Exit parameters
     cts_near_miss_exit_enabled: bool = True
     cts_near_miss_gap: float = 0.10
-    cts_near_miss_rollover_level: float = 0.50
+    cts_near_miss_rollover_level: float = 1.10  # Option D: exit on any rollover of CTS once near-miss is flagged
 
 
 
@@ -419,6 +419,8 @@ class CwvapGuardConfig:
     overextended_rp_threshold: float = 0.90
     uptrend_low_break_buffer_atr: float = 0.30
     normal_rp_reversion: float = 0.70
+    parabolic_cwc_min: float = 0.35
+    parabolic_cwc_slope_min: float = -0.02
 
 
 

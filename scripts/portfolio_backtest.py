@@ -933,7 +933,7 @@ def format_report(
         format_trade_log(kelly_records, out)
 
     # Config
-    format_config_snapshot(config, entry_cfg, exit_cfg, out)
+    # format_config_snapshot(config, entry_cfg, exit_cfg, out)
 
     return out.getvalue()
 

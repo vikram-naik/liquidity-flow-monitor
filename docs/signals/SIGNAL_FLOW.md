@@ -1,7 +1,7 @@
 # SavgolCTS Signal — Entry / Exit Flow
 
 **Package**: `src/trading/signals/savgol_cts/`
-**Last updated**: 2026-06-10
+**Last updated**: 2026-07-04
 
 ## ⚠️ Mandatory Execution Model (EOD-Lag)
 The LFM system operates on an **End-of-Day Lag (EOD-Lag)** model. All signal research and production logic MUST adhere to this:
@@ -157,4 +157,9 @@ Applied **after** indicator-generated exit signals. It acts as a gatekeeper to e
 5. **Expert 5 Exits (Regime-Aware Hybrid)**: Once a trade reaches a peak close profit of `>= 10.0%`, if it is suppressed by the guard, the system monitors it using three regime-aware exits to lock in gains:
    - **Regime-Aware Trailing Stop**: Trails peak close by `3.0 * ATR` in strong `uptrend` regimes to let winners run, and `2.0 * ATR` in normal/weaker regimes to lock in gains quickly.
    - **Regime-Aware Coherence Breach**: Exits if flow coherence degrades (`cwc < 0.25` and `cwc_slope < -0.04` in normal regimes, or `cwc < 0.10` and `cwc_slope < -0.06` in strong `uptrend` regimes to prevent premature shakeouts).
-   - **Regime-Aware Parabolic Low-Break**: Exits if overextended and price closes below the previous day's low. In strong `uptrend` regimes, it requires a volatility buffer of `0.30 * ATR` to filter out minor noise.
+   - **Regime-Aware Parabolic Low-Break**: Exits if overextended and price closes below the previous day's low. In strong `uptrend` regimes, it requires a volatility buffer of `0.30 * ATR` to filter out minor noise. Additionally, Option 2A (Coherence-based State-Dependent Suppression) is active in strong uptrends: the exit is suppressed if structural coherence is high (CWC >= 0.35 OR CWC slope >= -0.02) to avoid premature shakeouts.
+
+## Indicator Exits (`exits/universal_cross.py`)
+
+The strategy features multiple indicator-based exits inside the Universal Cross module, including:
+1. **CTS Near-Miss Rollover**: Triggered when the CTS momentum indicator gets very close to the target sell threshold but stalls (`cts_st - cts <= 0.10`) and subsequently rolls over (`cts < prev_cts`). **Following Option D optimization, this exit triggers immediately on the first bar of rollover (default `cts_near_miss_rollover_level = 1.10`) to preserve profits and avoid catastrophic pullbacks.**

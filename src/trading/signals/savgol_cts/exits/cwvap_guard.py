@@ -379,9 +379,23 @@ def apply_cwvap_guard(
                     if is_uptrend:
                         buffer = getattr(gc, "uptrend_low_break_buffer_atr", 0.30) * atr if not np.isnan(atr) else 0.0
                         if not np.isnan(prev_low) and close < (prev_low - buffer):
-                            st.exit_suppressed = False
-                            st.suppressed_this_bar = False
-                            return ExitReason.EXPERT5_UPTREND_PARABOLIC_LOW_BREAK, st.to_int()
+                            cwc = row.get("cwc", np.nan)
+                            cwc_slope = row.get("cwc_slope", np.nan)
+                            cwc_min = getattr(gc, "parabolic_cwc_min", 0.35)
+                            cwc_slope_min = getattr(gc, "parabolic_cwc_slope_min", -0.02)
+                            
+                            is_highly_coherent = (
+                                (not np.isnan(cwc) and cwc >= cwc_min) or
+                                (not np.isnan(cwc_slope) and cwc_slope >= cwc_slope_min)
+                            )
+                            
+                            if is_highly_coherent:
+                                st.exit_suppressed = True
+                                st.suppressed_this_bar = True
+                            else:
+                                st.exit_suppressed = False
+                                st.suppressed_this_bar = False
+                                return ExitReason.EXPERT5_UPTREND_PARABOLIC_LOW_BREAK, st.to_int()
                     else:
                         if not np.isnan(prev_low) and close < prev_low:
                             st.exit_suppressed = False
