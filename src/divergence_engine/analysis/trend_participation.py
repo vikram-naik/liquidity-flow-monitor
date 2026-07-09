@@ -62,8 +62,8 @@ def _pillar_a_slope_alignment(
     A (0.45) — Both slopes strong AND aligned.
     Geometric mean of percentile ranks + directional agreement bonus.
     """
-    p_rank    = price_slope_z.abs().rank(pct=True)
-    r_rank    = rdv_slope_z.abs().rank(pct=True)
+    p_rank    = price_slope_z.abs().expanding().rank(pct=True)
+    r_rank    = rdv_slope_z.abs().expanding().rank(pct=True)
     agreement = np.sign(price_slope_z) * np.sign(rdv_slope_z)
     raw       = (p_rank * r_rank) ** 0.5
     return (raw + 0.2 * agreement).clip(0, 1).rename("pillar_a")
@@ -94,7 +94,7 @@ def _pillar_b_mcs_confirmation(
 
 def _pillar_c_cwc_coherence(cwc_slope: pd.Series) -> pd.Series:
     """C (0.20) — CWC structural delivery consistency."""
-    return cwc_slope.abs().rank(pct=True).rename("pillar_c")
+    return cwc_slope.abs().expanding().rank(pct=True).rename("pillar_c")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
