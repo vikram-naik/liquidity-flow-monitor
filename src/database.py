@@ -253,6 +253,7 @@ def init_db():
         acted_upon INTEGER DEFAULT 0,
         skip_reason TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         UNIQUE(symbol, signal_date, signal_type)
     );
     """)
@@ -286,6 +287,10 @@ def init_db():
         exit_price REAL,
         exit_reason TEXT,
         final_pnl_pct REAL,
+        exit_signal_date TEXT,
+        exit_signal_reason TEXT,
+        approved_at TEXT,
+        rejected_at TEXT,
         -- Sizing and expenses
         capital_deployed REAL,
         sizing_method TEXT,
@@ -327,7 +332,9 @@ def init_db():
         status TEXT NOT NULL DEFAULT 'COMPLETE',
         executed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         -- Price resolution audit
-        price_rationale TEXT
+        price_rationale TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
     """)
 
@@ -339,7 +346,8 @@ def init_db():
         amount REAL NOT NULL,
         balance_after REAL NOT NULL,
         note TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP
     );
     """)
 
@@ -355,7 +363,8 @@ def init_db():
         open_positions INTEGER NOT NULL DEFAULT 0,
         sizing_method TEXT,
         kelly_f REAL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP
     );
     """)
 
@@ -367,7 +376,8 @@ def init_db():
         unrealized_pnl_pct REAL,
         realized_pnl_today REAL,
         cumulative_realized_pnl REAL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP
     );
     """)
 
@@ -375,6 +385,7 @@ def init_db():
     CREATE TABLE IF NOT EXISTS trading_config (
         key TEXT PRIMARY KEY,
         value TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
     """)
@@ -422,6 +433,17 @@ def init_db():
 
     # Migrations — add columns that may not exist in older DBs
     _migrate_add_column(cursor, "trading_orders", "price_rationale", "TEXT")
+    _migrate_add_column(cursor, "trading_positions", "exit_signal_date", "TEXT")
+    _migrate_add_column(cursor, "trading_positions", "exit_signal_reason", "TEXT")
+    _migrate_add_column(cursor, "trading_positions", "approved_at", "TEXT")
+    _migrate_add_column(cursor, "trading_positions", "rejected_at", "TEXT")
+    _migrate_add_column(cursor, "trading_signals", "updated_at", "TIMESTAMP")
+    _migrate_add_column(cursor, "trading_orders", "created_at", "TIMESTAMP")
+    _migrate_add_column(cursor, "trading_orders", "updated_at", "TIMESTAMP")
+    _migrate_add_column(cursor, "trading_capital_events", "updated_at", "TIMESTAMP")
+    _migrate_add_column(cursor, "trading_equity_curve", "updated_at", "TIMESTAMP")
+    _migrate_add_column(cursor, "trading_daily_pnl", "updated_at", "TIMESTAMP")
+    _migrate_add_column(cursor, "trading_config", "created_at", "TIMESTAMP")
 
 
     # Trading indices

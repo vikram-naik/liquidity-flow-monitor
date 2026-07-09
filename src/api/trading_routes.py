@@ -66,7 +66,7 @@ def trades_page():
 # ── API Endpoints ────────────────────────────────────────────────────────────
 
 @router.get("/de/api/trading/positions")
-def list_positions(status: str = Query("open", pattern="^(open|closed|pending_entry|pending_exit|proposed|rejected|all)$")):
+def list_positions(status: str = Query("open", pattern="^(open|closed|pending_entry|pending_exit|proposed|proposed_exit|rejected|all)$")):
     return repo.get_positions(status)
 
 
@@ -179,7 +179,7 @@ def approve_position(position_id: int):
     """Promote a proposed position to pending_entry (will execute next scanner run)."""
     ok = repo.approve_position(position_id)
     if not ok:
-        raise HTTPException(status_code=404, detail="Position not found or not in 'proposed' status")
+        raise HTTPException(status_code=404, detail="Position not found or not in 'proposed' or 'proposed_exit' status")
     return {"status": "approved", "id": position_id}
 
 
@@ -188,7 +188,7 @@ def reject_position(position_id: int, body: RejectRequest = RejectRequest()):
     """Reject a proposed position."""
     ok = repo.reject_position(position_id, body.reason)
     if not ok:
-        raise HTTPException(status_code=404, detail="Position not found or not in 'proposed' status")
+        raise HTTPException(status_code=404, detail="Position not found or not in 'proposed' or 'proposed_exit' status")
     return {"status": "rejected", "id": position_id}
 
 

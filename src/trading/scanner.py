@@ -125,10 +125,11 @@ class Scanner:
     # ── Phase 1: Detect exit signals on open positions ──────────────────
 
     def _phase1_check_exits(self):
-        """Check exit conditions on open positions and mark as pending_exit.
+        """Check exit conditions on open positions and mark as proposed_exit.
 
         Does NOT place sell orders — that is the executor's job.
         """
+        today = datetime.now().strftime("%Y-%m-%d")
         open_positions = self.repo.get_open_positions()
         if not open_positions:
             print("Phase 1: No open positions.")
@@ -208,11 +209,12 @@ class Scanner:
             if reason:
                 exit_reason_str = str(reason.value) if hasattr(reason, "value") else str(reason)
                 if not self.dry_run:
-                    # Mark as pending_exit — executor will place the SELL order
+                    # Mark as proposed_exit — awaits human approval in dashboard
                     self.repo.update_position(
                         pos["id"],
-                        status="pending_exit",
-                        exit_reason=exit_reason_str,
+                        status="proposed_exit",
+                        exit_signal_date=today,
+                        exit_signal_reason=exit_reason_str,
                         peak_close=peak_close,
                         delivery_bad_count=delivery_bad_count,
                         bars_held=bars_held,
@@ -220,7 +222,7 @@ class Scanner:
                         mfe_pct=round(mfe, 2),
                         mae_pct=round(mae, 2),
                     )
-                print(f"  {symbol}: EXIT SIGNAL ({exit_reason_str}), P&L={pnl_pct:+.2f}% → pending_exit")
+                print(f"  {symbol}: EXIT SIGNAL ({exit_reason_str}), P&L={pnl_pct:+.2f}% → proposed_exit")
             else:
                 if not self.dry_run:
                     self.repo.update_position(
@@ -324,10 +326,11 @@ class Scanner:
             print("Phase 3: Skipped (dry-run).")
             return
 
-        # Include both open and pending_exit positions for P&L
+        # Include open, pending_exit, and proposed_exit positions for P&L
         open_positions = self.repo.get_open_positions()
         pending_exits = self.repo.get_pending_exits()
-        all_active = open_positions + pending_exits
+        proposed_exits = self.repo.get_positions("proposed_exit")
+        all_active = open_positions + pending_exits + proposed_exits
         active_count = len(all_active)
 
         total_invested = sum(

@@ -1,13 +1,19 @@
 # SavgolCTS Signal — Entry / Exit Flow
 
 **Package**: `src/trading/signals/savgol_cts/`
-**Last updated**: 2026-07-04
+**Last updated**: 2026-07-09
 
 ## ⚠️ Mandatory Execution Model (EOD-Lag)
 The LFM system operates on an **End-of-Day Lag (EOD-Lag)** model. All signal research and production logic MUST adhere to this:
 1. **Signal Generation (Bar i)**: Indicators and guards are evaluated at the close of the trading day.
-2. **Execution (Bar i+1)**: The trade is entered at the close (or weighted open) of the following day.
-3. **Exit Evaluation (Bar i+2)**: Exit checks begin only after the trade has been open for at least one full bar.
+   - **Entries**: Entry signals create positions in the `proposed` state (held in the approval queue).
+   - **Exits**: Exit signals transition open positions to the `proposed_exit` state (held in the approval queue).
+2. **User Approval**:
+   - Approving proposed entries promotes them to `pending_entry`.
+   - Approving proposed exits promotes them to `pending_exit`.
+3. **Execution (Bar i+1)**: Orders are executed via the OrderExecutor.
+   - Programmatic lag enforcement prevents execution of any `pending_entry` or `pending_exit` whose signal date is equal to the current execution date.
+4. **Exit Evaluation (Bar i+2)**: Exit checks begin only after the trade has been open for at least one full bar.
 
 **Note**: Studies using "Bar i" close for entry will drastically overestimate performance by capturing same-day momentum that is unavailable in live execution.
 

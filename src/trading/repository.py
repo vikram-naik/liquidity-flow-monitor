@@ -7,8 +7,11 @@ Centralises all SQL queries for signals, positions, orders, and P&L tracking.
 from __future__ import annotations
 
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
+
+def _get_utc_now_str() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
 from src.database import get_db_connection
 
@@ -29,13 +32,13 @@ class TradingRepository:
     def update_config(self, updates: dict) -> None:
         conn = get_db_connection()
         try:
-            now = datetime.now().isoformat()
+            now = _get_utc_now_str()
             for key, value in updates.items():
                 conn.execute(
-                    "INSERT INTO trading_config (key, value, updated_at) "
-                    "VALUES (?, ?, ?) "
+                    "INSERT INTO trading_config (key, value, created_at, updated_at) "
+                    "VALUES (?, ?, ?, ?) "
                     "ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at",
-                    (key, str(value), now),
+                    (key, str(value), now, now),
                 )
             conn.commit()
         finally:
@@ -56,13 +59,20 @@ class TradingRepository:
         return self._query_positions("status = 'pending_exit'")
 
     def approve_position(self, position_id: int) -> bool:
-        """Promote proposed -> pending_entry. Returns True if updated."""
+        """Promote proposed -> pending_entry or proposed_exit -> pending_exit. Returns True if updated."""
         conn = get_db_connection()
         try:
+            now = _get_utc_now_str()
             cursor = conn.execute(
-                "UPDATE trading_positions SET status = 'pending_entry', updated_at = ? "
-                "WHERE id = ? AND status = 'proposed'",
-                (datetime.now().isoformat(), position_id),
+                "UPDATE trading_positions "
+                "SET status = CASE status "
+                "  WHEN 'proposed' THEN 'pending_entry' "
+                "  WHEN 'proposed_exit' THEN 'pending_exit' "
+                "END, "
+                "approved_at = ?, "
+                "updated_at = ? "
+                "WHERE id = ? AND status IN ('proposed', 'proposed_exit')",
+                (now, now, position_id),
             )
             conn.commit()
             return cursor.rowcount > 0
@@ -70,13 +80,21 @@ class TradingRepository:
             conn.close()
 
     def reject_position(self, position_id: int, reason: str = "manual_reject") -> bool:
-        """Mark proposed position as rejected. Returns True if updated."""
+        """Mark proposed position as rejected, or restore proposed_exit to open. Returns True if updated."""
         conn = get_db_connection()
         try:
+            now = _get_utc_now_str()
             cursor = conn.execute(
-                "UPDATE trading_positions SET status = 'rejected', exit_reason = ?, updated_at = ? "
-                "WHERE id = ? AND status = 'proposed'",
-                (reason, datetime.now().isoformat(), position_id),
+                "UPDATE trading_positions "
+                "SET status = CASE status "
+                "  WHEN 'proposed' THEN 'rejected' "
+                "  WHEN 'proposed_exit' THEN 'open' "
+                "END, "
+                "exit_reason = CASE WHEN status = 'proposed' THEN ? ELSE exit_reason END, "
+                "rejected_at = ?, "
+                "updated_at = ? "
+                "WHERE id = ? AND status IN ('proposed', 'proposed_exit')",
+                (reason, now, now, position_id),
             )
             conn.commit()
             return cursor.rowcount > 0
@@ -84,13 +102,20 @@ class TradingRepository:
             conn.close()
 
     def approve_all_proposed(self) -> int:
-        """Promote all proposed -> pending_entry. Returns count updated."""
+        """Promote all proposed -> pending_entry and proposed_exit -> pending_exit. Returns count updated."""
         conn = get_db_connection()
         try:
+            now = _get_utc_now_str()
             cursor = conn.execute(
-                "UPDATE trading_positions SET status = 'pending_entry', updated_at = ? "
-                "WHERE status = 'proposed'",
-                (datetime.now().isoformat(),),
+                "UPDATE trading_positions "
+                "SET status = CASE status "
+                "  WHEN 'proposed' THEN 'pending_entry' "
+                "  WHEN 'proposed_exit' THEN 'pending_exit' "
+                "END, "
+                "approved_at = ?, "
+                "updated_at = ? "
+                "WHERE status IN ('proposed', 'proposed_exit')",
+                (now, now),
             )
             conn.commit()
             return cursor.rowcount
@@ -101,10 +126,11 @@ class TradingRepository:
         """Mark open position as pending_exit for manual reason. Returns True if updated."""
         conn = get_db_connection()
         try:
+            now = _get_utc_now_str()
             cursor = conn.execute(
                 "UPDATE trading_positions SET status = 'pending_exit', exit_reason = 'manual_exit', updated_at = ? "
                 "WHERE id = ? AND status = 'open'",
-                (datetime.now().isoformat(), position_id),
+                (now, position_id),
             )
             conn.commit()
             return cursor.rowcount > 0
@@ -115,7 +141,7 @@ class TradingRepository:
         conn = get_db_connection()
         try:
             row = conn.execute(
-                "SELECT COUNT(*) FROM trading_positions WHERE status IN ('open', 'pending_entry', 'proposed', 'pending_exit')"
+                "SELECT COUNT(*) FROM trading_positions WHERE status IN ('open', 'pending_entry', 'proposed', 'pending_exit', 'proposed_exit')"
             ).fetchone()
             return row[0]
         finally:
@@ -126,7 +152,7 @@ class TradingRepository:
         try:
             row = conn.execute(
                 "SELECT COUNT(*) FROM trading_positions WHERE symbol = ? "
-                "AND status IN ('open', 'pending_entry', 'proposed', 'pending_exit')",
+                "AND status IN ('open', 'pending_entry', 'proposed', 'pending_exit', 'proposed_exit')",
                 (symbol,),
             ).fetchone()
             return row[0] > 0
@@ -150,7 +176,7 @@ class TradingRepository:
     def update_position(self, position_id: int, **fields) -> None:
         if not fields:
             return
-        fields["updated_at"] = datetime.now().isoformat()
+        fields["updated_at"] = _get_utc_now_str()
         conn = get_db_connection()
         try:
             set_clause = ", ".join(f"{k} = ?" for k in fields.keys())
@@ -524,17 +550,17 @@ class TradingRepository:
         try:
             total_capital = self.get_total_capital()
 
-            # Capital deployed in open + pending_exit positions
+            # Capital deployed in open + pending_exit + proposed_exit positions
             deployed_row = conn.execute(
                 "SELECT COALESCE(SUM(capital_deployed), 0) "
-                "FROM trading_positions WHERE status IN ('open', 'pending_exit')"
+                "FROM trading_positions WHERE status IN ('open', 'pending_exit', 'proposed_exit')"
             ).fetchone()
             capital_deployed = deployed_row[0]
 
-            # Current market value of open + pending_exit positions
+            # Current market value of open + pending_exit + proposed_exit positions
             open_positions = conn.execute(
                 "SELECT capital_deployed, current_pnl_pct "
-                "FROM trading_positions WHERE status IN ('open', 'pending_exit')"
+                "FROM trading_positions WHERE status IN ('open', 'pending_exit', 'proposed_exit')"
             ).fetchall()
 
             market_value = 0.0
@@ -599,7 +625,7 @@ class TradingRepository:
             total_capital = self.get_total_capital()
 
             open_count = conn.execute(
-                "SELECT COUNT(*) FROM trading_positions WHERE status = 'open'"
+                "SELECT COUNT(*) FROM trading_positions WHERE status IN ('open', 'proposed_exit')"
             ).fetchone()[0]
 
             pending_count = conn.execute(
@@ -607,7 +633,7 @@ class TradingRepository:
             ).fetchone()[0]
 
             proposed_count = conn.execute(
-                "SELECT COUNT(*) FROM trading_positions WHERE status = 'proposed'"
+                "SELECT COUNT(*) FROM trading_positions WHERE status IN ('proposed', 'proposed_exit')"
             ).fetchone()[0]
 
             pending_exit_count = conn.execute(
@@ -638,7 +664,7 @@ class TradingRepository:
 
             open_positions = conn.execute(
                 "SELECT capital_deployed, current_pnl_pct "
-                "FROM trading_positions WHERE status IN ('open', 'pending_exit')"
+                "FROM trading_positions WHERE status IN ('open', 'pending_exit', 'proposed_exit')"
             ).fetchall()
 
             unrealized_pnl_abs = 0.0
@@ -747,7 +773,7 @@ class TradingRepository:
 
             # Get distinct symbols of held positions
             rows = conn.execute(
-                "SELECT DISTINCT symbol FROM trading_positions WHERE status IN ('open', 'pending_exit')"
+                "SELECT DISTINCT symbol FROM trading_positions WHERE status IN ('open', 'pending_exit', 'proposed_exit')"
             ).fetchall()
             symbols = [r[0] for r in rows]
 

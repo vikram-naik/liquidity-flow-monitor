@@ -364,7 +364,8 @@ async function loadOpenPositions() {
     const data = await fetch(API + '/positions?status=open').then(r => r.json());
     const pending = await fetch(API + '/positions?status=pending_entry').then(r => r.json());
     const exiting = await fetch(API + '/positions?status=pending_exit').then(r => r.json());
-    const all = [...data, ...pending, ...exiting];
+    const proposedExits = await fetch(API + '/positions?status=proposed_exit').then(r => r.json());
+    const all = [...data, ...pending, ...exiting, ...proposedExits];
 
     const tbody = document.querySelector('#open-table tbody');
     if (!all.length) {
@@ -375,7 +376,8 @@ async function loadOpenPositions() {
       const pnl = p.current_pnl_pct || 0;
       const pnlCls = pnl >= 0 ? 'pnl-pos' : 'pnl-neg';
       const statusCls = p.status === 'open' ? 'status-open' :
-                        p.status === 'pending_entry' ? 'status-pending' : 'status-exiting';
+                        p.status === 'pending_entry' ? 'status-pending' :
+                        p.status === 'proposed_exit' ? 'status-pending' : 'status-exiting';
       const sizingLabel = p.sizing_method === 'kelly' ? `K(${(p.kelly_f || 0.25).toFixed(2)})` : 'EqWt';
 
       const actionBtn = p.status === 'open'
@@ -441,7 +443,9 @@ async function loadSignals() {
 
 async function loadProposed() {
   try {
-    const data = await fetch(API + '/positions?status=proposed').then(r => r.json());
+    const proposedEntries = await fetch(API + '/positions?status=proposed').then(r => r.json());
+    const proposedExits = await fetch(API + '/positions?status=proposed_exit').then(r => r.json());
+    const data = [...proposedEntries, ...proposedExits];
     const section = document.getElementById('proposed-section');
     const tbody = document.querySelector('#proposed-table tbody');
 
@@ -452,9 +456,20 @@ async function loadProposed() {
 
     section.style.display = 'block';
     tbody.innerHTML = data.map(p => {
+      const isExit = p.status === 'proposed_exit';
+      const sideLabel = isExit 
+        ? '<span class="status-badge status-exiting" style="margin-left:8px;font-size:9px">SELL (Exit)</span>' 
+        : '<span class="status-badge status-open" style="margin-left:8px;font-size:9px">BUY (Entry)</span>';
+      
+      const signalDate = isExit ? (p.exit_signal_date || p.updated_at || '').substring(0, 10) : (p.signal_date || '').substring(0, 10);
+      const focusDate = isExit ? p.entry_date : signalDate;
+
       return `<tr data-id="${p.id}">
-        <td><a href="/de/dashboard/${p.symbol}?focus=${p.signal_date}" class="back-link"><strong>${p.symbol}</strong></a></td>
-        <td>${p.signal_date || '-'}</td>
+        <td>
+          <a href="/de/dashboard/${p.symbol}?focus=${focusDate}" class="back-link"><strong>${p.symbol}</strong></a>
+          ${sideLabel}
+        </td>
+        <td>${signalDate || '-'}</td>
         <td>${p.regime_at_entry || '-'}</td>
         <td>
           <button class="btn btn-approve" onclick="approvePosition(${p.id})">Approve</button>

@@ -106,7 +106,10 @@ class OrderExecutor:
 
     def execute_entries(self) -> list[dict]:
         """Process all pending_entry positions: resolve price → size → place BUY."""
+        today = datetime.now().strftime("%Y-%m-%d")
         pending = self.repo.get_pending_entries()
+        # Enforce EOD-Lag: only execute entries where signal was generated before today
+        pending = [p for p in pending if p.get("signal_date") != today]
         if not pending:
             print("  Entries: nothing pending.")
             return []
@@ -237,7 +240,10 @@ class OrderExecutor:
 
     def execute_exits(self) -> list[dict]:
         """Process all pending_exit positions: resolve price → place SELL → close."""
+        today = datetime.now().strftime("%Y-%m-%d")
         pending_exits = self.repo.get_pending_exits()
+        # Enforce EOD-Lag: only execute exits where exit signal was generated before today
+        pending_exits = [p for p in pending_exits if p.get("exit_signal_date") != today]
         if not pending_exits:
             print("  Exits: nothing pending.")
             return []

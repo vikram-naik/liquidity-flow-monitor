@@ -110,3 +110,57 @@ class TestScannerBarsHeld(unittest.TestCase):
                 mfe_pct=3.33,
                 mae_pct=0.67  # -(-0.67) = 0.67
             )
+
+    @patch("src.trading.scanner.run_engine")
+    @patch("src.trading.scanner.TradingRepository")
+    def test_exit_signal_triggers_proposed_exit(self, mock_repo_class, mock_run_engine):
+        mock_repo = MagicMock()
+        mock_repo_class.return_value = mock_repo
+
+        open_position = {
+            "id": 42,
+            "symbol": "M&M",
+            "entry_date": "2026-05-26",
+            "entry_price": 3000.0,
+            "atr_at_entry": 60.0,
+            "bars_held": 10,
+            "delivery_bad_count": 0,
+            "peak_close": 3100.0,
+            "mfe_pct": 3.33,
+            "mae_pct": 0.0,
+            "psz_peak": 0.0,
+            "entry_tag": "Universal-Cross"
+        }
+        mock_repo.get_open_positions.return_value = [open_position]
+        mock_repo.get_config.return_value = {"watchlist": "NIFTY 50", "signal_strategy": "savgol_cts"}
+
+        # Mock check_exit to return a valid exit reason
+        mock_signal = MagicMock()
+        mock_signal.check_exit.return_value = ("CTS_CROSS", 0)
+
+        mock_records = [
+            {"date": "2026-05-26 00:00:00", "close": 3000.0, "cwvap": 2995.0},
+            {"date": "2026-05-27 00:00:00", "close": 2900.0, "cwvap": 3000.0},
+        ]
+        mock_run_engine.return_value = (MagicMock(), mock_records)
+
+        with patch("src.trading.scanner.SignalFactory.get_signal", return_value=mock_signal):
+            scanner = Scanner(dry_run=False)
+            scanner._phase1_check_exits()
+
+            # Verify repository update is called with proposed_exit status, exit_signal_date and reason
+            from datetime import datetime
+            today = datetime.now().strftime("%Y-%m-%d")
+            mock_repo.update_position.assert_called_with(
+                42,
+                status="proposed_exit",
+                exit_signal_date=today,
+                exit_signal_reason="CTS_CROSS",
+                peak_close=3100.0,
+                delivery_bad_count=0,
+                bars_held=1,
+                current_pnl_pct=-3.33,  # (2900/3000 - 1)*100
+                mfe_pct=3.33,
+                mae_pct=3.33
+            )
+
