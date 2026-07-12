@@ -9,7 +9,7 @@ from unittest.mock import patch, MagicMock
 import src.database
 import src.trading.signals.savgol_cts.symbol_configs as sc
 from src.trading.signals.savgol_cts.config import SavgolCTSEntryConfig
-from scripts.weekly_bwo_sync import calculate_bwo_score, serialize_and_save_config
+from scripts.weekly_bwo_sync import calculate_bwo_score, serialize_and_save_config, evaluate_and_sync_symbol
 
 class TestWeeklyBwoSync(unittest.TestCase):
     def setUp(self):
@@ -17,10 +17,14 @@ class TestWeeklyBwoSync(unittest.TestCase):
         self.test_dir = tempfile.mkdtemp()
         self.orig_bw_configs_dir = src.database.BW_CONFIGS_DIR
         self.orig_excluded_symbols_path = src.database.EXCLUDED_SYMBOLS_PATH
+        self.orig_db_path = src.database.DB_PATH
         
         # Patch the configuration variables in both modules
         src.database.BW_CONFIGS_DIR = self.test_dir
         src.database.EXCLUDED_SYMBOLS_PATH = os.path.join(self.test_dir, "excluded_symbols.json")
+        self.test_db_path = os.path.join(self.test_dir, "test_lfm.db")
+        src.database.DB_PATH = self.test_db_path
+        
         sc.BW_CONFIGS_DIR = self.test_dir
         sc.EXCLUDED_SYMBOLS_PATH = os.path.join(self.test_dir, "excluded_symbols.json")
 
@@ -28,6 +32,7 @@ class TestWeeklyBwoSync(unittest.TestCase):
         # Restore variables
         src.database.BW_CONFIGS_DIR = self.orig_bw_configs_dir
         src.database.EXCLUDED_SYMBOLS_PATH = self.orig_excluded_symbols_path
+        src.database.DB_PATH = self.orig_db_path
         sc.BW_CONFIGS_DIR = self.orig_bw_configs_dir
         sc.EXCLUDED_SYMBOLS_PATH = self.orig_excluded_symbols_path
         
@@ -200,6 +205,39 @@ class TestWeeklyBwoSync(unittest.TestCase):
             # Clean up default file to prevent polluting the codebase
             if os.path.exists(fallback_file):
                 os.remove(fallback_file)
+
+    def test_evaluate_and_sync_symbol_locked(self):
+        import sqlite3
+        from scripts.weekly_bwo_sync import is_symbol_locked
+        # Create temp DB with trading_positions table
+        conn = sqlite3.connect(self.test_db_path)
+        conn.execute("""
+            CREATE TABLE trading_positions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                symbol TEXT NOT NULL,
+                status TEXT NOT NULL
+            )
+        """)
+        # Insert active position
+        conn.execute("INSERT INTO trading_positions (symbol, status) VALUES ('POWERGRID', 'open')")
+        conn.commit()
+        conn.close()
+        
+        # Test helper function
+        locked, statuses = is_symbol_locked("POWERGRID")
+        self.assertTrue(locked)
+        self.assertEqual(statuses, ["open"])
+        
+        locked, statuses = is_symbol_locked("RELIANCE")
+        self.assertFalse(locked)
+        self.assertEqual(statuses, [])
+        
+        # Now run evaluate_and_sync_symbol
+        res = evaluate_and_sync_symbol("POWERGRID")
+        self.assertTrue(res["success"])
+        self.assertEqual(res["status"], "LOCKED")
+        self.assertIn("Active trade in progress", res["reason"])
+        self.assertEqual(res["champ_score"], -9999.0)
 
 if __name__ == "__main__":
     unittest.main()

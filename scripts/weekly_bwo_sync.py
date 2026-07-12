@@ -134,7 +134,49 @@ def serialize_and_save_config(sym, details, output_dir):
         json.dump(config_dict, f, indent=4)
     return out_path
 
+def is_symbol_locked(sym):
+    # Check if there is an active/pending trade for this symbol in the DB
+    try:
+        import sqlite3
+        import src.database
+        conn = sqlite3.connect(str(src.database.DB_PATH))
+        cursor = conn.cursor()
+        
+        # Check if the table exists (handling uninitialized db cases like tests)
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='trading_positions'")
+        if cursor.fetchone():
+            cursor.execute(
+                "SELECT status FROM trading_positions WHERE symbol = ? AND status IN ('open', 'pending_entry', 'proposed', 'pending_exit', 'proposed_exit')",
+                (sym,)
+            )
+            active_pos = cursor.fetchall()
+            if active_pos:
+                statuses = [r[0] for r in active_pos]
+                conn.close()
+                return True, statuses
+        conn.close()
+    except Exception as e:
+        print(f"[{sym}] Error checking active positions in database: {e}")
+    return False, []
+
 def evaluate_and_sync_symbol(sym):
+    locked, statuses = is_symbol_locked(sym)
+    if locked:
+        return {
+            "symbol": sym,
+            "success": True,
+            "status": "LOCKED",
+            "reason": f"Active trade in progress (status: {', '.join(statuses)}). Configuration locked.",
+            "champ_trades": 0,
+            "champ_pnl": 0.0,
+            "champ_sl": 0,
+            "champ_score": -9999.0,
+            "chal_trades": 0,
+            "chal_pnl": 0.0,
+            "chal_sl": 0,
+            "chal_score": -9999.0,
+        }
+
     try:
         # Load ledger data
         engine = DivergenceEngine(sym, start_date=None, end_date=None)
@@ -314,6 +356,9 @@ def main():
                 pass
                 
         for sym in symbols:
+            locked, _ = is_symbol_locked(sym)
+            if locked:
+                continue
             try:
                 suggestions = suggest_params_for_symbol(sym)
                 if suggestions:
