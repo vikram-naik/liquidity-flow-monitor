@@ -589,6 +589,36 @@ def test_universal_cross_exit_cts_cross():
     assert reason == ExitReason.ST_CROSS
 
 
+def test_universal_cross_exit_suppressed_first_two_bars_and_then_exits():
+    """Verify that a crossover exit suppressed during bars_held <= 1 triggers on bars_held >= 2 if it remains below the threshold."""
+    cfg = SavgolCTSExitConfig().universal_cross
+    cfg.enabled = True
+    cfg.cts_st_cross_enabled = True
+
+    trade = Trade(
+        symbol="TEST", entry_date="2024-01-01", entry_price=100.0,
+        entry_idx=0, atr_at_entry=2.0,
+        entry_tag=EntryTag.CUSTOM_BAYESIAN.value
+    )
+    trade.regime_at_entry = "uptrend"  # makes is_momentum = True
+
+    # 1. On bar 0 (entry bar, bars_held = 0) -> suppressed
+    row_0 = {"close": 101.0, "cts": 0.35, "cts_sell_threshold": 0.50}
+    prev_row_0 = {"close": 100.0, "cts": 0.55, "cts_sell_threshold": 0.50}
+    reason_0, _ = exit_universal_cross(row_0, prev_row_0, trade, 100.0, 0, 0, cfg)
+    assert reason_0 is None
+
+    # 2. On bar 1 (bars_held = 1) -> suppressed
+    row_1 = {"close": 101.5, "cts": 0.32, "cts_sell_threshold": 0.50}
+    reason_1, _ = exit_universal_cross(row_1, row_0, trade, 100.0, 1, 0, cfg)
+    assert reason_1 is None
+
+    # 3. On bar 2 (bars_held = 2) -> exits because suppression expired and CTS remains below threshold
+    row_2 = {"close": 102.0, "cts": 0.30, "cts_sell_threshold": 0.50}
+    reason_2, _ = exit_universal_cross(row_2, row_1, trade, 100.0, 2, 0, cfg)
+    assert reason_2 == ExitReason.ST_CROSS
+
+
 def test_universal_cross_entry_state_based_bypass_falling_fas():
     """Verify that a V-bottom setup with falling/decaying institutional flow (fas < prev_fas) fails the V-bottom bypass even if psz_v is strong, and gets rejected by the acceleration gate."""
     cfg = SavgolCTSEntryConfig()

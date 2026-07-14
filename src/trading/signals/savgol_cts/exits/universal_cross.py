@@ -116,25 +116,28 @@ def exit_universal_cross(
         prev_cts = prev_row.get("cts", np.nan) if prev_row else np.nan
         prev_cts_st = prev_row.get("cts_sell_threshold", np.nan) if prev_row else np.nan
         if not any(np.isnan(x) for x in [cts, prev_cts, cts_st, prev_cts_st]):
-            if prev_cts >= prev_cts_st and cts < cts_st:
-                if not is_panic_bar:
-                    # Determine if this is a momentum trade setup
-                    is_momentum = False
-                    if trade.entry_tag in [
-                        "SavgolCTS Flow-Momentum",
-                        "SavgolCTS Coherent-Pullback",
-                        "SavgolCTS CDVL-CTS"
-                    ]:
-                        is_momentum = True
-                    elif trade.entry_tag == "SavgolCTS Custom-Bayesian":
-                        if trade.regime_at_entry not in ["downtrend", "notrend"]:
-                            is_momentum = True
+            # Determine if this is a momentum trade setup
+            is_momentum = False
+            if trade.entry_tag in [
+                "SavgolCTS Flow-Momentum",
+                "SavgolCTS Coherent-Pullback",
+                "SavgolCTS CDVL-CTS"
+            ]:
+                is_momentum = True
+            elif trade.entry_tag == "SavgolCTS Custom-Bayesian":
+                if trade.regime_at_entry not in ["downtrend", "notrend"]:
+                    is_momentum = True
 
-                    if is_momentum and bars_held <= 1:
-                        # Suppress first ST cross over exit for momentum setups as we enter very near ST
-                        pass
-                    else:
-                        exit_reason = ExitReason.ST_CROSS
+            # Standard crossover check OR persistent below-threshold state after the entry suppression window expires
+            is_cross = (prev_cts >= prev_cts_st and cts < cts_st)
+            is_persistent_below = (is_momentum and bars_held > 1 and cts < cts_st)
+
+            if (is_cross or is_persistent_below) and not is_panic_bar:
+                if is_momentum and bars_held <= 1:
+                    # Suppress first ST cross over exit for momentum setups as we enter very near ST
+                    pass
+                else:
+                    exit_reason = ExitReason.ST_CROSS
 
     # 4. CWC Slope Negative Exit
     if not exit_reason and getattr(cfg, "cwc_slope_neg_exit_enabled", False):

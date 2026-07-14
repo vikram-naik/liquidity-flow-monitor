@@ -184,6 +184,8 @@ class Scanner:
                 atr_at_entry=pos["atr_at_entry"],
                 psz_peak=pos.get("psz_peak", 0) or 0,
                 entry_tag=pos.get("entry_tag", ""),
+                regime_at_entry=pos.get("regime_at_entry", "") or "",
+                psz_at_entry=pos.get("psz_at_entry", 0.0) or 0.0,
             )
 
             # Get CWVAP values from ledger tail

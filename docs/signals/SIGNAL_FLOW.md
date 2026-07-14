@@ -1,7 +1,7 @@
 # SavgolCTS Signal — Entry / Exit Flow
 
 **Package**: `src/trading/signals/savgol_cts/`
-**Last updated**: 2026-07-09
+**Last updated**: 2026-07-14
 
 ## ⚠️ Mandatory Execution Model (EOD-Lag)
 The LFM system operates on an **End-of-Day Lag (EOD-Lag)** model. All signal research and production logic MUST adhere to this:
@@ -113,7 +113,7 @@ All entry paths route through the standardized exit logic:
 check_exit(row, prev_row, trade, ...)                [signal.py]
   |
   |-- Dispatch to exit_universal_cross()             [exits/universal_cross.py]
-  |     |-- [Trigger] CTS crosses below ST trend (Suppressed on first bar held (bars_held <= 1) for momentum setups)
+  |     |-- [Trigger] CTS crosses below ST trend (Suppressed on bars_held <= 1 for momentum setups, but triggers on bars_held >= 2 if CTS remains below threshold)
   |     |-- [Trigger] PRT slope turns negative
   |     |-- [Trigger] CTS near-miss rollover
   |
