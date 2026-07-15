@@ -249,10 +249,41 @@ def evaluate_and_sync_symbol(sym):
     reason = "Champion is optimal."
     
     if chal_passed:
-        # Promote if Challenger score is strictly better than Champion by the delta, or if Champion does not exist/failed gates
-        if not champ_exists or not champ_passed or (chal_metrics["score"] > champ_metrics["score"] + challenger_promotion_delta):
+        # Calculate performance-adjusted scores (excluding trade count reward) to avoid trade-count bias
+        chal_trade_reward = bwo_set["TRADE_REWARD_COEFF"] * min(chal_metrics["trades"], bwo_set["TRADE_CAP_SCORE"])
+        champ_trade_reward = bwo_set["TRADE_REWARD_COEFF"] * min(champ_metrics["trades"], bwo_set["TRADE_CAP_SCORE"])
+        
+        chal_perf_score = chal_metrics["score"] - chal_trade_reward
+        champ_perf_score = champ_metrics["score"] - champ_trade_reward
+        
+        # Check if Challenger pruned a sub-model (e.g., disabled momentum)
+        chal_cb = challenger_opt
+        champ_cb = getattr(champ_cfg, "custom_bayesian", None) if champ_exists else None
+        
+        pruned_model = False
+        if champ_exists and champ_cb:
+            champ_mom_st = getattr(getattr(champ_cb, "momentum", None), "score_threshold", 99.9)
+            chal_mom_st = chal_cb.get("momentum", {}).get("score_threshold", 99.9)
+            if champ_mom_st < 90.0 and chal_mom_st >= 90.0:
+                pruned_model = True
+                
+        # Promote if:
+        # 1. No Champion exists, or Champion failed gates
+        # 2. Challenger performance-adjusted score is better (or equal, if we pruned an underperforming model)
+        # 3. Standard raw score beats Champion score by delta (fallback)
+        is_better = False
+        if not champ_exists or not champ_passed:
+            is_better = True
+        elif pruned_model and chal_perf_score >= champ_perf_score:
+            is_better = True
+        elif chal_perf_score > champ_perf_score + challenger_promotion_delta:
+            is_better = True
+        elif chal_metrics["score"] > champ_metrics["score"] + challenger_promotion_delta:
+            is_better = True
+            
+        if is_better:
             status = "PROMOTED"
-            reason = f"Challenger score ({chal_metrics['score']:.2f}) beats Champion score ({champ_metrics['score']:.2f})."
+            reason = f"Challenger perf score ({chal_perf_score:.2f}) beats Champion perf score ({champ_perf_score:.2f}) [pruned={pruned_model}]."
             # Write to JSON and remove from exclusion
             serialize_and_save_config(sym, challenger_opt, BW_CONFIGS_DIR)
             remove_from_exclusion_list(sym)

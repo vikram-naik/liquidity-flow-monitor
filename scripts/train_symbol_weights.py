@@ -314,11 +314,13 @@ def evaluate_config_partitioned(sym, ledger, fb_accum, fw_accum, fb_mom, fw_mom,
     sl_mae_threshold = bwo_set["SL_MAE_THRESHOLD"]
     bwo_start_date = bwo_set["BWO_START_DATE"]
     
-    # Use min(target_pnl, 2.0) as the threshold selection hurdle.
-    hurdle_pnl = min(target_pnl, 2.0)
+    # Use min(target_pnl, 2.0) as the threshold selection hurdle for Accumulation.
+    # Elevate the selection hurdle for Momentum to min(target_pnl, 4.0) to filter out low-expectancy setups.
+    hurdle_pnl_accum = min(target_pnl, 2.0)
+    hurdle_pnl_mom = min(target_pnl, 4.0)
     
     # A. Optimize Accumulation Model Threshold (Disable momentum signals via high threshold)
-    best_th_accum = 0.0
+    best_th_accum = 99.9
     passing_accum = []
     fallback_accum = []
     
@@ -336,19 +338,28 @@ def evaluate_config_partitioned(sym, ledger, fb_accum, fw_accum, fb_mom, fw_mom,
             
             score = sl_hit_penalty * sl_ratio + trade_reward_coeff * min(len(trades_bwo), trade_cap_score) + avg_pnl
             
-            if avg_pnl > hurdle_pnl:
+            if avg_pnl > hurdle_pnl_accum:
                 passing_accum.append({"threshold": th, "score": score, "trades": len(trades_bwo), "avg_pnl": avg_pnl, "sl_hits": sl_hits})
             fallback_accum.append({"threshold": th, "avg_pnl": avg_pnl, "trades": len(trades_bwo), "sl_hits": sl_hits})
             
     if passing_accum:
         passing_accum.sort(key=lambda x: x["score"], reverse=True)
-        best_th_accum = passing_accum[0]["threshold"]
-    elif fallback_accum:
+        for cand in passing_accum:
+            cand_sl_ratio = cand["sl_hits"] / cand["trades"] if cand["trades"] > 0 else 0.0
+            if cand["trades"] >= min_trades and cand["avg_pnl"] >= hurdle_pnl_accum and cand_sl_ratio <= max_sl_ratio:
+                best_th_accum = cand["threshold"]
+                break
+    
+    if best_th_accum == 99.9 and fallback_accum:
         fallback_accum.sort(key=lambda x: x["avg_pnl"], reverse=True)
-        best_th_accum = fallback_accum[0]["threshold"]
+        for cand in fallback_accum:
+            cand_sl_ratio = cand["sl_hits"] / cand["trades"] if cand["trades"] > 0 else 0.0
+            if cand["trades"] >= min_trades and cand["avg_pnl"] >= hurdle_pnl_accum and cand_sl_ratio <= max_sl_ratio:
+                best_th_accum = cand["threshold"]
+                break
         
     # B. Optimize Momentum Model Threshold (Disable accumulation signals via high threshold)
-    best_th_mom = 0.0
+    best_th_mom = 99.9
     passing_mom = []
     fallback_mom = []
     
@@ -367,16 +378,25 @@ def evaluate_config_partitioned(sym, ledger, fb_accum, fw_accum, fb_mom, fw_mom,
             
             score = sl_hit_penalty * sl_ratio + trade_reward_coeff * min(len(trades_bwo), trade_cap_score) + avg_pnl
             
-            if avg_pnl > hurdle_pnl:
+            if avg_pnl > hurdle_pnl_mom:
                 passing_mom.append({"threshold": th, "score": score, "trades": len(trades_bwo), "avg_pnl": avg_pnl, "sl_hits": sl_hits})
             fallback_mom.append({"threshold": th, "avg_pnl": avg_pnl, "trades": len(trades_bwo), "sl_hits": sl_hits})
             
     if passing_mom:
         passing_mom.sort(key=lambda x: x["score"], reverse=True)
-        best_th_mom = passing_mom[0]["threshold"]
-    elif fallback_mom:
+        for cand in passing_mom:
+            cand_sl_ratio = cand["sl_hits"] / cand["trades"] if cand["trades"] > 0 else 0.0
+            if cand["trades"] >= min_trades and cand["avg_pnl"] >= hurdle_pnl_mom and cand_sl_ratio <= max_sl_ratio:
+                best_th_mom = cand["threshold"]
+                break
+                
+    if best_th_mom == 99.9 and fallback_mom:
         fallback_mom.sort(key=lambda x: x["avg_pnl"], reverse=True)
-        best_th_mom = fallback_mom[0]["threshold"]
+        for cand in fallback_mom:
+            cand_sl_ratio = cand["sl_hits"] / cand["trades"] if cand["trades"] > 0 else 0.0
+            if cand["trades"] >= min_trades and cand["avg_pnl"] >= hurdle_pnl_mom and cand_sl_ratio <= max_sl_ratio:
+                best_th_mom = cand["threshold"]
+                break
  
     # C. Optimize fallback Unified Model Threshold
     best_th_uni = 0.0
@@ -400,7 +420,7 @@ def evaluate_config_partitioned(sym, ledger, fb_accum, fw_accum, fb_mom, fw_mom,
             
             score = sl_hit_penalty * sl_ratio + trade_reward_coeff * min(len(trades_bwo), trade_cap_score) + avg_pnl
             
-            if avg_pnl > hurdle_pnl:
+            if avg_pnl > hurdle_pnl_accum:
                 passing_uni.append({"threshold": th, "score": score, "trades": len(trades_bwo), "avg_pnl": avg_pnl, "sl_hits": sl_hits})
             fallback_uni.append({"threshold": th, "avg_pnl": avg_pnl, "trades": len(trades_bwo), "sl_hits": sl_hits})
             

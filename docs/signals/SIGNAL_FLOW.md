@@ -97,10 +97,16 @@ The BWO system replaces the deprecated XGBoost ML Guard with a pure technical Ba
   - **Accumulation Model**: Active when `regime` is `'downtrend'` or `'notrend'`. Automatically isolates bottom accumulation setups.
   - **Momentum Model**: Active when `regime` is `'uptrend'` or `'transition'`. Automatically handles breakout momentum signals.
 - **Minimum Probability Gate**: After passing the symbol-specific score threshold, entries are additionally rejected if `bayesian_score < 0` (equivalent to `conviction_score < 50`, i.e. the model's log-odds imply < 50% win probability). This is a global floor that applies regardless of threshold calibration and removes low-confidence entries that inflate trade count without adding expectancy.
+- **Decoupled Sub-Model Safety Gates**: Sub-model thresholds are optimized independently during candidate sweeps:
+  - **Elevated Momentum Hurdle**: The Momentum sub-model has an elevated selection hurdle of `min(target_pnl, 4.0)` to filter out low-expectancy breakout setups.
+  - **Model Pruning**: If the Momentum model fails the safety gates (`trades >= min_trades`, `avg_pnl >= hurdle`, `sl_ratio <= max_sl_ratio`), its threshold is set to `99.9` (disabling it entirely in production).
 - **Training**: `scripts/train_symbol_weights.py` (which supports both parallel and sequential execution, with parallel enabled by default) partitions historical candidate bars and independently optimizes weights/thresholds for both sub-models. To optimize sweeps, triggers and sub-model scores are precalculated once per config, and passed down as pre-converted list records to avoid redundant calculations and dict conversions. Redundant `copy.deepcopy` calls are minimized (reduced from 208 to 3 per sweep), resulting in an almost 2x speedup in optimization run times (~1 minute per symbol). Clean `tqdm` progress bars track optimization progress.
 - **Configs**: Output JSON files with `accumulation` and `momentum` sub-blocks are stored in `bw_configs/` (configurable via `BW_CONFIGS_DIR` env var).
 - **Loading**: `symbol_configs.py` dynamically parses, loads, and caches the partitioned JSON overrides at runtime.
 - **Weekly Tuning & Parameter Suggestion**: Challenger-Champion promo loop verifies configurations against safety gates. Symbol BWO overrides (defined in `bwo_symbol_params.json`) are automatically suggested before sweeps by `scripts/suggest_bwo_params.py` based on volatility/ATR and setup frequency. Clean `tqdm` progress tracking handles batch execution across symbols.
+  - **Performance-Adjusted Promotion matrix**: Avoids trade-count bias by subtracting the trade reward coefficient term when comparing the final configurations:
+    $$\text{perf\_score} = \text{score} - \text{trade\_reward\_coeff} \times \min(\text{trades}, \text{trade\_cap\_score})$$
+  - **Pruning Promotion**: If the Challenger disables the Momentum sub-model (setting `momentum.score_threshold = 99.9` where the Champion had it active), it is automatically promoted if its performance-adjusted score is equal to or better than the Champion's, ensuring BWO can prune out underperforming signals without trade-count penalties blocking the optimization.
 
 
 ---
@@ -113,7 +119,7 @@ All entry paths route through the standardized exit logic:
 check_exit(row, prev_row, trade, ...)                [signal.py]
   |
   |-- Dispatch to exit_universal_cross()             [exits/universal_cross.py]
-  |     |-- [Trigger] CTS crosses below ST trend (Suppressed on bars_held <= 1 for momentum setups, but triggers on bars_held >= 2 if CTS remains below threshold)
+  |     |-- [Trigger] CTS crosses below ST trend (Suppressed on first bar held (bars_held <= 1) for momentum setups)
   |     |-- [Trigger] PRT slope turns negative
   |     |-- [Trigger] CTS near-miss rollover
   |

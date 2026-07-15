@@ -175,6 +175,26 @@ class Scanner:
                 bars_held = (pos.get("bars_held", 0) or 0) + 1
             delivery_bad_count = pos.get("delivery_bad_count", 0) or 0
 
+            # Calculate running stats
+            pnl_pct = round((close / entry_price - 1) * 100, 2)
+            mfe = max(pos.get("mfe_pct", 0) or 0, pnl_pct)
+            mae_val = min(-(pos.get("mae_pct", 0) or 0), pnl_pct)
+            mae = -mae_val if mae_val < 0 else pos.get("mae_pct", 0) or 0
+
+            if bars_held < 1:
+                # EOD-Lag model: Exit checks begin on bar i+2 (bars_held >= 1)
+                if not self.dry_run:
+                    self.repo.update_position(
+                        pos["id"],
+                        peak_close=peak_close,
+                        bars_held=bars_held,
+                        current_pnl_pct=pnl_pct,
+                        mfe_pct=round(mfe, 2),
+                        mae_pct=round(mae, 2),
+                    )
+                print(f"  {symbol}: HOLD (Entry Day), P&L={pnl_pct:+.2f}%, bars={bars_held}")
+                continue
+
             # Build Trade object from position state
             trade = Trade(
                 symbol=symbol,
@@ -202,11 +222,7 @@ class Scanner:
                 records, len(records) - 1,
             )
 
-            # Calculate running stats
-            pnl_pct = round((close / entry_price - 1) * 100, 2)
-            mfe = max(pos.get("mfe_pct", 0) or 0, pnl_pct)
-            mae_val = min(-(pos.get("mae_pct", 0) or 0), pnl_pct)
-            mae = -mae_val if mae_val < 0 else pos.get("mae_pct", 0) or 0
+
 
             if reason:
                 exit_reason_str = str(reason.value) if hasattr(reason, "value") else str(reason)
